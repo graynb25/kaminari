@@ -2,7 +2,7 @@
 // If a command is missing in Rust, this file is the one place that changes.
 
 import { invoke } from "@tauri-apps/api/core";
-import type { Boot, LibraryItem, Media } from "./types";
+import type { Boot, ContinueItem, LibraryItem, Media } from "./types";
 
 export function bootSnapshot(): Promise<Boot> {
   return invoke<Boot>("boot_snapshot");
@@ -36,4 +36,24 @@ export function addToLibrary(media: Media, status = "watching"): Promise<void> {
 
 export function removeFromLibrary(id: number): Promise<void> {
   return invoke<void>("library_remove", { id });
+}
+
+export function watchedList(anilistId: number): Promise<number[]> {
+  return invoke<number[]>("watched_list", { anilistId });
+}
+
+export function watchedSet(media: Media, episode: number, watched: boolean): Promise<number[]> {
+  return invoke<number[]>("watched_set", { media, episode, watched });
+}
+
+export function watchedMarkAll(
+  media: Media,
+  through: number,
+  watched: boolean,
+): Promise<number[]> {
+  return invoke<number[]>("watched_mark_all", { media, through, watched });
+}
+
+export function continueWatching(): Promise<ContinueItem[]> {
+  return invoke<ContinueItem[]>("continue_watching");
 }

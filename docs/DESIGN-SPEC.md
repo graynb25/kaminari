@@ -70,6 +70,12 @@ Centered modal, 640px wide, glass void at 90 percent plus 20px blur, radius 20. 
 
 Banner 320px plus scrim. Poster 224px overlaps by 96px. Title block, meta, action row. Tabs: Episodes, Details, Related. Characters stay read only in v1. Play Next opens the first unwatched episode. Library button has a status menu: watching, planning, completed, paused, dropped. Sync chip shows AniList OAuth state. Episodes virtualize. Each row: 128 by 72 thumb, number, title, duration, watched check. Toggle is optimistic with rollback and a toast on DB error. AniList 429 shows stale data plus a countdown. 404 shows a removed panel.
 
+Current build: Play opens a note until sources land. Episodes are a numbered grid, capped at 200. Each button toggles watched state, with Mark all and Clear beside the progress bar. Marking watched adds the series to the library if it is not there yet.
+
+### Progress
+
+Watched episodes live in SQLite. Continue Watching only joins series in the library with status watching, ordered by the newest progress. It shows the last watched episode and watched count. Library cards show watched over total plus a thin volt bar. A series with zero watched episodes is not in Continue Watching.
+
 ### VideoPlayer (libmpv surface)
 
 Full window route `/watch/:id/:ep`. Black field. mpv canvas fills. Custom bar in glass, hides after 2.5 seconds idle, returns on move or focus. Time shows current and total in mono. Sliders scrub with 100ms linear response.

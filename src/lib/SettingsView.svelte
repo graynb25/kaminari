@@ -24,7 +24,7 @@
       title: "Data",
       icon: `<svg ${iconProps}><ellipse cx="12" cy="5.5" rx="7.5" ry="2.8" /><path d="M4.5 5.5v13c0 1.6 3.4 2.8 7.5 2.8s7.5-1.2 7.5-2.8v-13" /><path d="M4.5 12c0 1.6 3.4 2.8 7.5 2.8s7.5-1.2 7.5-2.8" /></svg>`,
       rows: [
-        { label: "AniList endpoint", value: boot?.anilistEndpoint ?? "Loading" },
+        { label: "AniList endpoint", value: "" },
         { label: "Library", value: "One local SQLite file, WAL mode, portable backup" },
       ],
     },
@@ -42,9 +42,7 @@
       rows: [
         {
           label: "Extension budget",
-          value: boot
-            ? `${boot.limits.extTimeoutSecs}s calls, ${boot.limits.extResolveTimeoutSecs}s resolves, ${Math.round(boot.limits.extMemoryBytes / 1024 / 1024)}MB per runtime`
-            : "Loading",
+          value: "",
         },
         { label: "Auto update", value: "One click restart, lands in P3" },
         { label: "Diagnostics export", value: "Redacted bundle, lands in P3" },
@@ -52,8 +50,9 @@
     },
   ];
   function rowValue(label: string, fallback: string): string {
-    if (label === "AniList endpoint") return boot?.anilistEndpoint ?? fallback;
-    if (label === "Extension budget" && boot) {
+    if (label === "AniList endpoint") return boot?.anilistEndpoint ?? "Loading";
+    if (label === "Extension budget") {
+      if (!boot) return "Loading";
       const mem = Math.round(boot.limits.extMemoryBytes / 1024 / 1024);
       return `${boot.limits.extTimeoutSecs}s calls, ${boot.limits.extResolveTimeoutSecs}s resolves, ${mem}MB per runtime`;
     }

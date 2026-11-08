@@ -34,6 +34,10 @@ fn main() {
             commands::library_list,
             commands::library_add,
             commands::library_remove,
+            commands::watched_list,
+            commands::watched_set,
+            commands::watched_mark_all,
+            commands::continue_watching,
             commands::source_validate_id
         ])
         .run(tauri::generate_context!())

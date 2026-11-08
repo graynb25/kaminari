@@ -65,6 +65,9 @@
 </script>
 
 {#if slides.length > 0}
+  <!-- The carousel is a labelled region with explicit arrow key handling. -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <section
     class="hero-edge relative h-[clamp(320px,38vw,440px)] overflow-hidden shrink-0"
     style="border-bottom: 1px solid var(--line);"

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::anilist::{AniListClient, Media, ShelfKind};
-use crate::db::{Db, LibraryItem};
+use crate::db::{ContinueItem, Db, LibraryItem};
 use crate::error::AppError;
 use crate::ext_host;
 
@@ -100,6 +100,40 @@ pub fn library_add(
 #[tauri::command]
 pub fn library_remove(state: State<'_, Db>, id: i64) -> Result<(), String> {
     state.remove_from_library(id).map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn watched_list(state: State<'_, Db>, anilist_id: i64) -> Result<Vec<i64>, String> {
+    state.watched_list(anilist_id).map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn watched_set(
+    state: State<'_, Db>,
+    media: Media,
+    episode: i64,
+    watched: bool,
+) -> Result<Vec<i64>, String> {
+    state
+        .set_watched(&media, episode, watched)
+        .map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn watched_mark_all(
+    state: State<'_, Db>,
+    media: Media,
+    through: i64,
+    watched: bool,
+) -> Result<Vec<i64>, String> {
+    state
+        .mark_all_watched(&media, through, watched)
+        .map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn continue_watching(state: State<'_, Db>) -> Result<Vec<ContinueItem>, String> {
+    state.continue_watching(20).map_err(ipc_error)
 }
 
 #[tauri::command]

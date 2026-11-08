@@ -16,3 +16,4 @@ Every visible change gets a line here. Keep lines short and specific.
 - Browse: 1440 content width, five parallel rails (trending page 1 and 2, airing, top, popular), Top 10 Today ranked rail, per rail retry, edge fade affordance
 - Fix: shelf rows reset horizontal scroll when data lands, rank numerals scale down, top three ranks carry the volt accent
 - Fix: AniList scores display on a 10 point scale with one decimal, with the raw 0 to 100 value in a tooltip
+- Progress: episode watched toggles, mark all and clear, per series progress bars, continue watching rail, library watched counts

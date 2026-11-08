@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import ContinueCard from "./lib/ContinueCard.svelte";
   import DetailPage from "./lib/DetailPage.svelte";
   import HeroCarousel from "./lib/HeroCarousel.svelte";
   import LibraryView from "./lib/LibraryView.svelte";
@@ -17,14 +18,18 @@
   import {
     addToLibrary,
     bootSnapshot,
+    continueWatching,
     detail as fetchDetail,
     listLibrary,
     removeFromLibrary,
     shelf,
+    watchedList,
+    watchedMarkAll,
+    watchedSet,
     type ShelfKind,
   } from "./lib/api";
   import { displayTitle, isRateLimitMessage } from "./lib/format";
-  import type { Boot, LibraryItem, Media, RailState, Toast, ToastTone, View } from "./lib/types";
+  import type { Boot, ContinueItem, LibraryItem, Media, RailState, Toast, ToastTone, View } from "./lib/types";
 
   let title = $state("Kaminari");
   let boot = $state<Boot | null>(null);
@@ -41,6 +46,8 @@
   let detail = $state<Media | null>(null);
   let detailError = $state<string | null>(null);
   let playNote = $state<string | null>(null);
+  let watchedDetail = $state<number[]>([]);
+  let continueItems = $state<ContinueItem[]>([]);
   let paletteOpen = $state(false);
   let shortcutsOpen = $state(false);
   let toasts = $state<Toast[]>([]);
@@ -80,7 +87,16 @@
     detail = null;
     detailError = null;
     playNote = null;
+    watchedDetail = [];
     view = next;
+  }
+
+  async function refreshContinue() {
+    try {
+      continueItems = await continueWatching();
+    } catch {
+      continueItems = [];
+    }
   }
 
   async function refreshLibrary() {
@@ -128,6 +144,11 @@
     } catch (e) {
       detailError = e instanceof Error ? e.message : String(e);
     }
+    try {
+      watchedDetail = await watchedList(item.id);
+    } catch {
+      watchedDetail = [];
+    }
   }
 
   function openPlay(item: Media) {
@@ -147,9 +168,39 @@
         notify(`Saved ${name} to your library.`, "success");
       }
       await refreshLibrary();
+      await refreshContinue();
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       notify(`Library change failed: ${message}`, "error");
+    }
+  }
+
+  async function toggleWatched(episode: number) {
+    if (!detail) return;
+    const seen = watchedDetail.includes(episode);
+    try {
+      watchedDetail = await watchedSet(detail, episode, !seen);
+      await Promise.all([refreshLibrary(), refreshContinue()]);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`Episode update failed: ${message}`, "error");
+    }
+  }
+
+  async function markAllWatched(seen: boolean) {
+    if (!detail) return;
+    const through = detail.episodes ?? 0;
+    if (through <= 0) return;
+    try {
+      watchedDetail = await watchedMarkAll(detail, through, seen);
+      await Promise.all([refreshLibrary(), refreshContinue()]);
+      notify(
+        seen ? `Marked all ${through} episodes watched.` : "Cleared watched episodes.",
+        "success",
+      );
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`Episode update failed: ${message}`, "error");
     }
   }
 
@@ -175,6 +226,7 @@
         // Boot snapshot is informational. Shelves still load.
       }
       await refreshLibrary();
+      await refreshContinue();
       await loadBrowse();
     })();
   });
@@ -241,6 +293,8 @@
   <div class="flex flex-1 min-h-0">
     <NavRail view={view} onNav={goView} />
 
+    <!-- The skip link focuses this region without adding it to the tab order. -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <main id="content" class="ambient flex-1 overflow-y-auto min-w-0" tabindex={-1}>
       {#if !online}
         <div
@@ -267,9 +321,12 @@
           media={detail}
           inLibrary={isInLibrary(detail.id)}
           playNote={playNote}
+          watched={watchedDetail}
           onBack={closeDetail}
           onToggleLibrary={toggleLibrary}
           onPlay={openPlay}
+          onToggleWatched={(episode) => void toggleWatched(episode)}
+          onMarkAll={(seen) => void markAllWatched(seen)}
         />
       {:else if view === "browse"}
         {#if trendingRail.loading}
@@ -344,13 +401,21 @@
               </div>
             {:else}
               <section aria-label="Continue watching">
-                <Shelf title="Continue Watching">
-                  <div
-                    class="w-full rounded-xl px-4 py-3 text-sm"
-                    style="background: var(--void-900); border: 1px solid var(--line); color: var(--paper-500);"
-                  >
-                    Nothing in progress yet. Tracking lands with history in P1, then this row fills itself.
-                  </div>
+                <Shelf title="Continue Watching" count={continueItems.length}>
+                  {#if continueItems.length === 0}
+                    <div
+                      class="w-full rounded-xl px-4 py-3 text-sm"
+                      style="background: var(--void-900); border: 1px solid var(--line); color: var(--paper-500);"
+                    >
+                      Nothing in progress yet. Mark an episode watched and this row fills itself.
+                    </div>
+                  {:else}
+                    {#each continueItems as entry (entry.media.id)}
+                      <div class="w-[280px] md:w-[320px] shrink-0">
+                        <ContinueCard item={entry} onOpen={(item) => void openDetail(item)} />
+                      </div>
+                    {/each}
+                  {/if}
                 </Shelf>
               </section>
             {/if}

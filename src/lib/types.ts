@@ -42,6 +42,17 @@ export type LibraryItem = {
   media: Media;
   status: string;
   addedAt: number;
+  watchedCount: number;
+};
+
+export type ContinueItem = {
+  media: Media;
+  episode: number;
+  positionSec: number;
+  durationSec: number;
+  watchedCount: number;
+  totalEpisodes: number;
+  updatedAt: number;
 };
 
 export type View = "browse" | "library" | "sources" | "settings";

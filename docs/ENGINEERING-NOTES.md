@@ -56,6 +56,14 @@ SQLite with WAL. One file, checked in migrations, backup with `VACUUM INTO`. Lib
 
 Desktop updates come from GitHub Releases with Minisign signatures. The updater polls `latest.json` and shows the version, size, and notes before it touches anything. Roll back is reinstall the prior `.exe`. The library file is left alone.
 
+## 2026-11-08 Progress and Continue Watching
+
+Context. The catalogue was read only. The library could save a title but not track it, so Continue Watching had nothing honest to show.
+
+What we shipped. A watched table keyed by AniList id and episode. Marking an episode watched upserts the media row, adds the series to the library as watching if it is missing, inserts history, and sets progress to the highest watched episode. Unwatching recomputes the highest episode and drops the progress row when none remain. Continue Watching joins progress to library rows with status watching, ordered by updated_at. Seven Rust tests cover the round trip.
+
+What we did not do. No player position yet. position_sec and duration_sec exist for the libmpv pass, but the current watched toggle writes zero. The UI does not pretend an episode played.
+
 ## 2026-11-08 CI shape and first live AniList call
 
 Context. The first push went red twice. Both failures were boring and worth writing down.
