@@ -7,6 +7,7 @@ mod commands;
 mod db;
 mod error;
 mod ext_host;
+mod registry;
 
 use tauri::Manager;
 
@@ -38,7 +39,12 @@ fn main() {
             commands::watched_set,
             commands::watched_mark_all,
             commands::continue_watching,
-            commands::source_validate_id
+            commands::source_validate_id,
+            commands::registry_fetch,
+            commands::source_list,
+            commands::source_install,
+            commands::source_remove,
+            commands::source_toggle
         ])
         .run(tauri::generate_context!())
         .expect("error starting Kaminari");

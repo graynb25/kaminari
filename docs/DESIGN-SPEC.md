@@ -76,6 +76,10 @@ Current build: Play opens a note until sources land. Episodes are a numbered gri
 
 Watched episodes live in SQLite. Continue Watching only joins series in the library with status watching, ordered by the newest progress. It shows the last watched episode and watched count. Library cards show watched over total plus a thin volt bar. A series with zero watched episodes is not in Continue Watching.
 
+### Sources
+
+The Sources page leads with a registry URL field. Loading the yuzono Aniyomi index returned 250 packages in a live check on 2026-11-08. Installed packages render first, then available packages with name, package id, version, language, source count, and NSFW or torrent badges. A filter narrows the list. Cards render 60 at a time with a Show more button, so 250 packages do not land in the DOM at once. Add stores metadata only. No APK downloads, no package code runs until the QuickJS host lands. The page says that in plain copy.
+
 ### VideoPlayer (libmpv surface)
 
 Full window route `/watch/:id/:ep`. Black field. mpv canvas fills. Custom bar in glass, hides after 2.5 seconds idle, returns on move or focus. Time shows current and total in mono. Sliders scrub with 100ms linear response.

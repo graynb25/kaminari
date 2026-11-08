@@ -98,6 +98,8 @@ We stay compatible with the Aniyomi community index shape at `https://raw.github
 
 Measured 2026-11-08: 250 packages, 304 sources, ids are decimal strings that exceed JS safe int. Sample `8542735178285060053` is larger than 2 to the 53. Full note lives in `docs/ENGINEERING-NOTES.md`.
 
+Current app status: the Sources page fetches this index live, shows all 250 packages with NSFW and torrent badges, and stores selected entries in SQLite as metadata. It does not download an APK or execute package code. The QuickJS host is the next step.
+
 Mapping to Kaminari:
 
 - `pkg` maps to our extension `id`. Keep the full reverse DNS string. Example: `eu.kanade.tachiyomi.animeextension.all.animeonsen`.

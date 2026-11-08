@@ -507,7 +507,7 @@
           />
         {/if}
       {:else if view === "sources"}
-        <SourcesView boot={boot} />
+        <SourcesView boot={boot} notify={notify} />
       {:else}
         <SettingsView boot={boot} />
       {/if}

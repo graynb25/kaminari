@@ -55,6 +55,34 @@ export type ContinueItem = {
   updatedAt: number;
 };
 
+export type LegacySource = {
+  name: string;
+  lang: string;
+  id: string;
+  baseUrl: string;
+};
+
+export type LegacyExtension = {
+  name: string;
+  pkg: string;
+  apk: string;
+  lang: string;
+  code: number;
+  version: string;
+  nsfw: number;
+  torrent: number;
+  sources: LegacySource[];
+};
+
+export type InstalledSource = {
+  id: string;
+  name: string;
+  version: string;
+  enabled: boolean;
+  sourceCount: number;
+  nsfw: boolean;
+};
+
 export type View = "browse" | "library" | "sources" | "settings";
 
 export type RailState = {

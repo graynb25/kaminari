@@ -4,9 +4,10 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::anilist::{AniListClient, Media, ShelfKind};
-use crate::db::{ContinueItem, Db, LibraryItem};
+use crate::db::{ContinueItem, Db, InstalledSource, LibraryItem};
 use crate::error::AppError;
 use crate::ext_host;
+use crate::registry::{fetch_index, LegacyExtension};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -139,4 +140,29 @@ pub fn continue_watching(state: State<'_, Db>) -> Result<Vec<ContinueItem>, Stri
 #[tauri::command]
 pub fn source_validate_id(id: String) -> bool {
     ext_host::validate_source_id(&id)
+}
+
+#[tauri::command]
+pub async fn registry_fetch(url: String) -> Result<Vec<LegacyExtension>, String> {
+    fetch_index(&url).await.map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn source_list(state: State<'_, Db>) -> Result<Vec<InstalledSource>, String> {
+    state.list_sources().map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn source_install(state: State<'_, Db>, extension: LegacyExtension) -> Result<(), String> {
+    state.install_source(&extension).map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn source_remove(state: State<'_, Db>, id: String) -> Result<(), String> {
+    state.remove_source(&id).map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn source_toggle(state: State<'_, Db>, id: String, enabled: bool) -> Result<(), String> {
+    state.toggle_source(&id, enabled).map_err(ipc_error)
 }

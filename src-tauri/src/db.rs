@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::anilist::{CoverImage, Media, MediaTitle};
 use crate::error::{AppError, AppResult};
+use crate::registry::LegacyExtension;
 
 pub struct Db {
     conn: Mutex<Connection>,
@@ -31,6 +32,17 @@ pub struct ContinueItem {
     pub watched_count: i64,
     pub total_episodes: i64,
     pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledSource {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub enabled: bool,
+    pub source_count: usize,
+    pub nsfw: bool,
 }
 
 impl Db {
@@ -233,6 +245,67 @@ impl Db {
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
+
+    pub fn list_sources(&self) -> AppResult<Vec<InstalledSource>> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let mut statement = conn.prepare(
+            "SELECT id, name, version, enabled, manifest FROM sources ORDER BY name COLLATE NOCASE",
+        )?;
+        let rows = statement.query_map([], |row| {
+            let manifest: String = row.get(4)?;
+            let parsed = serde_json::from_str::<LegacyExtension>(&manifest).ok();
+            Ok(InstalledSource {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                version: row.get(2)?,
+                enabled: row.get::<_, i64>(3)? != 0,
+                source_count: parsed
+                    .as_ref()
+                    .map(LegacyExtension::source_count)
+                    .unwrap_or(0),
+                nsfw: parsed
+                    .as_ref()
+                    .map(LegacyExtension::is_nsfw)
+                    .unwrap_or(false),
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn install_source(&self, entry: &LegacyExtension) -> AppResult<()> {
+        if !entry.valid() {
+            return Err(AppError::Blocked(
+                "Extension metadata is invalid".to_string(),
+            ));
+        }
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let manifest = serde_json::to_string(entry).map_err(|err| AppError::Db(err.to_string()))?;
+        conn.execute(
+            "INSERT INTO sources(id, name, version, enabled, manifest, installed_at)
+             VALUES (?1, ?2, ?3, 1, ?4, unixepoch())
+             ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                version = excluded.version,
+                manifest = excluded.manifest",
+            params![entry.pkg, entry.name, entry.version, manifest],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_source(&self, id: &str) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        conn.execute("DELETE FROM sources WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn toggle_source(&self, id: &str, enabled: bool) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        conn.execute(
+            "UPDATE sources SET enabled = ?2 WHERE id = ?1",
+            params![id, i64::from(enabled)],
+        )?;
+        Ok(())
+    }
 }
 
 fn upsert_media(conn: &Connection, media: &Media) -> AppResult<()> {
@@ -360,6 +433,7 @@ fn db_locked() -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::registry::LegacySource;
 
     fn sample_media() -> Media {
         Media {
@@ -397,6 +471,39 @@ mod tests {
         assert_eq!(items[0].watched_count, 0);
         db.remove_from_library(15125).unwrap();
         assert!(db.list_library().unwrap().is_empty());
+    }
+
+    #[test]
+    fn install_toggle_remove_source() {
+        let db = Db::new(":memory:").unwrap();
+        let entry = LegacyExtension {
+            name: "Aniyomi: AnimeOnsen".to_string(),
+            pkg: "eu.kanade.tachiyomi.animeextension.all.animeonsen".to_string(),
+            apk: "aniyomi-all.animeonsen-v14.10.apk".to_string(),
+            lang: "all".to_string(),
+            code: 10,
+            version: "14.10".to_string(),
+            nsfw: 0,
+            torrent: 0,
+            sources: vec![LegacySource {
+                name: "AnimeOnsen".to_string(),
+                lang: "all".to_string(),
+                id: "8542735178285060053".to_string(),
+                base_url: "https://www.animeonsen.xyz".to_string(),
+            }],
+        };
+        db.install_source(&entry).unwrap();
+        let list = db.list_sources().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].source_count, 1);
+        assert!(list[0].enabled);
+        assert!(!list[0].nsfw);
+
+        db.toggle_source(&entry.pkg, false).unwrap();
+        assert!(!db.list_sources().unwrap()[0].enabled);
+
+        db.remove_source(&entry.pkg).unwrap();
+        assert!(db.list_sources().unwrap().is_empty());
     }
 
     #[test]

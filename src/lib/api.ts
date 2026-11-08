@@ -2,7 +2,14 @@
 // If a command is missing in Rust, this file is the one place that changes.
 
 import { invoke } from "@tauri-apps/api/core";
-import type { Boot, ContinueItem, LibraryItem, Media } from "./types";
+import type {
+  Boot,
+  ContinueItem,
+  InstalledSource,
+  LegacyExtension,
+  LibraryItem,
+  Media,
+} from "./types";
 
 export function bootSnapshot(): Promise<Boot> {
   return invoke<Boot>("boot_snapshot");
@@ -56,4 +63,24 @@ export function watchedMarkAll(
 
 export function continueWatching(): Promise<ContinueItem[]> {
   return invoke<ContinueItem[]>("continue_watching");
+}
+
+export function registryFetch(url: string): Promise<LegacyExtension[]> {
+  return invoke<LegacyExtension[]>("registry_fetch", { url });
+}
+
+export function sourceList(): Promise<InstalledSource[]> {
+  return invoke<InstalledSource[]>("source_list");
+}
+
+export function sourceInstall(extension: LegacyExtension): Promise<void> {
+  return invoke<void>("source_install", { extension });
+}
+
+export function sourceRemove(id: string): Promise<void> {
+  return invoke<void>("source_remove", { id });
+}
+
+export function sourceToggle(id: string, enabled: boolean): Promise<void> {
+  return invoke<void>("source_toggle", { id, enabled });
 }
