@@ -452,11 +452,9 @@ impl ProxyStore {
         let now = Instant::now();
         let mut ids = Vec::with_capacity(specs.len());
         for spec in specs {
-            if let Some(child) = entry
-                .children
-                .values_mut()
-                .find(|child| child.upstream_url == spec.upstream_url)
-            {
+            if let Some(child) = entry.children.values_mut().find(|child| {
+                child.upstream_url == spec.upstream_url && child.byte_range == spec.byte_range
+            }) {
                 if spec.content_type.is_some() {
                     child.content_type = spec.content_type.clone();
                 }
@@ -821,12 +819,12 @@ async fn stream_child_response(
         .get(header::RANGE)
         .and_then(|value| value.to_str().ok())
         .map(str::to_string);
-    let effective = requested.clone().or_else(|| {
-        child
-            .byte_range
-            .as_ref()
-            .map(|range| format!("bytes={range}"))
-    });
+    // A playlist byte range defines the exact bytes of this child. hls.js can
+    // send its own Range, but the registered range wins for that child URL.
+    let effective = match child.byte_range.as_deref() {
+        Some(range) => Some(format!("bytes={range}")),
+        None => requested,
+    };
     let range = effective.as_deref().and_then(parse_range);
 
     let upstream =
@@ -1959,6 +1957,13 @@ seg1.ts\n\
 #EXT-X-TARGETDURATION:4\n\
 seg1.ts\n\
 #EXT-X-ENDLIST\n";
+        const SHARED_RANGE_PLAYLIST: &str = "#EXTM3U\n\
+#EXT-X-TARGETDURATION:4\n\
+#EXT-X-BYTERANGE:500@0\n\
+seg1.ts\n\
+#EXT-X-BYTERANGE:500@500\n\
+seg1.ts\n\
+#EXT-X-ENDLIST\n";
         const MASTER_PLAYLIST: &str = "#EXTM3U\n\
 #EXT-X-STREAM-INF:BANDWIDTH=1280000\n\
 low.m3u8\n";
@@ -2073,6 +2078,10 @@ seg1.ts\n\
                 test_get(playlist(MALFORMED_PLAYLIST)),
             )
             .route("/hls/body-only.m3u8", test_get(body_only))
+            .route(
+                "/hls/shared.m3u8",
+                test_get(playlist(SHARED_RANGE_PLAYLIST)),
+            )
             .route("/hls/master.m3u8", test_get(playlist(MASTER_PLAYLIST)))
             .route("/hls/large.m3u8", test_get(large_playlist))
             .route("/hls/bigkey.m3u8", test_get(playlist(BIG_KEY_PLAYLIST)))
@@ -2538,16 +2547,19 @@ seg1.ts\n\
 
         let response = client
             .get(format!("{base}{}", segments[0]))
-            .header(header::RANGE, "bytes=10-19")
             .send()
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
-        assert_eq!(response.bytes().await.unwrap().len(), 10);
+        assert_eq!(
+            response.headers().get(header::CONTENT_RANGE).unwrap(),
+            "bytes 0-999/2000"
+        );
+        assert_eq!(response.bytes().await.unwrap().len(), 1000);
         let seen = fixture.seen_for("/hls/seg1.ts").unwrap();
         assert_eq!(seen.get("referer").unwrap(), "https://source.example/");
         assert_eq!(seen.get("cookie").unwrap(), "sid=abc");
-        assert_eq!(seen.get(header::RANGE).unwrap(), "bytes=10-19");
+        assert_eq!(seen.get(header::RANGE).unwrap(), "bytes=0-999");
 
         let response = client
             .get(format!("{base}{}", segments[1]))
@@ -2594,6 +2606,75 @@ seg1.ts\n\
         );
         let seen = fixture.seen_for("/hls/init.mp4").unwrap();
         assert_eq!(seen.get(header::RANGE).unwrap(), "bytes=0-719");
+    }
+
+    #[tokio::test]
+    async fn hls_same_url_keeps_distinct_byte_range_children() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/shared.m3u8", fixture.base),
+                "hls",
+                Some(headers()),
+            )
+            .await
+            .unwrap();
+        let client = reqwest::Client::new();
+
+        let manifest = client
+            .get(hls_proxy_url(&base, &registered))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        let segments = seg_paths(&manifest);
+        assert_eq!(segments.len(), 2);
+        assert_ne!(segments[0], segments[1], "{manifest}");
+
+        {
+            let state = store.inner.lock().unwrap();
+            let children = &state.entries.get(&registered.opaque_id).unwrap().children;
+            assert_eq!(children.len(), 2);
+            let ranges = children
+                .values()
+                .map(|child| child.byte_range.clone())
+                .collect::<Vec<_>>();
+            assert!(ranges.contains(&Some("0-499".to_string())), "{ranges:?}");
+            assert!(ranges.contains(&Some("500-999".to_string())), "{ranges:?}");
+        }
+
+        let response = client
+            .get(format!("{base}{}", segments[0]))
+            .header(header::RANGE, "bytes=1500-1599")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(
+            response.headers().get(header::CONTENT_RANGE).unwrap(),
+            "bytes 0-499/2000"
+        );
+        assert_eq!(response.bytes().await.unwrap().len(), 500);
+        let seen = fixture.seen_for("/hls/seg1.ts").unwrap();
+        assert_eq!(seen.get(header::RANGE).unwrap(), "bytes=0-499");
+
+        let response = client
+            .get(format!("{base}{}", segments[1]))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(
+            response.headers().get(header::CONTENT_RANGE).unwrap(),
+            "bytes 500-999/2000"
+        );
+        assert_eq!(response.bytes().await.unwrap().len(), 500);
+        let seen = fixture.seen_for("/hls/seg1.ts").unwrap();
+        assert_eq!(seen.get(header::RANGE).unwrap(), "bytes=500-999");
     }
 
     #[tokio::test]
@@ -2669,10 +2750,18 @@ seg1.ts\n\
 
         let response = client
             .get(format!("{base}{}", segments[0]))
+            .header(header::RANGE, "bytes=10-19")
             .send()
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(
+            response.headers().get(header::CONTENT_RANGE).unwrap(),
+            "bytes 10-19/2000"
+        );
+        assert_eq!(response.bytes().await.unwrap().len(), 10);
+        let seen = fixture.seen_for("/hls/seg1.ts").unwrap();
+        assert_eq!(seen.get(header::RANGE).unwrap(), "bytes=10-19");
     }
 
     #[tokio::test]
