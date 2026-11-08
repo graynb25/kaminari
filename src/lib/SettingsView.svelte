@@ -1,7 +1,20 @@
 <script lang="ts">
-  import type { Boot } from "./types";
+  import { onMount } from "svelte";
+  import { playerStatus } from "./api";
+  import type { Boot, PlayerStatus } from "./types";
 
   let { boot }: { boot: Boot | null } = $props();
+  let player = $state<PlayerStatus | null>(null);
+
+  onMount(() => {
+    void (async () => {
+      try {
+        player = await playerStatus();
+      } catch {
+        player = null;
+      }
+    })();
+  });
 
   const iconProps =
     'width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--volt-400)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
@@ -13,11 +26,12 @@
       title: "App",
       icon: `<svg ${iconProps}><circle cx="12" cy="12" r="8.5" /><path d="M12 8h.01M12 11.5V16" /></svg>`,
       rows: [
-        { label: "Version", value: "0.4.0" },
+        { label: "Version", value: "0.6.0" },
         {
           label: "Stack",
-          value: "Tauri 2, Svelte 5 Runes, libmpv, QuickJS host in P1",
+          value: "Tauri 2, Svelte 5 Runes, QuickJS host, in-app player, mpv fallback",
         },
+        { label: "Player", value: "" },
       ],
     },
     {
@@ -55,6 +69,13 @@
       if (!boot) return "Loading";
       const mem = Math.round(boot.limits.extMemoryBytes / 1024 / 1024);
       return `${boot.limits.extTimeoutSecs}s calls, ${boot.limits.extResolveTimeoutSecs}s resolves, ${mem}MB per runtime`;
+    }
+    if (label === "Player") {
+      if (!player) return "Checking";
+      if (!player.found) {
+        return "Not found. Install mpv, put it on PATH, or set KAMINARI_MPV.";
+      }
+      return player.version ?? player.path ?? "mpv found";
     }
     return fallback;
   }

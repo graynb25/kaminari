@@ -7,6 +7,7 @@ mod commands;
 mod db;
 mod error;
 mod ext_host;
+mod player;
 mod registry;
 
 use tauri::Manager;
@@ -18,6 +19,7 @@ fn main() {
 
     tauri::Builder::default()
         .manage(anilist::AniListClient::new())
+        .manage(player::PlayerState::new())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
@@ -54,7 +56,10 @@ fn main() {
             commands::js_extension_test,
             commands::js_extension_detail,
             commands::js_extension_episodes,
-            commands::js_extension_resolve
+            commands::js_extension_resolve,
+            commands::player_play,
+            commands::player_stop,
+            commands::player_status
         ])
         .run(tauri::generate_context!())
         .expect("error starting Kaminari");

@@ -1,7 +1,7 @@
 {
   "id": "app.kaminari.publicdomain",
   "name": "Public Domain Animation",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "apiVersion": "0.1",
   "entry": "index.js",
   "lang": "en",

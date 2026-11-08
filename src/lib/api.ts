@@ -15,6 +15,9 @@ import type {
   LegacyExtension,
   LibraryItem,
   Media,
+  PlaybackInfo,
+  PlaybackRequest,
+  PlayerStatus,
 } from "./types";
 
 export function bootSnapshot(): Promise<Boot> {
@@ -129,4 +132,16 @@ export function jsExtensionEpisodes(id: string, showId: string): Promise<JsEpiso
 
 export function jsExtensionResolve(id: string, episodeId: string): Promise<JsStream[]> {
   return invoke<JsStream[]>("js_extension_resolve", { id, episodeId });
+}
+
+export function playerPlay(request: PlaybackRequest): Promise<PlaybackInfo> {
+  return invoke<PlaybackInfo>("player_play", { request });
+}
+
+export function playerStop(): Promise<void> {
+  return invoke<void>("player_stop");
+}
+
+export function playerStatus(): Promise<PlayerStatus> {
+  return invoke<PlayerStatus>("player_status");
 }

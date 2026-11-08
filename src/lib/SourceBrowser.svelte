@@ -5,8 +5,10 @@
     jsExtensionEpisodes,
     jsExtensionResolve,
     jsExtensionTest,
+    playerPlay,
   } from "./api";
   import type { JsEpisode, JsExtension, JsSearchItem, JsShowDetail, JsStream } from "./types";
+  import PlayerView from "./PlayerView.svelte";
 
   let {
     extension,
@@ -29,6 +31,7 @@
   let streams = $state<Record<string, JsStream[]>>({});
   let resolving = $state<string | null>(null);
   let streamError = $state<string | null>(null);
+  let activePlayback = $state<{ stream: JsStream; episode: JsEpisode } | null>(null);
   let searchInput: HTMLInputElement | null = $state(null);
 
   onMount(() => {
@@ -119,6 +122,25 @@
     }
   }
 
+  async function playStream(stream: JsStream, episode: JsEpisode) {
+    activePlayback = { stream, episode };
+  }
+
+  async function openExternal(stream: JsStream, episode: JsEpisode) {
+    try {
+      const info = await playerPlay({
+        url: stream.url,
+        title: `${selected?.title ?? "Kaminari"} · Episode ${episode.number}`,
+        headers: stream.headers ?? undefined,
+        subtitles: stream.subtitles ?? undefined,
+      });
+      notify(`Opening mpv from ${info.mpvPath}.`, "success");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`Could not open mpv: ${message}`, "error");
+    }
+  }
+
   function backToResults() {
     selected = null;
     episodes = [];
@@ -132,6 +154,20 @@
     const minutes = Math.floor(seconds / 60);
     const rest = seconds % 60;
     return `${minutes}:${String(rest).padStart(2, "0")}`;
+  }
+
+  function clean(text?: string | null): string {
+    if (!text) return "";
+    return text
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&quot;/g, '"')
+      .replace(/&#0?39;/g, "'")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 </script>
 
@@ -220,7 +256,7 @@
               </div>
             {/if}
             <p class="text-sm mt-4 leading-relaxed max-w-2xl" style="color: var(--paper-300);">
-              {selected.synopsis || "This source did not return a synopsis."}
+              {clean(selected.synopsis) || "This source did not return a synopsis."}
             </p>
           </div>
         </div>
@@ -285,6 +321,12 @@
                           {stream.url}
                         </span>
                         <button
+                          class="btn-primary px-2 py-0.5 text-[10px] shrink-0"
+                          onclick={() => void playStream(stream, episode)}
+                        >
+                          Play
+                        </button>
+                        <button
                           class="btn-ghost px-2 py-0.5 text-[10px] shrink-0"
                           onclick={() => void copyStream(stream.url)}
                         >
@@ -307,7 +349,8 @@
             </div>
           {/if}
           <p class="text-xs mt-3" style="color: var(--paper-500);">
-            Resolve returns stream URLs. Playback in libmpv is the next milestone.
+            Play opens the in-app player. Open in mpv is the fallback for formats the WebView cannot
+            decode.
           </p>
         {/if}
       </div>
@@ -371,3 +414,17 @@
     {/if}
   </main>
 </div>
+
+{#if activePlayback}
+  <PlayerView
+    stream={activePlayback.stream}
+    title={selected?.title ?? "Source playback"}
+    subtitle="Episode {activePlayback.episode.number}{activePlayback.episode.title
+      ? ` · ${activePlayback.episode.title}`
+      : ''}"
+    onClose={() => (activePlayback = null)}
+    onOpenExternal={() =>
+      void openExternal(activePlayback!.stream, activePlayback!.episode)}
+    {notify}
+  />
+{/if}

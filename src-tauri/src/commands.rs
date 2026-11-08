@@ -9,6 +9,7 @@ use crate::anilist::{AniListClient, Media, ShelfKind};
 use crate::db::{ContinueItem, Db, HistoryItem, InstalledSource, JsExtensionRow, LibraryItem};
 use crate::error::AppError;
 use crate::ext_host::{self, ExtPackage, ExtStorage};
+use crate::player::{self, PlaybackInfo, PlaybackRequest, PlayerState, PlayerStatus};
 use crate::registry::{fetch_index, LegacyExtension};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -264,4 +265,22 @@ fn run_js_extension(db: &Db, id: &str, op: &str, args: Value) -> Result<Value, S
         &ext_host::HostLimits::default(),
     )
     .map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn player_play(
+    state: State<'_, PlayerState>,
+    request: PlaybackRequest,
+) -> Result<PlaybackInfo, String> {
+    state.play(&request).map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn player_stop(state: State<'_, PlayerState>) {
+    state.stop();
+}
+
+#[tauri::command]
+pub fn player_status() -> PlayerStatus {
+    player::status()
 }

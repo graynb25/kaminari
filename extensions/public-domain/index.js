@@ -45,7 +45,7 @@
   }
 
   function search(query, page) {
-    const textQuery = query && String(query).trim() ? `title:(${String(query).trim()}) AND ` : "";
+    const textQuery = query && String(query).trim() ? `title:(${String(query).trim()}) AND ` : "title:(Popeye) AND ";
     const url =
       `${BASE}/advancedsearch.php?q=${encodeURIComponent(textQuery + "collection:animationandcartoons AND mediatype:movies")}` +
       `&fl[]=identifier&fl[]=title&fl[]=year&fl[]=description&rows=24&page=${page || 1}&output=json`;
@@ -90,9 +90,13 @@
 
   function getEpisodes(showId) {
     const data = metadata(showId);
-    const files = (data.files || []).filter((file) =>
-      /\.(mp4|mpeg|ogv|webm)$/i.test(file.name || ""),
-    );
+    const files = (data.files || [])
+      .filter((file) => /\.(mp4|mpeg|ogv|webm)$/i.test(file.name || ""))
+      .sort((a, b) => {
+        const ah = /h\.264/i.test(a.format || "") ? 0 : 1;
+        const bh = /h\.264/i.test(b.format || "") ? 0 : 1;
+        return ah - bh;
+      });
     return files.map((file, index) => ({
       id: `${showId}|${file.name}`,
       showId: String(showId),

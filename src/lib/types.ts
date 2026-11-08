@@ -137,6 +137,32 @@ export type JsStream = {
   subtitles?: { lang: string; url: string; label?: string }[] | null;
 };
 
+export type PlaybackSubtitle = {
+  url: string;
+  lang: string;
+  label?: string | null;
+};
+
+export type PlaybackRequest = {
+  url: string;
+  title?: string;
+  headers?: Record<string, string>;
+  subtitles?: PlaybackSubtitle[];
+  startSec?: number;
+};
+
+export type PlaybackInfo = {
+  mpvPath: string;
+  pid: number;
+  title?: string | null;
+};
+
+export type PlayerStatus = {
+  found: boolean;
+  path?: string | null;
+  version?: string | null;
+};
+
 export type HistoryItem = {
   media: Media;
   episode: number;

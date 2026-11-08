@@ -1,6 +1,6 @@
 # Native JS extension host plan
 
-Status: M0 through M3 are done. The host runs a real search, detail, episodes and resolve against archive.org. M4 (player handoff) is next. No host code runs outside the bridge. This document is the contract we build against.
+Status: M0 through M4 are done. The host runs search, detail, episodes and resolve against archive.org, and resolved MP4 and HLS streams play in the app. External mpv is the fallback. Embedded libmpv is the next milestone for HEVC, ASS and HDR. No host code runs outside the bridge. This document is the contract we build against.
 
 ## Why this exists
 

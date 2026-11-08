@@ -4,6 +4,21 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.6.0 - 2026-11-08
+
+- Player: in-app video surface with custom controls, keyboard shortcuts, speed, volume, fullscreen, subtitles and autoplay
+- Player: HLS through a lazy-loaded hls.js chunk, MP4 and WebM through the WebView
+- CSP: allow `media-src https: blob:` and `connect-src https: blob:` so playback is not blocked
+- External mpv stays as the fallback for formats the WebView cannot decode
+- Version: bump to 0.6.0
+
+## 0.5.0 - 2026-11-08
+
+- Player: external mpv handoff with headers, subtitles, start time and one process at a time
+- Source browser: Play on a resolved stream opens mpv, Copy stays beside it
+- Settings: live mpv discovery and version, with the KAMINARI_MPV override
+- Version: bump to 0.5.0
+
 ## 0.4.0 - 2026-11-08
 
 - Native source browser: search a JavaScript source, open a show, list episodes, resolve streams, and copy a stream URL

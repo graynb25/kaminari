@@ -76,6 +76,26 @@ What we measured. On 2026-11-08 the sample opened an archive.org title, returned
 
 What we did not do. Playback. The resolve panel shows and copies URLs; libmpv is the next milestone.
 
+## 2026-11-08 In-app player
+
+Context. The external mpv handoff opened a separate window. That is not the design. Play should stay inside Kaminari.
+
+What we shipped. A full-screen PlayerView with an HTML5 video surface, custom controls, keyboard shortcuts, speed, volume, fullscreen, subtitle tracks and buffering and error states. HLS loads through a lazy `hls.js` chunk. External mpv stays as an explicit fallback button for formats the WebView cannot decode. The CSP now allows `media-src https: blob:` and `connect-src https: blob:`.
+
+What we measured. The public domain sample's H.264 Popeye MP4 played inside the app. The first attempts failed with media error code 4, which looked like a codec problem. It was the CSP: `default-src 'self'` blocked the media request. Adding `media-src https: blob:` fixed it. A video element does not need CORS for playback, but it does obey CSP.
+
+What we did not do. Embedded libmpv, HEVC, ASS and HDR. External mpv remains the fallback. The next milestone is the libmpv wrapper, libmpv-2.dll, resource bundling and a transparent player surface.
+
+## 2026-11-08 External mpv handoff
+
+Context. Resolve returned a URL, but the app could not play it. M4 needed a real player without waiting for the embedded libmpv packaging work.
+
+What we shipped. A `player` module discovers mpv through `KAMINARI_MPV`, PATH, common Windows install paths, then a dev `src-tauri/bin` path. It builds mpv arguments for headers, subtitles, start time and a default user agent, starts one process at a time, and closes the previous one. SourceBrowser now has Play beside Copy. Settings shows the mpv path or version. The app owns the process and kills it on exit.
+
+What we measured. On 2026-11-08 mpv 0.42.0 was installed at `C:\Program Files\MPV Player\mpv.exe`. The public domain sample's resolved MP4 opened in its own mpv window with the title `Farmer's Field ... Episode 1` and a 4:15 duration bar. The app stayed up.
+
+What we did not do. Embedded playback and custom controls. The mpv window is separate for M4. Embedded libmpv needs `libmpv-wrapper.dll`, `libmpv-2.dll`, resource bundling and a transparent player surface. That is the next milestone.
+
 ## 2026-11-08 Library status and history
 
 Context. The library could hold titles but not file them by state, and watch events had no page of their own.
