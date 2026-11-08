@@ -3,6 +3,7 @@
   import ContinueCard from "./lib/ContinueCard.svelte";
   import DetailPage from "./lib/DetailPage.svelte";
   import HeroCarousel from "./lib/HeroCarousel.svelte";
+  import HistoryView from "./lib/HistoryView.svelte";
   import LibraryView from "./lib/LibraryView.svelte";
   import NavRail from "./lib/NavRail.svelte";
   import PosterCard from "./lib/PosterCard.svelte";
@@ -20,8 +21,10 @@
     bootSnapshot,
     continueWatching,
     detail as fetchDetail,
+    historyList,
     listLibrary,
     removeFromLibrary,
+    setLibraryStatus,
     shelf,
     watchedList,
     watchedMarkAll,
@@ -29,7 +32,7 @@
     type ShelfKind,
   } from "./lib/api";
   import { displayTitle, isRateLimitMessage } from "./lib/format";
-  import type { Boot, ContinueItem, LibraryItem, Media, RailState, Toast, ToastTone, View } from "./lib/types";
+  import type { Boot, ContinueItem, HistoryItem, LibraryItem, Media, RailState, Toast, ToastTone, View } from "./lib/types";
 
   let title = $state("Kaminari");
   let boot = $state<Boot | null>(null);
@@ -48,6 +51,7 @@
   let playNote = $state<string | null>(null);
   let watchedDetail = $state<number[]>([]);
   let continueItems = $state<ContinueItem[]>([]);
+  let historyItems = $state<HistoryItem[]>([]);
   let paletteOpen = $state(false);
   let shortcutsOpen = $state(false);
   let toasts = $state<Toast[]>([]);
@@ -96,6 +100,14 @@
       continueItems = await continueWatching();
     } catch {
       continueItems = [];
+    }
+  }
+
+  async function refreshHistory() {
+    try {
+      historyItems = await historyList(100);
+    } catch {
+      historyItems = [];
     }
   }
 
@@ -180,7 +192,7 @@
     const seen = watchedDetail.includes(episode);
     try {
       watchedDetail = await watchedSet(detail, episode, !seen);
-      await Promise.all([refreshLibrary(), refreshContinue()]);
+      await Promise.all([refreshLibrary(), refreshContinue(), refreshHistory()]);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       notify(`Episode update failed: ${message}`, "error");
@@ -193,7 +205,7 @@
     if (through <= 0) return;
     try {
       watchedDetail = await watchedMarkAll(detail, through, seen);
-      await Promise.all([refreshLibrary(), refreshContinue()]);
+      await Promise.all([refreshLibrary(), refreshContinue(), refreshHistory()]);
       notify(
         seen ? `Marked all ${through} episodes watched.` : "Cleared watched episodes.",
         "success",
@@ -201,6 +213,17 @@
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       notify(`Episode update failed: ${message}`, "error");
+    }
+  }
+
+  async function setStatus(item: Media, status: string) {
+    try {
+      await setLibraryStatus(item.id, status);
+      await refreshLibrary();
+      notify(`${displayTitle(item)} set to ${status}.`, "success");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`Status update failed: ${message}`, "error");
     }
   }
 
@@ -227,6 +250,7 @@
       }
       await refreshLibrary();
       await refreshContinue();
+      await refreshHistory();
       await loadBrowse();
     })();
   });
@@ -267,8 +291,8 @@
       } else if (event.key === "Escape") {
         if (shortcutsOpen) shortcutsOpen = false;
         else if (detail) closeDetail();
-      } else if (event.key >= "1" && event.key <= "4") {
-        const next: View[] = ["browse", "library", "sources", "settings"];
+      } else if (event.key >= "1" && event.key <= "5") {
+        const next: View[] = ["browse", "library", "history", "sources", "settings"];
         const pick = next[Number(event.key) - 1];
         if (pick) goView(pick);
       }
@@ -504,8 +528,15 @@
             onToggleLibrary={toggleLibrary}
             onPlay={openPlay}
             onBrowse={() => goView("browse")}
+            onSetStatus={(item, status) => void setStatus(item, status)}
           />
         {/if}
+      {:else if view === "history"}
+        <HistoryView
+          items={historyItems}
+          onOpen={(item) => void openDetail(item)}
+          onBrowse={() => goView("browse")}
+        />
       {:else if view === "sources"}
         <SourcesView boot={boot} notify={notify} />
       {:else}

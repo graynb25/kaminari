@@ -18,15 +18,21 @@
       path: '<path d="M6 3h12v18l-6-4.5L6 21V3z" />',
     },
     {
+      id: "history",
+      label: "History",
+      key: "3",
+      path: '<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" /><path d="M3.5 4.5V9H8" /><path d="M12 8v4l3 2" />',
+    },
+    {
       id: "sources",
       label: "Sources",
-      key: "3",
+      key: "4",
       path: '<path d="M12 2.5 20 7v10l-8 4.5L4 17V7l8-4.5z" /><path d="M12 12 4.2 7.2M12 12l7.8-4.8M12 12v9.5" />',
     },
     {
       id: "settings",
       label: "Settings",
-      key: "4",
+      key: "5",
       path: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2.2" /><circle cx="10" cy="17" r="2.2" />',
     },
   ];

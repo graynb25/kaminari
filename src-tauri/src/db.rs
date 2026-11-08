@@ -45,6 +45,14 @@ pub struct InstalledSource {
     pub nsfw: bool,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryItem {
+    pub media: Media,
+    pub episode: i64,
+    pub watched_at: i64,
+}
+
 impl Db {
     pub fn new(path: &str) -> AppResult<Self> {
         let conn = Connection::open(path)?;
@@ -124,6 +132,71 @@ impl Db {
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         conn.execute("DELETE FROM library WHERE anilist_id = ?1", params![id])?;
         Ok(())
+    }
+
+    pub fn set_library_status(&self, id: i64, status: &str) -> AppResult<()> {
+        const ALLOWED: [&str; 5] = ["watching", "planning", "completed", "paused", "dropped"];
+        if !ALLOWED.contains(&status) {
+            return Err(AppError::Blocked(format!("Unknown status: {status}")));
+        }
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        conn.execute(
+            "UPDATE library SET status = ?2, updated_at = unixepoch() WHERE anilist_id = ?1",
+            params![id, status],
+        )?;
+        Ok(())
+    }
+
+    pub fn history_list(&self, limit: usize) -> AppResult<Vec<HistoryItem>> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let mut statement = conn.prepare(
+            "SELECT m.anilist_id, m.title_romaji, m.title_english, m.title_native,
+                    m.cover, m.banner, m.year, m.format, m.status, m.episodes,
+                    m.score, m.genres, m.synopsis,
+                    h.episode, MAX(h.watched_at) AS watched_at
+             FROM history h
+             JOIN media m ON m.anilist_id = h.anilist_id
+             GROUP BY h.anilist_id, h.episode
+             ORDER BY MAX(h.watched_at) DESC, MAX(h.id) DESC
+             LIMIT ?1",
+        )?;
+        let rows = statement.query_map([limit as i64], |row| {
+            let genres: Option<String> = row.get(11)?;
+            let cover: String = row.get(4)?;
+            let score: Option<f64> = row.get(10)?;
+            let total_episodes: Option<i64> = row.get(9)?;
+            let media = Media {
+                id: row.get(0)?,
+                title: MediaTitle {
+                    romaji: row.get(1)?,
+                    english: row.get(2)?,
+                    native: row.get(3)?,
+                },
+                cover_image: if cover.is_empty() {
+                    None
+                } else {
+                    Some(CoverImage {
+                        extra_large: Some(cover),
+                        large: None,
+                        color: None,
+                    })
+                },
+                banner_image: row.get(5)?,
+                description: row.get(12)?,
+                genres: genres.and_then(|raw| serde_json::from_str(&raw).ok()),
+                average_score: score.map(|value| value.round() as i32),
+                season_year: row.get(6)?,
+                format: row.get(7)?,
+                status: row.get(8)?,
+                episodes: total_episodes.map(|value| value as i32),
+            };
+            Ok(HistoryItem {
+                media,
+                episode: row.get(13)?,
+                watched_at: row.get(14)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
     pub fn watched_list(&self, anilist_id: i64) -> AppResult<Vec<i64>> {
@@ -525,6 +598,16 @@ mod tests {
         let all = db.mark_all_watched(&media, 5, true).unwrap();
         assert_eq!(all, vec![1, 2, 3, 4, 5]);
         assert_eq!(db.continue_watching(10).unwrap()[0].episode, 5);
+
+        let history = db.history_list(10).unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].episode, 5);
+        assert_eq!(history[0].media.id, 15125);
+
+        db.set_library_status(15125, "completed").unwrap();
+        assert_eq!(db.list_library().unwrap()[0].status, "completed");
+        assert!(db.set_library_status(15125, "bogus").is_err());
+        db.set_library_status(15125, "watching").unwrap();
 
         db.set_watched(&media, 5, false).unwrap();
         assert_eq!(db.continue_watching(10).unwrap()[0].episode, 4);

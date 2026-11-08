@@ -4,7 +4,14 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
-- Project scaffold: README, AGENTS, CONTRIBUTING, LICENSE, SECURITY, and docs stubs for Kaminari
+- Library: status filters with counts, title filter, per-card status menu (watching, planning, completed, paused, dropped)
+- History: new view (key 3) with recent watched episodes, relative times, and a link back to the series
+- Fix: history rows order correctly when two events land in the same second
+- Version: bump to 0.2.0
+
+## 0.2.0 - 2026-11-08
+
+- Project scaffold: README, CONTRIBUTING, LICENSE, SECURITY, and docs stubs for Kaminari
 - CI: run Rust gates inside `src-tauri`, pin pnpm 10 with a committed lockfile, add Tauri build script and app icons
 - App: wire SQLite migrations on first run, validate source ids, expose host limits in the boot snapshot
 - AniList: live trending, search and detail commands with a token bucket and typed errors

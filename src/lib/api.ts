@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Boot,
   ContinueItem,
+  HistoryItem,
   InstalledSource,
   LegacyExtension,
   LibraryItem,
@@ -45,6 +46,10 @@ export function removeFromLibrary(id: number): Promise<void> {
   return invoke<void>("library_remove", { id });
 }
 
+export function setLibraryStatus(id: number, status: string): Promise<void> {
+  return invoke<void>("library_set_status", { id, status });
+}
+
 export function watchedList(anilistId: number): Promise<number[]> {
   return invoke<number[]>("watched_list", { anilistId });
 }
@@ -63,6 +68,10 @@ export function watchedMarkAll(
 
 export function continueWatching(): Promise<ContinueItem[]> {
   return invoke<ContinueItem[]>("continue_watching");
+}
+
+export function historyList(limit = 100): Promise<HistoryItem[]> {
+  return invoke<HistoryItem[]>("history_list", { limit });
 }
 
 export function registryFetch(url: string): Promise<LegacyExtension[]> {

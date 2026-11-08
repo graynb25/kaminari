@@ -56,6 +56,14 @@ SQLite with WAL. One file, checked in migrations, backup with `VACUUM INTO`. Lib
 
 Desktop updates come from GitHub Releases with Minisign signatures. The updater polls `latest.json` and shows the version, size, and notes before it touches anything. Roll back is reinstall the prior `.exe`. The library file is left alone.
 
+## 2026-11-08 Library status and history
+
+Context. The library could hold titles but not file them by state, and watch events had no page of their own.
+
+What we shipped. `library_set_status` accepts five values and rejects anything else before it reaches SQL. The History view reads `history_list`, grouped by series and episode, ordered by the newest event. Two marks in the same second would otherwise swap places, so the query also orders by the newest row id. The view shows relative time, episode number, and opens the series. Status filters and a title filter live on the Library page, with counts computed from the same rows.
+
+What we did not do. No bulk status edit and no history clear yet. Both are small follow-ups.
+
 ## 2026-11-08 Progress and Continue Watching
 
 Context. The catalogue was read only. The library could save a title but not track it, so Continue Watching had nothing honest to show.

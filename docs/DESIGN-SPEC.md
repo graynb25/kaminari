@@ -86,13 +86,21 @@ Full window route `/watch/:id/:ep`. Black field. mpv canvas fills. Custom bar in
 
 Keys: Space or K play and pause, J and L jump 10 seconds, arrows jump 10, Shift plus arrows jump 60, Up and Down volume, M mute, F fullscreen, T fill, V cycle subs, comma and period step speed, 0 resets speed, N next episode, D diagnostics, Esc back. Single click pauses, double click fullscreen, 300ms to tell them apart. Buffering shows spinner plus quality label, never silence. Error shows code plus Retry, Try next source, Copy diagnostics. Ended shows Up Next with a 10 second countdown you can cancel. No native video controls, ever. Subs render through libass, paper white at 22px with outline.
 
+### Library
+
+Status filters across the top: All, Watching, Planning, Completed, Paused, Dropped, each with a count. A title filter sits on the right. Cards show watched over total plus a thin volt bar. Each card carries a status select that writes straight to SQLite, so the filter counts move with it.
+
+### History
+
+Newest first, one row per series and episode. Cover, title, episode number, relative time, and a Watched label. Clicking a row opens the series. The empty state points back to Browse.
+
 ### TitleBar, nav, SourceCard, toast, EmptyState, skeleton
 
-TitleBar is 40px, void 900 at 80 percent plus 16px blur. Drag on empty space. Center holds the palette trigger that looks like an input. Right holds min, max, close with 46 by 40px targets. Close hovers red. Nav rail is 72px, icons plus labels, keys 1 to 4, active pill in volt.
+TitleBar is 40px, void 900 at 80 percent plus 16px blur. Drag on empty space. Center holds the palette trigger that looks like an input. Right holds min, max, close with 46 by 40px targets. Close hovers red. Nav rail is 72px, icons plus labels, keys 1 to 5, active pill in volt.
 
 SourceCard: 40px icon, name, version chip, lang, status dot, toggle, Configure and Update buttons, Log link. Error cards keep the last error and a Retry button. Disabled cards dim to 60 percent.
 
-Nav keys are 1 to 4 for the four rail views (Browse, Library, Sources, Settings). The spec once said 1 to 7, written for future History, Downloads and Player views. Those views do not exist yet, so unbound digits stay silent instead of pretending.
+Nav keys are 1 to 5 for the five rail views (Browse, Library, History, Sources, Settings). The spec once said 1 to 7, written for future Downloads and Player views. Those views do not exist yet, so unbound digits stay silent instead of pretending.
 
 Toast: bottom right, max 3, 4200ms, icon plus text plus one action (Undo, Retry). Never covers player controls, offsets when the player is open. Role status for info, alert for error.
 
@@ -110,7 +118,7 @@ Reduced motion: media query plus a Svelte guard. All durations drop near zero. S
 
 Min size 1024 by 640. Content max 1440px, gutters 24px (32px at md and up). Tray menu holds Show and Quit. Shortcuts dialog opens with `?` and lists every key.
 
-Global when not typing: Ctrl K or slash opens the palette, 1 to 4 move between rail views, question mark opens help, Esc closes top layer. Focus traps in modal and player. Focus returns on close. Skip link jumps to content. Context menu on cards mirrors hover actions so touch and keyboard reach the same verbs.
+Global when not typing: Ctrl K or slash opens the palette, 1 to 5 move between rail views, question mark opens help, Esc closes top layer. Focus traps in modal and player. Focus returns on close. Skip link jumps to content. Context menu on cards mirrors hover actions so touch and keyboard reach the same verbs.
 
 ## Performance
 

@@ -6,7 +6,7 @@
       title: "Navigate",
       rows: [
         ["Ctrl K or /", "Search palette"],
-        ["1 to 4", "Browse, Library, Sources, Settings"],
+        ["1 to 5", "Browse, Library, History, Sources, Settings"],
         ["Esc", "Close top layer"],
         ["?", "This dialog"],
       ],

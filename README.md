@@ -62,7 +62,7 @@ Builds land in GitHub Releases. No telemetry, no ads, no account needed to brows
 
 ## Contributing
 
-See `CONTRIBUTING.md`. See `AGENTS.md` if you are an AI agent.
+See `CONTRIBUTING.md` for setup and review rules.
 
 ## License
 

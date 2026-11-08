@@ -83,7 +83,13 @@ export type InstalledSource = {
   nsfw: boolean;
 };
 
-export type View = "browse" | "library" | "sources" | "settings";
+export type HistoryItem = {
+  media: Media;
+  episode: number;
+  watchedAt: number;
+};
+
+export type View = "browse" | "library" | "history" | "sources" | "settings";
 
 export type RailState = {
   items: Media[];

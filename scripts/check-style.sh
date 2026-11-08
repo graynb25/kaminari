@@ -6,7 +6,7 @@ set -eu
 python3 - <<'PY'
 import pathlib, sys
 char = chr(0x2014)
-roots = [pathlib.Path(p) for p in ["AGENTS.md","CONTRIBUTING.md","README.md","LICENSE","SECURITY.md","CHANGELOG.md","docs"]]
+roots = [pathlib.Path(p) for p in ["CONTRIBUTING.md","README.md","LICENSE","SECURITY.md","CHANGELOG.md","docs"]]
 roots += [pathlib.Path("src"), pathlib.Path("src-tauri")]
 found = []
 for r in roots:

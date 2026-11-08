@@ -174,7 +174,7 @@ impl AniListClient {
             .post(ENDPOINT)
             .header(
                 "User-Agent",
-                "Kaminari/0.1.0 (+https://github.com/graynb25/kaminari)",
+                "Kaminari/0.2.0 (+https://github.com/graynb25/kaminari)",
             )
             .json(&serde_json::json!({ "query": query, "variables": variables }))
             .send()

@@ -26,3 +26,7 @@ Thumbs.db
 *.AppImage
 *.dmg
 *.zip
+
+# Local agent notes, not published
+AGENTS.md
+agent.md

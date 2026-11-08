@@ -46,3 +46,19 @@ export function isRateLimitMessage(message: string): boolean {
   const lower = message.toLowerCase();
   return lower.includes("429") || lower.includes("rate") || lower.includes("retry-after");
 }
+
+export function timeAgo(unixSeconds: number): string {
+  const now = Math.floor(Date.now() / 1000);
+  const diff = Math.max(0, now - unixSeconds);
+  if (diff < 60) return "just now";
+  const minutes = Math.floor(diff / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(unixSeconds * 1000).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
