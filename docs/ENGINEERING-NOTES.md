@@ -66,6 +66,16 @@ What we measured. On 2026-11-08 the sample was installed and searched through th
 
 What we did not do. `getShow`, `getEpisodes` and `resolveEpisode` are implemented in the sample but not wired to a browse UI yet. Async methods return `ASYNC_UNSUPPORTED`. Packages are unsigned and stay local. No registry.
 
+## 2026-11-08 Footer and in-app legal documents
+
+Context. The Terms and Privacy drafts lived only in the repository. The user asked for a footer in the app with access to them.
+
+What we shipped. `AppFooter.svelte` adds a token-themed footer at the end of the main scroll area: bolt mark, `No content or sources are included.`, `Metadata by AniList`, Terms, Privacy and the version. Short pages push it to the viewport bottom with a `min-h-full` flex column and a `flex-1` page slot. `LegalDialog.svelte` reads `docs/TERMS.md` and `docs/PRIVACY.md` through Vite raw imports, renders headings, lists, bold and inline code with a small local parser, and provides tabs, a draft notice, a focus trap, Escape close and focus restore. The main scroll area locks while the dialog is open.
+
+What we measured. Settings at 2560 shows the footer on the viewport bottom without scrolling. Terms and Privacy both open with the correct h1, the dialog switches tabs, Escape closes it, focus returns to the Terms button, and pressing `1` while it is open does not leave Settings. Light and dark both render without unstyled text.
+
+What we did not do. The contact, jurisdiction and repository placeholders are still unfilled. The dialog labels the documents as drafts. This is not legal advice.
+
 ## 2026-11-08 Legal drafts
 
 Context. The app is a player and extension host with no shipped content. The user asked for a Terms of Service and a Privacy Policy before distribution.

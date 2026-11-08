@@ -3,6 +3,7 @@
   import ContinueCard from "./lib/ContinueCard.svelte";
   import DetailPage from "./lib/DetailPage.svelte";
   import EmptyState from "./lib/EmptyState.svelte";
+  import AppFooter from "./lib/AppFooter.svelte";
   import HeroCarousel from "./lib/HeroCarousel.svelte";
   import HistoryView from "./lib/HistoryView.svelte";
   import Icon from "./lib/Icon.svelte";
@@ -458,7 +459,7 @@
   // Global keys. Palette input handles its own list keys.
   $effect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (document.body.dataset.playerOpen === "true" || document.body.dataset.overlay === "source") return;
+      if (document.body.dataset.playerOpen === "true" || document.body.dataset.overlay) return;
       if (shortcutsOpen) {
         if (event.key === "Escape" || event.key === "?") {
           event.preventDefault();
@@ -512,6 +513,7 @@
     <!-- The skip link focuses this region without adding it to the tab order. -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <main id="content" bind:this={mainEl} class="ambient flex-1 overflow-y-auto min-w-0" tabindex={-1}>
+      <div class="min-h-full flex flex-col">
       {#if !online}
         <div
           class="px-4 py-2 text-xs flex items-center justify-center gap-2"
@@ -524,7 +526,7 @@
       {/if}
 
       {#key detail ? `detail-${detail.id}` : view}
-        <div class="page-swap">
+        <div class="page-swap flex-1">
           {#if detail}
             {#if detailError}
               <div
@@ -721,10 +723,6 @@
                     {/each}
                   </Shelf>
                 {/if}
-
-                <footer class="pt-1 pb-6 text-center text-[10px] tracking-[0.08em]" style="color: var(--paper-500);">
-                  Kaminari 0.7.0 · AniList catalogue · local SQLite progress
-                </footer>
               </div>
             {/if}
           {:else if view === "library"}
@@ -770,6 +768,8 @@
           {/if}
         </div>
       {/key}
+        <AppFooter />
+      </div>
     </main>
   </div>
 </div>

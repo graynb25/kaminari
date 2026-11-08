@@ -128,6 +128,10 @@ Skeleton: same shape as the content, shimmer 1200ms loop, static fill when reduc
 
 1024 square, 928 squircle at radius 232 with transparent corners. Deep indigo gradient from `#2C2368` to `#06050D`, a volt halo, a low floor glow and a 4px rim. One beveled bolt from `#FFFFFF` to `#7B79FF` with a soft glow and a 26px shadow. No text and no play glyph. Source lives at `assets/brand/icon.svg` and renders to `assets/brand/icon-1024.png`. Regenerate every platform size with `pnpm tauri icon assets/brand/icon-1024.png`. The taskbar read is the test: 32px must still read as a bolt, not a blob.
 
+### Footer
+
+Sits at the bottom of the main scroll area, pushed down on short pages. 1px top border, content max 1440, 16 to 18px vertical padding. Left: 28px bolt tile, Kaminari wordmark, and `No content or sources are included.` Right: `Metadata by AniList`, Terms, Privacy, and the version in mono. Terms and Privacy open a local dialog with tabs, a draft notice, focus trap, Escape close and focus restore. The page behind locks while the dialog is open. The footer adapts to both themes through tokens, no separate light styles.
+
 ## Motion
 
 Card hover: 160ms ease out, up 4px, scale 1.03. Button hover: 150ms, up 2px. Fade for menus and tips: 100ms. Modal and toast entry: 250ms, up 8px plus fade. Hero crossfade: 600ms. Scrub: 100ms linear. Toggle pop: 300ms spring, sparing use. Animate transform and opacity only. Never width, height, top, left. Short sentences in code comments explain any exception.

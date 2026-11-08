@@ -4,7 +4,13 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
-- Legal: draft Terms of Service and Privacy Policy in `docs/TERMS.md` and `docs/PRIVACY.md`, linked from the README
+## 0.10.3 - 2026-11-08
+
+- Footer: persistent footer with brand mark, no-content notice, AniList credit, Terms, Privacy and version
+- Footer: removed the old 0.7.0 home footer line now that the global footer exists
+- Legal: in-app Terms of Service and Privacy Policy dialog with tabs, draft notice, focus trap and Escape close
+- Legal: docs live in `docs/TERMS.md` and `docs/PRIVACY.md`, linked from the README
+- Version: bump to 0.10.3
 
 ## 0.10.2 - 2026-11-08
 

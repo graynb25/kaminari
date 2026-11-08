@@ -628,6 +628,10 @@ button:disabled {
   -webkit-backdrop-filter: blur(10px);
 }
 
+body[data-overlay] #content {
+  overflow: hidden;
+}
+
 .modal-in {
   animation: modalIn var(--dur-med) var(--ease-out) both;
 }
@@ -2057,6 +2061,91 @@ body[data-player-open="true"] .toast-stack {
   flex-direction: column;
   align-items: center;
   line-height: 1;
+}
+
+/* Legal dialog document. Content comes from docs/TERMS.md and docs/PRIVACY.md. */
+.legal-draft {
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgb(251 191 36 / 0.08);
+  border: 1px solid rgb(251 191 36 / 0.28);
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.legal-markdown {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.legal-markdown h1 {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  color: var(--text-1);
+}
+
+.legal-markdown h2 {
+  margin: 24px 0 8px;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text-1);
+}
+
+.legal-markdown h3 {
+  margin: 18px 0 6px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-1);
+}
+
+.legal-markdown p {
+  margin: 0 0 12px;
+}
+
+.legal-markdown ul,
+.legal-markdown ol {
+  margin: 0 0 14px;
+  padding-left: 20px;
+}
+
+.legal-markdown ul {
+  list-style: disc;
+}
+
+.legal-markdown ol {
+  list-style: decimal;
+}
+
+.legal-markdown li {
+  margin: 6px 0;
+}
+
+.legal-markdown strong {
+  color: var(--text-1);
+  font-weight: 650;
+}
+
+.legal-markdown code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--tint-1);
+  border: 1px solid var(--line);
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.legal-markdown a {
+  color: var(--volt-300);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 /* Scrollbar: styled, keyboard friendly */
