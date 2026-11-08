@@ -101,7 +101,7 @@
 
 {#if open}
   <div
-    class="fixed inset-0 z-[60] grid place-items-center px-4 overlay-backdrop"
+    class="fixed inset-0 z-[60] grid place-items-center px-4 overlay-backdrop overlay-in"
     onclick={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}

@@ -5,6 +5,7 @@ Every visible change gets a line here. Keep lines short and specific.
 ## Unreleased
 
 - UI: shared page header atom for library, history, sources and settings, with a soft accent glow
+- UI: legal and license dialogs fade and rise with the overlay instead of popping open
 
 ## 0.11.4 - 2026-11-08
 

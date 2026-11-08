@@ -138,7 +138,7 @@ Opened from the Settings card or the footer. 980px max width, 88vh max height. H
 
 ## Motion
 
-Card hover: 160ms ease out, up 4px, scale 1.03. Button hover: 150ms, up 2px. Fade for menus and tips: 100ms. Modal and toast entry: 250ms, up 8px plus fade. Hero crossfade: 600ms. Scrub: 100ms linear. Toggle pop: 300ms spring, sparing use. Animate transform and opacity only. Never width, height, top, left. Short sentences in code comments explain any exception.
+Card hover: 160ms ease out, up 4px, scale 1.03. Button hover: 150ms, up 2px. Fade for menus and tips: 100ms. Modal entry: 320ms ease out, up 12px plus fade, with a 220ms overlay fade. Toast entry: 250ms, up 8px plus fade. Hero crossfade: 600ms. Scrub: 100ms linear. Toggle pop: 300ms spring, sparing use. Animate transform and opacity only. Never width, height, top, left. Short sentences in code comments explain any exception.
 
 Reduced motion: media query plus a Svelte guard. All durations drop near zero. Shimmer, drift, and autoplay stop.
 

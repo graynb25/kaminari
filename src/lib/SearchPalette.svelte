@@ -263,7 +263,7 @@
 
 {#if open}
   <div
-    class="fixed inset-0 z-[60] flex justify-center px-4 overlay-backdrop"
+    class="fixed inset-0 z-[60] flex justify-center px-4 overlay-backdrop overlay-in"
     style="padding-top: 12vh;"
     onclick={(event) => {
       if (event.target === event.currentTarget) onClose();

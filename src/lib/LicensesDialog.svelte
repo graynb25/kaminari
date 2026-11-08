@@ -132,7 +132,7 @@
 </script>
 
 <div
-  class="fixed inset-0 z-[80] flex items-center justify-center p-4 overlay-backdrop"
+  class="fixed inset-0 z-[80] flex items-center justify-center p-4 overlay-backdrop overlay-in"
   role="presentation"
   onclick={(event) => {
     if (event.target === event.currentTarget) onClose();
@@ -144,7 +144,7 @@
   <div
     bind:this={dialog}
     tabindex={-1}
-    class="glass-strong w-full max-w-[980px] max-h-[88vh] rounded-[22px] overflow-hidden flex flex-col"
+    class="modal-in glass-strong w-full max-w-[980px] max-h-[88vh] rounded-[22px] overflow-hidden flex flex-col"
     role="dialog"
     aria-modal="true"
     aria-label="Licenses"

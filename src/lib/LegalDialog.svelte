@@ -154,7 +154,7 @@
 </script>
 
 <div
-  class="legal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4 overlay-backdrop"
+  class="legal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4 overlay-backdrop overlay-in"
   role="presentation"
   onclick={(event) => {
     if (event.target === event.currentTarget) onClose();
@@ -166,7 +166,7 @@
   <div
     bind:this={dialog}
     tabindex={-1}
-    class="legal-panel glass-strong w-full max-w-[860px] max-h-[86vh] rounded-[22px] overflow-hidden flex flex-col"
+    class="legal-panel modal-in glass-strong w-full max-w-[860px] max-h-[86vh] rounded-[22px] overflow-hidden flex flex-col"
     role="dialog"
     aria-modal="true"
     aria-label="Legal documents"
