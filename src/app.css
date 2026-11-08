@@ -1706,6 +1706,55 @@ body[data-overlay] #content {
   }
 }
 
+/* Artwork lifecycle: reserved frame, shimmer underlay, blur-up on decode.
+   The wrapper fills its parent, so the parent owns size and aspect ratio
+   and image decode never shifts layout. */
+.artwork {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+.artwork.is-fill {
+  position: absolute;
+  inset: 0;
+}
+
+.artwork-shimmer {
+  position: absolute;
+  inset: 0;
+}
+
+.artwork-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  filter: blur(16px) saturate(1.05);
+  transition:
+    opacity 320ms var(--ease-out),
+    filter 320ms var(--ease-out),
+    transform 320ms var(--ease-out);
+}
+
+.artwork.is-loaded .artwork-img {
+  opacity: 1;
+  filter: blur(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artwork-img {
+    opacity: 1;
+    filter: none;
+    transition: none;
+  }
+}
+
 /* Toasts */
 .toast-stack {
   position: fixed;

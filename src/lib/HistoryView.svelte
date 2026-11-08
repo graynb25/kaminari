@@ -1,4 +1,5 @@
 ﻿<script lang="ts">
+  import Artwork from "./Artwork.svelte";
   import EmptyState from "./EmptyState.svelte";
   import Icon from "./Icon.svelte";
   import PageHeader from "./PageHeader.svelte";
@@ -151,9 +152,7 @@
                   aria-label="Open {displayTitle(row.item.media)}, episode {row.item.episode}"
                 >
                   <div class="w-10 h-14 shrink-0 rounded-lg overflow-hidden" style="background: var(--void-700); border: 1px solid var(--line);">
-                    {#if coverOf(row.item.media)}
-                      <img src={coverOf(row.item.media)} alt="" loading="lazy" decoding="async" class="w-full h-full object-cover" />
-                    {/if}
+                    <Artwork src={coverOf(row.item.media)} alt="" loading="lazy" />
                   </div>
                   <div class="min-w-0 flex-1">
                     <p class="text-sm font-semibold truncate">{displayTitle(row.item.media)}</p>
@@ -183,9 +182,7 @@
                   aria-label="Open {row.item.title}, episode {row.item.episodeNumber}"
                 >
                   <div class="w-10 h-14 shrink-0 rounded-lg overflow-hidden" style="background: var(--void-700); border: 1px solid var(--line);">
-                    {#if row.item.cover}
-                      <img src={row.item.cover} alt="" loading="lazy" decoding="async" class="w-full h-full object-cover" />
-                    {/if}
+                    <Artwork src={row.item.cover} alt="" loading="lazy" />
                   </div>
                   <div class="min-w-0 flex-1">
                     <p class="text-sm font-semibold truncate">{row.item.title}</p>

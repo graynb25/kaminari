@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Artwork from "./Artwork.svelte";
   import Icon from "./Icon.svelte";
   import { coverOf, cleanHtml, displayTitle, scoreOutOfTen } from "./format";
   import type { Media } from "./types";
@@ -112,22 +113,12 @@
       {@const cover = coverOf(slide)}
       <div class="hero-slide {active ? 'active' : ''}" aria-hidden={active ? undefined : "true"}>
         {#if banner}
-          <img
-            src={banner}
-            alt=""
-            class="kenburns absolute inset-0 w-full h-full object-cover"
-            loading={position === 0 ? "eager" : "lazy"}
-            decoding="async"
-          />
+          <Artwork src={banner} alt="" loading={position === 0 ? "eager" : "lazy"} fill imgClass="kenburns" />
         {:else if cover}
           <!-- Missing banner: blurred cover for color, plus a clear poster card below. -->
-          <img
-            src={cover}
-            alt=""
-            class="kenburns absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-45"
-            loading={position === 0 ? "eager" : "lazy"}
-            decoding="async"
-          />
+          <div class="absolute inset-0 overflow-hidden blur-xl scale-110 opacity-45" aria-hidden="true">
+            <Artwork src={cover} alt="" loading={position === 0 ? "eager" : "lazy"} imgClass="kenburns" />
+          </div>
         {:else}
           <div class="absolute inset-0" style="background: var(--void-800);"></div>
         {/if}
@@ -143,12 +134,7 @@
           {@const cover = coverOf(slide)}
           {#if !banner && cover}
             <div class="hero-poster {active ? 'active' : ''}" aria-hidden="true">
-              <img
-                src={cover}
-                alt=""
-                loading={position === 0 ? "eager" : "lazy"}
-                decoding="async"
-              />
+              <Artwork src={cover} alt="" loading={position === 0 ? "eager" : "lazy"} />
             </div>
           {/if}
         {/each}

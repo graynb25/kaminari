@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Artwork from "./Artwork.svelte";
   import Icon from "./Icon.svelte";
   import type { SourceContinueItem } from "./types";
 
@@ -30,14 +31,14 @@
   onclick={() => onOpen(item)}
 >
   <div class="library-source-art">
-    {#if item.cover}
-      <img src={item.cover} alt="" loading="lazy" decoding="async" />
-    {:else}
-      <div
-        class="w-full h-full"
-        style="background: radial-gradient(circle at 30% 20%, var(--accent-wash-strong), transparent 60%), var(--void-800);"
-      ></div>
-    {/if}
+    <Artwork src={item.cover} alt="" loading="lazy">
+      {#snippet fallback()}
+        <div
+          class="w-full h-full"
+          style="background: radial-gradient(circle at 30% 20%, var(--accent-wash-strong), transparent 60%), var(--void-800);"
+        ></div>
+      {/snippet}
+    </Artwork>
     <span class="library-source-scrim" aria-hidden="true"></span>
 
     <span

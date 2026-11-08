@@ -1,4 +1,5 @@
 ﻿<script lang="ts">
+  import Artwork from "./Artwork.svelte";
   import Icon from "./Icon.svelte";
   import { coverOf, cleanHtml, displayTitle, metaOf, scoreLabel, scoreOutOfTen } from "./format";
   import type { Media } from "./types";
@@ -78,9 +79,11 @@
 <div>
   <div class="relative h-[320px] overflow-hidden">
     {#if media.bannerImage}
-      <img src={media.bannerImage} alt="" class="absolute inset-0 w-full h-full object-cover" />
+      <Artwork src={media.bannerImage} alt="" loading="eager" fill />
     {:else if art}
-      <img src={art} alt="" class="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-50" />
+      <div class="absolute inset-0 overflow-hidden blur-2xl scale-110 opacity-50" aria-hidden="true">
+        <Artwork src={art} alt="" loading="eager" />
+      </div>
     {:else}
       <div class="absolute inset-0" style="background: radial-gradient(circle at 30% 10%, var(--accent-wash-strong), transparent 60%), var(--void-800);"></div>
     {/if}
@@ -104,15 +107,15 @@
         class="w-[150px] sm:w-[190px] md:w-[224px] shrink-0 aspect-[2/3] rounded-2xl overflow-hidden relative"
         style="background: {media.coverImage?.color ?? 'var(--void-700)'}; border: 1px solid var(--line-strong); box-shadow: 0 24px 60px rgb(0 0 0 / 0.62), 0 0 0 1px rgb(255 255 255 / 0.04) inset;"
       >
-        {#if art}
-          <img src={art} alt="" class="w-full h-full object-cover" />
-        {:else}
-          <div class="w-full h-full grid place-items-center">
-            <span class="text-5xl font-bold" style="color: var(--paper-500); font-family: var(--font-display);">
-              {displayTitle(media).slice(0, 1)}
-            </span>
-          </div>
-        {/if}
+        <Artwork src={art} alt="" loading="eager">
+          {#snippet fallback()}
+            <div class="w-full h-full grid place-items-center">
+              <span class="text-5xl font-bold" style="color: var(--paper-500); font-family: var(--font-display);">
+                {displayTitle(media).slice(0, 1)}
+              </span>
+            </div>
+          {/snippet}
+        </Artwork>
         <span class="absolute inset-0 pointer-events-none" style="box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08); border-radius: 16px;" aria-hidden="true"></span>
       </div>
 

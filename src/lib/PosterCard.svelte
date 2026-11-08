@@ -1,4 +1,5 @@
 ﻿<script lang="ts">
+  import Artwork from "./Artwork.svelte";
   import Icon from "./Icon.svelte";
   import { coverOf, displayTitle, metaOf, scoreOutOfTen } from "./format";
   import type { Media } from "./types";
@@ -59,18 +60,18 @@
       onkeydown={onKey}
       aria-label="Open {title}"
     >
-      {#if art}
-        <img src={art} alt="" loading="lazy" decoding="async" class="zoom w-full h-full object-cover" />
-      {:else}
-        <span
-          class="w-full h-full grid place-items-center"
-          style="background: radial-gradient(circle at 30% 20%, var(--accent-wash-strong), transparent 60%), var(--void-800);"
-        >
-          <span class="text-4xl font-bold" style="color: var(--paper-500); font-family: var(--font-display);">
-            {title.slice(0, 1)}
+      <Artwork src={art} alt="" loading="lazy">
+        {#snippet fallback()}
+          <span
+            class="w-full h-full grid place-items-center"
+            style="background: radial-gradient(circle at 30% 20%, var(--accent-wash-strong), transparent 60%), var(--void-800);"
+          >
+            <span class="text-4xl font-bold" style="color: var(--paper-500); font-family: var(--font-display);">
+              {title.slice(0, 1)}
+            </span>
           </span>
-        </span>
-      {/if}
+        {/snippet}
+      </Artwork>
       <span class="poster-scrim" aria-hidden="true"></span>
       {#if badge}
         <span class="poster-badge on-art">{badge}</span>
