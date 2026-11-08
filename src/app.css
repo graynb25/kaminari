@@ -2295,4 +2295,16 @@ body[data-player-open="true"] .toast-stack {
   .page-swap {
     animation: none !important;
   }
+  .poster-card:hover,
+  .poster-card:focus-within,
+  .poster-card:active,
+  .library-source-card:hover,
+  .library-source-card:active {
+    transform: none !important;
+  }
+  .poster-card:hover .poster-art img,
+  .poster-card:focus-within .poster-art img,
+  .library-source-card:hover .library-source-art img {
+    transform: none !important;
+  }
 }
