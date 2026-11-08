@@ -130,7 +130,11 @@ Skeleton: same shape as the content, shimmer 1200ms loop, static fill when reduc
 
 ### Footer
 
-Sits at the bottom of the main scroll area, pushed down on short pages. 1px top border, content max 1440, 16 to 18px vertical padding. Left: 28px bolt tile, Kaminari wordmark, and `No content or sources are included.` Right: `Metadata by AniList`, Terms, Privacy, and the version in mono. Terms and Privacy open a local dialog with tabs, a draft notice, focus trap, Escape close and focus restore. The page behind locks while the dialog is open. The footer adapts to both themes through tokens, no separate light styles.
+Sits at the bottom of the main scroll area, pushed down on short pages. 1px top border, content max 1440, 16 to 18px vertical padding. Left: 28px bolt tile, Kaminari wordmark, and `No content or sources are included.` Right: `Metadata by AniList`, Terms, Privacy, Licenses, and the version in mono. Terms and Privacy open a local dialog with tabs, a draft notice, focus trap, Escape close and focus restore. The page behind locks while the dialog is open. The footer adapts to both themes through tokens, no separate light styles.
+
+### Licenses dialog
+
+Opened from the Settings card or the footer. 980px max width, 88vh max height. Header: package icon, title, `Every package in this build and the license it declares.`, close. A search field filters package names, versions, license ids and sources. Summary shows package count, distinct license count and generation date. Groups: Bundled, Rust, JavaScript. Each row: name, versions in mono, license chip, source, and `Read license` when a text exists. One license text opens at a time in a focusable, scrollable pre. Notes list the Rust host triple, generation rules and the AniList service note. The data comes from `public/licenses.json`; never hand-edit it, run `pnpm licenses:build`.
 
 ## Motion
 

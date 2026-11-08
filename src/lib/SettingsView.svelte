@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
+  import LicensesDialog from "./LicensesDialog.svelte";
   import { playerStatus } from "./api";
   import {
     getThemeMode,
@@ -17,6 +18,7 @@
 
   let player = $state<PlayerStatus | null>(null);
   let themeMode = $state<ThemeMode>(getThemeMode());
+  let licensesOpen = $state(false);
 
   function pickMode(next: ThemeMode) {
     themeMode = next;
@@ -40,7 +42,7 @@
       title: "App",
       icon: "monitor",
       rows: [
-        { label: "Version", value: "0.10.3" },
+        { label: "Version", value: __APP_VERSION__ },
         {
           label: "Stack",
           value: "Tauri 2, Svelte 5 Runes, QuickJS host, in-app player, mpv fallback",
@@ -149,7 +151,7 @@
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
     <div class="stat-card">
       <p class="stat-label">Version</p>
-      <p class="stat-value">0.10.3</p>
+      <p class="stat-value">{__APP_VERSION__}</p>
     </div>
     <div class="stat-card">
       <p class="stat-label">Player</p>
@@ -210,6 +212,26 @@
       SQLite
     </span>
   </div>
+
+  <div class="surface p-5 mt-4 flex flex-wrap items-center gap-4">
+    <span class="w-10 h-10 grid place-items-center rounded-xl shrink-0" style="background: rgb(108 107 245 / 0.1); border: 1px solid var(--line-volt); color: var(--volt-300);">
+      <Icon name="package" size={18} />
+    </span>
+    <div class="min-w-0 flex-1">
+      <p class="text-sm font-semibold">Licenses</p>
+      <p class="text-xs mt-0.5" style="color: var(--paper-400);">
+        Every Rust crate, npm package, font and built-in sample in this build, with its license and source.
+      </p>
+    </div>
+    <button class="btn-ghost px-3.5 py-2 text-xs" onclick={() => (licensesOpen = true)}>
+      <Icon name="list" size={14} />
+      View licenses
+    </button>
+  </div>
+
+  {#if licensesOpen}
+    <LicensesDialog onClose={() => (licensesOpen = false)} />
+  {/if}
 </div>
 
 <style>

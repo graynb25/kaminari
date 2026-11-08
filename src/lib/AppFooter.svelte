@@ -1,8 +1,10 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
   import LegalDialog from "./LegalDialog.svelte";
+  import LicensesDialog from "./LicensesDialog.svelte";
 
   let legal = $state<"terms" | "privacy" | null>(null);
+  let licensesOpen = $state(false);
 </script>
 
 <footer class="app-footer" aria-label="Footer">
@@ -26,13 +28,20 @@
       <button class="footer-link" onclick={() => (legal = "privacy")} aria-haspopup="dialog">
         Privacy
       </button>
-      <span class="footer-version">0.10.3</span>
+      <button class="footer-link" onclick={() => (licensesOpen = true)} aria-haspopup="dialog">
+        Licenses
+      </button>
+      <span class="footer-version">{__APP_VERSION__}</span>
     </div>
   </div>
 </footer>
 
 {#if legal}
   <LegalDialog initial={legal} onClose={() => (legal = null)} />
+{/if}
+
+{#if licensesOpen}
+  <LicensesDialog onClose={() => (licensesOpen = false)} />
 {/if}
 
 <style>

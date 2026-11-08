@@ -66,6 +66,16 @@ What we measured. On 2026-11-08 the sample was installed and searched through th
 
 What we did not do. `getShow`, `getEpisodes` and `resolveEpisode` are implemented in the sample but not wired to a browse UI yet. Async methods return `ASYNC_UNSUPPORTED`. Packages are unsigned and stay local. No registry.
 
+## 2026-11-08 Version file and generated licenses
+
+Context. The version was typed into ten places: `package.json`, `Cargo.toml`, `tauri.conf.json`, the nav, Settings, the footer, two HTTP user agents and a player test. Every bump risked a mismatch. The user asked for one version file. The user also pointed at Papyrus, which has a generated licenses page, and asked for the same for Kaminari.
+
+What we shipped. The root `VERSION` file is now the only version source. `scripts/sync-version.mjs` writes `package.json` and `src-tauri/Cargo.toml`; `prebuild` and `pretauri` run it automatically. `tauri.conf.json` reads `../package.json`, Vite injects `__APP_VERSION__`, and Rust reads `CARGO_PKG_VERSION`. `src-tauri/build.rs` fails a direct cargo build when VERSION and Cargo.toml disagree. The Settings card and footer now open a generated licenses dialog. `scripts/generate-licenses.mjs` reads `cargo metadata` for the host triple, scans the installed node_modules, adds the bundled fonts, sample and Kaminari itself, and writes `public/licenses.json`. The page groups Bundled, Rust and JavaScript, filters by name, version, license or source, and opens one full license text at a time.
+
+What we measured. The first generation produced 432 packages, 30 license identifiers, 20 full texts and a 204KB JSON file: 5 bundled, 341 Rust on `x86_64-pc-windows-msvc`, 86 JavaScript. No package was unrecorded and none reported a proprietary license. The live dialog rendered all 432 rows, the search narrowed hls.js to one row, and the footer and Settings both opened it. The Svelte a11y warning about a focusable `<pre>` was fixed by wrapping the text in a focusable region.
+
+What we did not do. The licenses file is generated manually with `pnpm licenses:build`, not on every build, because `cargo metadata` and a full node_modules scan should not be a tax on frontend-only builds. The dialog has no acknowledgement ledger; Kaminari has no accounts. AniList remains a service credit, not a package row.
+
 ## 2026-11-08 Footer and in-app legal documents
 
 Context. The Terms and Privacy drafts lived only in the repository. The user asked for a footer in the app with access to them.

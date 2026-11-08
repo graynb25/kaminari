@@ -21,6 +21,14 @@ pnpm tauri dev
 
 The app runs a local dev window that talks to a local SQLite file. No account needed. AniList public queries work without a key. Tracking needs your own OAuth client, see `docs/ARCHITECTURE.md`.
 
+## Versioning
+
+Edit the root `VERSION` file, never the version strings by hand. `pnpm build` and `pnpm tauri` run `scripts/sync-version.mjs` before they start, which writes `package.json` and `src-tauri/Cargo.toml`. Tauri reads `package.json`, Vite injects `__APP_VERSION__` into the frontend, and Rust reads `CARGO_PKG_VERSION`. `src-tauri/build.rs` fails a direct cargo build if `VERSION` and `Cargo.toml` disagree.
+
+## Licenses
+
+Run `pnpm licenses:build` after dependency changes. It reads `Cargo.lock`, `cargo metadata` and the installed node_modules, then regenerates `public/licenses.json` with package names, versions, license identifiers, sources and any full license text found on disk. Commit the regenerated file. The Settings and footer Licenses dialogs read it at runtime.
+
 ## How to work
 
 - Small pull requests. One idea per PR.
@@ -44,6 +52,8 @@ UI: use tokens from `src/app.css`. Add a token before you add a one off value. H
 - [ ] Fx, Clippy, lint pass
 - [ ] Docs updated
 - [ ] CHANGELOG entry added
+- [ ] `VERSION` updated once, not version strings by hand
+- [ ] `pnpm licenses:build` run after dependency changes
 - [ ] No em dashes (style check passes)
 
 ## Tone

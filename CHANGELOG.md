@@ -4,6 +4,14 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.11.0 - 2026-11-08
+
+- Versioning: root `VERSION` is the single source; prebuild and pretauri sync `package.json` and `Cargo.toml` before the build
+- Versioning: Tauri reads the package version, the frontend gets `__APP_VERSION__` from Vite, and Rust uses `CARGO_PKG_VERSION`
+- Licenses: Settings card and footer link open a generated list of every package in the build, with search, groups, sources and full license texts
+- Licenses: `pnpm licenses:build` regenerates `public/licenses.json` from `Cargo.lock` and the installed node_modules
+- Version: bump to 0.11.0
+
 ## 0.10.3 - 2026-11-08
 
 - Footer: persistent footer with brand mark, no-content notice, AniList credit, Terms, Privacy and version

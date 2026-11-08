@@ -1948,7 +1948,7 @@ dependencies = [
 
 [[package]]
 name = "kaminari"
-version = "0.10.3"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "hex",

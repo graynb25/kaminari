@@ -30,7 +30,7 @@ If you already know React, the Rust side does not care. The contract stays the s
 
 ## Status
 
-Working today: cinematic browse with five AniList rails, Top 10 Today, Ctrl K palette, detail pages, a local AniList library, watched episode tracking, Continue Watching, an Aniyomi registry reader that stores source metadata, a native JavaScript extension host with a source browser, details, episodes and stream resolve, an in-app player for MP4 and HLS, a source library with resumable playback progress, source Continue Watching and merged history, and System, Dark and Light themes.
+Working today: cinematic browse with five AniList rails, Top 10 Today, Ctrl K palette, detail pages, a local AniList library, watched episode tracking, Continue Watching, an Aniyomi registry reader that stores source metadata, a native JavaScript extension host with a source browser, details, episodes and stream resolve, an in-app player for MP4 and HLS, a source library with resumable playback progress, source Continue Watching and merged history, System, Dark and Light themes, and an in-app license list generated from the build.
 
 Next: embedded libmpv for HEVC, ASS and HDR. The app does not download APKs or run package code from the Aniyomi registry.
 
@@ -44,6 +44,14 @@ pnpm tauri dev
 ```
 
 Builds land in GitHub Releases. No telemetry, no ads, no account needed to browse.
+
+## Versioning
+
+The root `VERSION` file is the only version source. `pnpm build` and `pnpm tauri` run `scripts/sync-version.mjs` first, which writes `package.json` and `src-tauri/Cargo.toml`. Tauri reads the package version, Vite injects `__APP_VERSION__` into the frontend, and Rust reads `CARGO_PKG_VERSION`. `src-tauri/build.rs` refuses a build where `VERSION` and `Cargo.toml` disagree.
+
+## Licenses
+
+Settings, and the footer, open a generated list of every Rust crate, npm package, font and built-in sample in this build. The rows carry versions, license identifiers, sources and full license texts where the installed package includes one. Run `pnpm licenses:build` after dependency changes; it regenerates `public/licenses.json` from `Cargo.lock` and the installed node_modules.
 
 ## Principles
 
@@ -62,6 +70,8 @@ Builds land in GitHub Releases. No telemetry, no ads, no account needed to brows
 - `docs/ROADMAP.md`: what comes next and what done means
 - `docs/TERMS.md`: terms of service for distributed builds
 - `docs/PRIVACY.md`: local-first privacy policy
+- `VERSION`: the single version source
+- `public/licenses.json`: generated license list used by Settings
 
 ## Legal
 
