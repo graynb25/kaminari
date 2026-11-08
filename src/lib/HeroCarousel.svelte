@@ -113,7 +113,21 @@
       {@const cover = coverOf(slide)}
       <div class="hero-slide {active ? 'active' : ''}" aria-hidden={active ? undefined : "true"}>
         {#if banner}
-          <Artwork src={banner} alt="" loading={position === 0 ? "eager" : "lazy"} fill imgClass="kenburns" />
+          <Artwork src={banner} alt="" loading={position === 0 ? "eager" : "lazy"} fill imgClass="kenburns">
+            {#snippet fallback()}
+              {#if cover}
+                <div class="absolute inset-0 overflow-hidden blur-xl scale-110 opacity-45" aria-hidden="true">
+                  <Artwork src={cover} alt="" loading={position === 0 ? "eager" : "lazy"} imgClass="kenburns">
+                    {#snippet fallback()}
+                      <div class="absolute inset-0" style="background: var(--void-800);"></div>
+                    {/snippet}
+                  </Artwork>
+                </div>
+              {:else}
+                <div class="absolute inset-0" style="background: var(--void-800);"></div>
+              {/if}
+            {/snippet}
+          </Artwork>
         {:else if cover}
           <!-- Missing banner: blurred cover for color, plus a clear poster card below. -->
           <div class="absolute inset-0 overflow-hidden blur-xl scale-110 opacity-45" aria-hidden="true">

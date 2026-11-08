@@ -79,7 +79,21 @@
 <div>
   <div class="relative h-[320px] overflow-hidden">
     {#if media.bannerImage}
-      <Artwork src={media.bannerImage} alt="" loading="eager" fill />
+      <Artwork src={media.bannerImage} alt="" loading="eager" fill>
+        {#snippet fallback()}
+          {#if art}
+            <div class="absolute inset-0 overflow-hidden blur-2xl scale-110 opacity-50" aria-hidden="true">
+              <Artwork src={art} alt="" loading="eager">
+                {#snippet fallback()}
+                  <div class="absolute inset-0" style="background: radial-gradient(circle at 30% 10%, var(--accent-wash-strong), transparent 60%), var(--void-800);"></div>
+                {/snippet}
+              </Artwork>
+            </div>
+          {:else}
+            <div class="absolute inset-0" style="background: radial-gradient(circle at 30% 10%, var(--accent-wash-strong), transparent 60%), var(--void-800);"></div>
+          {/if}
+        {/snippet}
+      </Artwork>
     {:else if art}
       <div class="absolute inset-0 overflow-hidden blur-2xl scale-110 opacity-50" aria-hidden="true">
         <Artwork src={art} alt="" loading="eager" />
