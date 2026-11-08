@@ -4,6 +4,11 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.8.1 - 2026-11-08
+
+- Hero: when AniList has no banner, show a clear poster card over the blurred cover instead of a fully blurred header
+- Version: bump to 0.8.1
+
 ## 0.8.0 - 2026-11-08
 
 - Visual pass: bundled Sora, Inter and JetBrains Mono, layered atmosphere, glass title bar, palette, player, toasts and dialogs

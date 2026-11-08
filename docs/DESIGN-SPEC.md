@@ -52,7 +52,7 @@ Hover lifts 4px and scales to 1.03 over 160ms. Inner image scales to 1.06 over 3
 
 Five trending titles from AniList. Height clamps from 320 to 440 by viewport width. Title clamps to two lines and scales down on narrow windows, so copy never disappears. Dots plus arrow buttons. Keyboard left and right move. Backdrop has a left scrim from void at 85 percent to clear at 40 percent so text holds.
 
-Slide order: eyebrow (`#1 TRENDING, FALL 2026`), 40px display title, meta row (score, year, episodes, format), two line synopsis, three buttons (Play, Add, Details). Text staggers 60ms through transitions, not animation fill, so a dropped frame cannot hide the copy. Missing banner falls back to blurred cover at 4x plus scrim.
+Slide order: eyebrow (`#1 TRENDING, FALL 2026`), 40px display title, meta row (score, year, episodes, format), two line synopsis, three buttons (Play, Add, Details). Text staggers 60ms through transitions, not animation fill, so a dropped frame cannot hide the copy. Missing banner blurs the cover for color and adds a clear poster card on the right, so the header never becomes a featureless blur. Reduced motion kills drift and autoplay, dots stay manual.
 
 ### Scores
 

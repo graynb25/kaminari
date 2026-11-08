@@ -109,11 +109,11 @@
             decoding="async"
           />
         {:else if cover}
-          <!-- Missing banner: blurred cover at 4x plus the scrim, never a broken slot. -->
+          <!-- Missing banner: blurred cover for color, plus a clear poster card below. -->
           <img
             src={cover}
             alt=""
-            class="kenburns absolute inset-0 w-full h-full object-cover blur-2xl scale-125 opacity-55"
+            class="kenburns absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-45"
             loading={position === 0 ? "eager" : "lazy"}
             decoding="async"
           />
@@ -126,6 +126,22 @@
 
     <div class="absolute inset-0 pointer-events-none">
       <div class="relative h-full max-w-[1440px] mx-auto">
+        {#each slides as slide, position (slide.id)}
+          {@const active = position === index % slides.length}
+          {@const banner = slide.bannerImage}
+          {@const cover = coverOf(slide)}
+          {#if !banner && cover}
+            <div class="hero-poster {active ? 'active' : ''}" aria-hidden="true">
+              <img
+                src={cover}
+                alt=""
+                loading={position === 0 ? "eager" : "lazy"}
+                decoding="async"
+              />
+            </div>
+          {/if}
+        {/each}
+
         {#each slides as slide, position (slide.id)}
           {@const active = position === index % slides.length}
           <div

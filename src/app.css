@@ -744,6 +744,47 @@ button:disabled {
     linear-gradient(180deg, rgb(8 8 15 / 0.55), transparent 32%);
 }
 
+.hero-poster {
+  position: absolute;
+  right: clamp(20px, 4vw, 44px);
+  top: 50%;
+  width: clamp(140px, 11vw, 184px);
+  aspect-ratio: 2 / 3;
+  transform: translateY(-50%);
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  box-shadow:
+    0 28px 70px rgb(0 0 0 / 0.62),
+    0 0 0 1px rgb(255 255 255 / 0.04);
+  opacity: 0;
+  transition: opacity var(--dur-slow) ease-out;
+  pointer-events: none;
+}
+
+.hero-poster.active {
+  opacity: 1;
+}
+
+.hero-poster::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, rgb(8 8 15 / 0.32), transparent 45%);
+}
+
+.hero-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (max-width: 1100px) {
+  .hero-poster {
+    display: none;
+  }
+}
+
 .hero-copy {
   position: absolute;
   inset: 0;

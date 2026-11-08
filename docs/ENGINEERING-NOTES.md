@@ -76,6 +76,14 @@ What we measured. On 2026-11-08 the sample opened an archive.org title, returned
 
 What we did not do. Playback. The resolve panel shows and copies URLs; libmpv is the next milestone.
 
+## 2026-11-08 Hero poster fallback
+
+Context. The user reviewed the new hero and said some headers were fully blurred. AniList has no `bannerImage` for several 2026 and upcoming titles, so those slides fell back to a blurred cover with no clear focal image.
+
+What we shipped. The fallback now keeps a softer blurred cover for color and adds a clear poster card on the right of the hero, inside the 1440 content column. The card is hidden below 1100px so it cannot crowd the copy. Banner slides are unchanged and still full bleed.
+
+What we measured. SPY×FAMILY Season 4 and Reborn as a Space Mercenary both lack a banner in the current AniList data. With the poster card, the real app shows clear art on the right and readable copy on the left at 1920. The 1280 layout hides the card and keeps the blurred backdrop.
+
 ## 2026-11-08 Visual system pass
 
 Context. The app worked but read as flat dark panels. The spec promised glass overlays, cinematic depth and confident type, and the implementation did not deliver.
