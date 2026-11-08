@@ -42,6 +42,41 @@ pub struct Media {
     pub episodes: Option<i32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShelfKind {
+    Trending,
+    Airing,
+    Top,
+    Popular,
+}
+
+impl ShelfKind {
+    pub fn from_key(key: &str) -> Self {
+        match key {
+            "airing" => Self::Airing,
+            "top" => Self::Top,
+            "popular" => Self::Popular,
+            _ => Self::Trending,
+        }
+    }
+
+    fn sort(self) -> &'static str {
+        match self {
+            Self::Trending => "TRENDING_DESC",
+            Self::Airing => "POPULARITY_DESC",
+            Self::Top => "SCORE_DESC",
+            Self::Popular => "POPULARITY_DESC",
+        }
+    }
+
+    fn status(self) -> Option<&'static str> {
+        match self {
+            Self::Airing => Some("RELEASING"),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct Page {
     media: Vec<Media>,
@@ -170,12 +205,20 @@ impl AniListClient {
     }
 
     pub async fn trending(&self, page: u32) -> AppResult<Vec<Media>> {
-        let json = self
-            .post(
-                &trending_query(),
-                serde_json::json!({ "page": page, "perPage": 24 }),
-            )
-            .await?;
+        self.shelf(ShelfKind::Trending, page).await
+    }
+
+    pub async fn shelf(&self, kind: ShelfKind, page: u32) -> AppResult<Vec<Media>> {
+        let status = kind.status();
+        let mut variables = serde_json::json!({
+            "page": page,
+            "perPage": 24,
+            "sort": [kind.sort()],
+        });
+        if let Some(status) = status {
+            variables["status"] = serde_json::Value::String(status.to_string());
+        }
+        let json = self.post(&shelf_query(status.is_some()), variables).await?;
         let envelope: PageEnvelope =
             serde_json::from_value(json).map_err(|err| AppError::Net(err.to_string()))?;
         if let Some(errors) = envelope.errors {
@@ -247,18 +290,24 @@ fn media_query(body: &str) -> String {
     body.replace("__MEDIA_FIELDS__", MEDIA_FIELDS)
 }
 
-fn trending_query() -> String {
-    media_query(
+fn shelf_query(with_status: bool) -> String {
+    let status_arg = if with_status { ", status: $status" } else { "" };
+    let declaration = if with_status {
+        "$page: Int, $perPage: Int, $sort: [MediaSort], $status: MediaStatus"
+    } else {
+        "$page: Int, $perPage: Int, $sort: [MediaSort]"
+    };
+    media_query(&format!(
         r#"
-query Trending($page: Int, $perPage: Int) {
-  Page(page: $page, perPage: $perPage) {
-    media(type: ANIME, sort: TRENDING_DESC) {
+query Shelf({declaration}) {{
+  Page(page: $page, perPage: $perPage) {{
+    media(type: ANIME, sort: $sort{status_arg}) {{
       __MEDIA_FIELDS__
-    }
-  }
-}
-"#,
-    )
+    }}
+  }}
+}}
+"#
+    ))
 }
 
 fn search_query() -> String {
@@ -321,6 +370,26 @@ mod tests {
         );
         assert_eq!(media[0].average_score, Some(91));
         assert_eq!(media[0].id, 15125);
+    }
+
+    #[test]
+    fn shelf_kinds_map_to_sorts_and_status() {
+        assert_eq!(ShelfKind::from_key("trending"), ShelfKind::Trending);
+        assert_eq!(ShelfKind::from_key("airing"), ShelfKind::Airing);
+        assert_eq!(ShelfKind::from_key("top"), ShelfKind::Top);
+        assert_eq!(ShelfKind::from_key("popular"), ShelfKind::Popular);
+        assert_eq!(ShelfKind::from_key("nonsense"), ShelfKind::Trending);
+        assert_eq!(ShelfKind::Airing.status(), Some("RELEASING"));
+        assert_eq!(ShelfKind::Top.sort(), "SCORE_DESC");
+    }
+
+    #[test]
+    fn shelf_query_omits_status_when_not_needed() {
+        let without = shelf_query(false);
+        let with = shelf_query(true);
+        assert!(!without.contains("$status"));
+        assert!(!without.contains("status:"));
+        assert!(with.contains("status: $status"));
     }
 
     #[test]

@@ -21,13 +21,31 @@
   --shadow-card: 0 8px 24px rgb(0 0 0 / 0.45);
   --shadow-pop: 0 16px 48px rgb(0 0 0 / 0.55);
   --shadow-glow: 0 0 0 1px var(--volt-400), 0 8px 32px rgb(108 107 245 / 0.35);
+
+  /* Type */
+  --font-display: Sora, "Space Grotesk", Inter, "Segoe UI", system-ui, sans-serif;
+  --font-ui: Inter, "Segoe UI", system-ui, sans-serif;
+  --font-jp: "Noto Sans JP", Inter, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-instant: 100ms;
+  --dur-fast: 150ms;
+  --dur-med: 250ms;
+  --dur-slow: 600ms;
+
+  /* Glass */
+  --glass: rgb(14 14 26 / 0.82);
+  --focus-ring: 0 0 0 2px var(--void-950), 0 0 0 4px var(--volt-400);
 }
 
 html, body, #app {
   height: 100%;
   background: var(--void-950);
   color: var(--paper-50);
-  font-family: Inter, Segoe UI, system-ui, sans-serif;
+  font-family: var(--font-ui);
   overflow: hidden;
 }
 
@@ -40,19 +58,202 @@ html, body, #app {
   outline-offset: 2px;
 }
 
+/* Buttons */
+.btn-primary {
+  background: var(--volt-500);
+  color: var(--paper-50);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  transition: transform var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.btn-primary:hover {
+  background: var(--volt-400);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glow);
+}
+.btn-ghost {
+  background: var(--void-800);
+  border: 1px solid var(--line);
+  color: var(--paper-50);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  transition: transform var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+.btn-ghost:hover {
+  background: var(--void-700);
+  transform: translateY(-2px);
+}
+
+.chip {
+  background: var(--void-800);
+  border: 1px solid var(--line);
+  color: var(--paper-300);
+  border-radius: 999px;
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--volt-300);
+}
+
+/* Poster cards */
 .poster-card {
-  transition: transform 160ms ease-out, box-shadow 160ms ease-out;
+  transition: transform 160ms var(--ease-out), box-shadow 160ms var(--ease-out);
   transform: translateZ(0);
 }
-.poster-card:hover {
+.poster-card:hover,
+.poster-card:focus-within {
   transform: translateY(-4px) scale(1.03);
   box-shadow: var(--shadow-glow);
 }
-.poster-card img {
-  transition: transform 320ms ease-out;
+.poster-card .zoom {
+  transition: transform 320ms var(--ease-out);
 }
-.poster-card:hover img {
+.poster-card:hover .zoom,
+.poster-card:focus-within .zoom {
   transform: scale(1.06);
+}
+.poster-card .quick {
+  opacity: 0;
+  transition: opacity var(--dur-instant) ease-out;
+}
+.poster-card:hover .quick,
+.poster-card:focus-within .quick {
+  opacity: 1;
+}
+
+/* Hero */
+.hero-slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity var(--dur-slow) ease-out;
+  pointer-events: none;
+}
+.hero-slide.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+.hero-slide .kenburns {
+  transform: scale(1);
+}
+.hero-slide.active .kenburns {
+  animation: kb 7s linear forwards;
+}
+@keyframes kb {
+  from { transform: scale(1); }
+  to { transform: scale(1.04); }
+}
+.hero-copy {
+  pointer-events: none;
+}
+.hero-copy.active {
+  pointer-events: auto;
+}
+.hero-copy > * {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 500ms var(--ease-out), transform 500ms var(--ease-out);
+}
+.hero-copy.active > * {
+  opacity: 1;
+  transform: none;
+}
+.hero-copy.active > *:nth-child(2) { transition-delay: 60ms; }
+.hero-copy.active > *:nth-child(3) { transition-delay: 120ms; }
+.hero-copy.active > *:nth-child(4) { transition-delay: 180ms; }
+.hero-copy.active > *:nth-child(5) { transition-delay: 240ms; }
+
+/* Shelves */
+.shelf-scroll {
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-mask-image: linear-gradient(90deg, black calc(100% - 72px), transparent 100%);
+  mask-image: linear-gradient(90deg, black calc(100% - 72px), transparent 100%);
+}
+.shelf-scroll::-webkit-scrollbar {
+  display: none;
+}
+.shelf-scroll > * {
+  scroll-snap-align: start;
+}
+.shelf-nav {
+  opacity: 0;
+  transition: opacity var(--dur-instant) ease-out;
+}
+.shelf-hover:hover .shelf-nav,
+.shelf-hover:focus-within .shelf-nav {
+  opacity: 1;
+}
+
+/* Skeletons */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+  background: var(--void-800);
+}
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.07) 50%, transparent 70%);
+  animation: shimmer 1200ms linear infinite;
+}
+@keyframes shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+/* Glass overlays */
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+.modal-in {
+  animation: modalIn var(--dur-med) var(--ease-out) both;
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.toast-in {
+  animation: modalIn var(--dur-med) var(--ease-out) both;
+}
+
+/* Ambient depth: subtle volt wash plus vignette behind content. Text contrast
+   stays untouched because this only touches the backdrop. */
+.ambient {
+  background:
+    radial-gradient(1000px 420px at 15% -120px, rgb(108 107 245 / 0.09), transparent 70%),
+    radial-gradient(900px 620px at 90% 110%, rgb(35 35 58 / 0.5), transparent 65%),
+    var(--void-950);
+}
+.hero-edge {
+  box-shadow: 0 1px 0 rgb(139 138 255 / 0.16), 0 28px 60px -28px rgb(108 107 245 / 0.4);
+}
+/* Rank numerals for the Top 10 rail. Outlined, quiet, behind the poster. */
+.rank-num {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(56px, 4.5vw, 76px);
+  line-height: 0.8;
+  color: rgb(184 183 204 / 0.16);
+  -webkit-text-stroke: 1px rgb(184 183 204 / 0.42);
+  user-select: none;
+}
+.rank-num.rank-hot {
+  color: rgb(139 138 255 / 0.2);
+  -webkit-text-stroke: 1px rgb(139 138 255 / 0.65);
+}
+@supports not (-webkit-text-stroke: 1px black) {
+  .rank-num {
+    color: var(--paper-500);
+  }
 }
 
 /* Window controls. Tauri frameless window needs its own buttons. */
@@ -88,8 +289,21 @@ html, body, #app {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     animation: none !important;
     transition-duration: 1ms !important;
+  }
+  .hero-slide.active .kenburns {
+    animation: none !important;
+    transform: none !important;
+  }
+  .hero-copy > * {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .poster-card .quick {
+    opacity: 1 !important;
   }
 }

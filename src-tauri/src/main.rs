@@ -28,6 +28,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::boot_snapshot,
             commands::anilist_trending,
+            commands::anilist_shelf,
             commands::anilist_search,
             commands::anilist_detail,
             commands::library_list,

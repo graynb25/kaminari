@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::anilist::{AniListClient, Media};
+use crate::anilist::{AniListClient, Media, ShelfKind};
 use crate::db::{Db, LibraryItem};
 use crate::error::AppError;
 use crate::ext_host;
@@ -47,6 +47,18 @@ pub async fn anilist_trending(
     page: Option<u32>,
 ) -> Result<Vec<Media>, String> {
     state.trending(page.unwrap_or(1)).await.map_err(ipc_error)
+}
+
+#[tauri::command]
+pub async fn anilist_shelf(
+    state: State<'_, AniListClient>,
+    kind: String,
+    page: Option<u32>,
+) -> Result<Vec<Media>, String> {
+    state
+        .shelf(ShelfKind::from_key(&kind), page.unwrap_or(1))
+        .await
+        .map_err(ipc_error)
 }
 
 #[tauri::command]

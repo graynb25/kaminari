@@ -4,11 +4,11 @@ Status: active. This is the visual contract for Kaminari. If a screen does not m
 
 ## Direction
 
-Dark media first. Near black canvas, warm paper text, one volt indigo accent. Light theme ships, but dark is the home. Posters feel rich, not flat. Glass only for overlays: palette, player bar, toasts, dialogs. Everything else stays solid so text stays readable.
+Dark media first. Near black canvas, warm paper text, one volt indigo accent. Dark is home, light lands in P2. Posters feel rich, not flat. Glass only for overlays: palette, player bar, toasts, dialogs. Everything else stays solid so text stays readable.
 
 Type: Sora or Space Grotesk for display and hero numbers, Inter for UI, Noto Sans JP for Japanese titles, JetBrains Mono for timecodes and diagnostics. Display never runs body copy. Body never runs all caps.
 
-Desktop native. Frameless window, real title bar with drag, no browser chrome. Every async view ships four forms: loading, empty, error, offline. No blank panels. No layout shift on image load. Poster and backdrop slots reserve aspect ratio and paint blurhash first.
+Desktop native. Frameless window, real title bar with drag, no browser chrome. Chrome icons are one inline SVG set (24px, 1.5 stroke, currentColor). No emoji in the chrome. Every async view ships four forms: loading, empty, error, offline. No blank panels. No layout shift on image load. Poster and backdrop slots reserve aspect ratio and paint blurhash first.
 
 What we steal: Apple TV hero and focus glow, Plex continue watching rows, Mihon source cards and library filters, Stremio detail hero with one clear play action. What we skip: autoplay with sound, server setup wizards, tab metaphors.
 
@@ -38,7 +38,7 @@ Tokens live in `src/app.css`. Add a token before you add a one off value.
 
 Contrast: paper on void passes AAA. Volt on void is 4.6 to 1. Volt is for large type, bold labels, focus rings and fills paired with text, never for small body copy. Verified with axe and a token test in CI.
 
-Radius steps are 12, 16, 20, 24. Small controls use 12. Cards use 16. Hero, player and dialogs use 20 or 24. Borders are 1px white at 8 percent on dark. Light theme flips to ink at 8 percent.
+Radius steps are 12, 16, 20, 24. Small controls use 12. Cards use 16. Hero, player and dialogs use 20 or 24. Borders are 1px white at 8 percent on dark. When light lands in P2, borders flip to ink at 8 percent.
 
 ## Components
 
@@ -50,13 +50,13 @@ Hover lifts 4px and scales to 1.03 over 160ms. Inner image scales to 1.06 over 3
 
 ### HeroCarousel (400px)
 
-Five trending titles from AniList. Advance every 7 seconds. Pause on hover, focus, or press. Resume 3 seconds after leave. Dots plus arrow buttons. Keyboard left and right move. Backdrop has a left scrim from void at 85 percent to clear at 40 percent so text holds.
+Five trending titles from AniList. Height clamps from 320 to 440 by viewport width. Title clamps to two lines and scales down on narrow windows, so copy never disappears. Dots plus arrow buttons. Keyboard left and right move. Backdrop has a left scrim from void at 85 percent to clear at 40 percent so text holds.
 
-Slide order: eyebrow (`#1 TRENDING, FALL 2026`), 40px display title, meta row (score, year, episodes, format), two line synopsis, three buttons (Play, Add, Details). Text staggers 60ms. Crossfade runs 600ms. Ken Burns scales 1.0 to 1.04 across the hold. Reduced motion kills drift and autoplay, dots stay manual. Missing banner falls back to blurred cover at 4x plus scrim.
+Slide order: eyebrow (`#1 TRENDING, FALL 2026`), 40px display title, meta row (score, year, episodes, format), two line synopsis, three buttons (Play, Add, Details). Text staggers 60ms through transitions, not animation fill, so a dropped frame cannot hide the copy. Missing banner falls back to blurred cover at 4x plus scrim.
 
 ### Shelf
 
-Header row: H2, count, See all link, scroll buttons that appear on hover and stay on focus. Body scrolls horizontal with snap, 16px gaps. Arrow buttons page by 80 percent of width. Lists over 60 items virtualize. Backdrop variant is 16:9 at 320px wide with remaining time and progress. Poster variant is 2:3.
+Header row: H2, count, See all link, scroll buttons that appear on hover and stay on focus. Body scrolls horizontal with snap, 16px gaps. Scrollbars stay hidden, arrow buttons carry scroll, keyboard arrows work on the focused shelf. First run shows one callout, not stacked empty boxes. Library Preview renders only when the library has items. Backdrop variant is 16:9 at 320px wide with remaining time and progress. Poster variant is 2:3.
 
 ### SearchPalette (Ctrl K)
 
@@ -74,9 +74,11 @@ Keys: Space or K play and pause, J and L jump 10 seconds, arrows jump 10, Shift 
 
 ### TitleBar, nav, SourceCard, toast, EmptyState, skeleton
 
-TitleBar is 40px, void 900 at 80 percent plus 16px blur. Drag on empty space. Center holds the palette trigger that looks like an input. Right holds min, max, close with 46 by 40px targets. Close hovers red. Nav rail is 72px, icons plus labels, keys 1 to 7, active pill in volt.
+TitleBar is 40px, void 900 at 80 percent plus 16px blur. Drag on empty space. Center holds the palette trigger that looks like an input. Right holds min, max, close with 46 by 40px targets. Close hovers red. Nav rail is 72px, icons plus labels, keys 1 to 4, active pill in volt.
 
 SourceCard: 40px icon, name, version chip, lang, status dot, toggle, Configure and Update buttons, Log link. Error cards keep the last error and a Retry button. Disabled cards dim to 60 percent.
+
+Nav keys are 1 to 4 for the four rail views (Browse, Library, Sources, Settings). The spec once said 1 to 7, written for future History, Downloads and Player views. Those views do not exist yet, so unbound digits stay silent instead of pretending.
 
 Toast: bottom right, max 3, 4200ms, icon plus text plus one action (Undo, Retry). Never covers player controls, offsets when the player is open. Role status for info, alert for error.
 
@@ -92,9 +94,9 @@ Reduced motion: media query plus a Svelte guard. All durations drop near zero. S
 
 ## Window and shortcuts
 
-Min size 1024 by 640. Content max 1200px, gutters 24px. Tray menu holds Show and Quit. Shortcuts dialog opens with `?` and lists every key.
+Min size 1024 by 640. Content max 1440px, gutters 24px (32px at md and up). Tray menu holds Show and Quit. Shortcuts dialog opens with `?` and lists every key.
 
-Global when not typing: Ctrl K palette, slash focuses search, 1 to 7 nav, question mark help, Esc closes top layer. Focus traps in modal and player. Focus returns on close. Skip link jumps to content. Context menu on cards mirrors hover actions so touch and keyboard reach the same verbs.
+Global when not typing: Ctrl K or slash opens the palette, 1 to 4 move between rail views, question mark opens help, Esc closes top layer. Focus traps in modal and player. Focus returns on close. Skip link jumps to content. Context menu on cards mirrors hover actions so touch and keyboard reach the same verbs.
 
 ## Performance
 
