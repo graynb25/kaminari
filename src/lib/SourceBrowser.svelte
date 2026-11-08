@@ -515,12 +515,22 @@
               {@const saved = progressFor(episode.id)}
               <div class="surface overflow-hidden">
                 <div class="flex items-center gap-3 p-3">
-                  <div class="w-24 h-14 shrink-0 rounded-lg overflow-hidden relative" style="background: var(--void-700); border: 1px solid var(--line);">
+                  <div class="episode-thumb shrink-0">
                     {#if episode.thumbnail}
-                      <img src={episode.thumbnail} alt="" loading="lazy" decoding="async" class="w-full h-full object-cover" />
+                      <img src={episode.thumbnail} alt="" loading="lazy" decoding="async" />
+                    {:else if selected.banner || selected.cover}
+                      <img
+                        src={selected.banner || selected.cover}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        class="is-fallback"
+                      />
                     {:else}
-                      <div class="w-full h-full grid place-items-center font-mono text-sm" style="color: var(--volt-300);">{episode.number}</div>
+                      <div class="episode-thumb-empty" aria-hidden="true"></div>
                     {/if}
+                    <span class="episode-thumb-scrim" aria-hidden="true"></span>
+                    <span class="episode-thumb-number">EP {episode.number}</span>
                   </div>
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
@@ -713,6 +723,65 @@
 {/if}
 
 <style>
+  .episode-thumb {
+    position: relative;
+    width: 96px;
+    height: 56px;
+    overflow: hidden;
+    border-radius: 10px;
+    background: var(--void-700);
+    border: 1px solid var(--line);
+  }
+
+  .episode-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .episode-thumb img.is-fallback {
+    filter: saturate(0.72) brightness(0.9);
+    transform: scale(1.06);
+  }
+
+  .episode-thumb-empty {
+    width: 100%;
+    height: 100%;
+    background:
+      radial-gradient(circle at 30% 20%, rgb(139 138 255 / 0.22), transparent 60%),
+      var(--void-800);
+  }
+
+  .episode-thumb-scrim {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(0deg, rgb(8 8 15 / 0.82), transparent 62%),
+      linear-gradient(180deg, rgb(8 8 15 / 0.28), transparent 34%);
+    pointer-events: none;
+  }
+
+  .episode-thumb-number {
+    position: absolute;
+    left: 5px;
+    bottom: 5px;
+    display: inline-flex;
+    align-items: center;
+    height: 17px;
+    padding: 0 5px;
+    border-radius: 5px;
+    background: rgb(8 8 15 / 0.72);
+    border: 1px solid rgb(255 255 255 / 0.18);
+    color: #f4f3ff;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
   .sr-only {
     position: absolute;
     width: 1px;

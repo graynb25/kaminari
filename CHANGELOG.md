@@ -4,7 +4,11 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.11.3 - 2026-11-08
+
+- Source episodes: 96 by 56 thumbnail with an EP number badge, using the show banner or cover when the source has no episode image
 - Docs: Suwayomi/anime server review, native-first source decision, loopback stream proxy and embedded libmpv next
+- Version: bump to 0.11.3
 
 ## 0.11.2 - 2026-11-08
 

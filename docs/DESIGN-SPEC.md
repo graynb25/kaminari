@@ -92,7 +92,7 @@ Native source runs join the same shelf from their own table. One card per show, 
 
 The Sources page leads with a registry URL field. Loading the yuzono Aniyomi index returned 250 packages in a live check on 2026-11-08. Installed packages render first, then available packages with name, package id, version, language, source count, and NSFW or torrent badges. A filter narrows the list. Cards render 60 at a time with a Show more button, so 250 packages do not land in the DOM at once. Add stores metadata only. No APK downloads, no package code runs until the QuickJS host lands. The page says that in plain copy.
 
-Source detail: cover, banner, synopsis and episode rows. The episode action is Play, Resume or Rewatch. Play resolves the episode and starts the first stream, one click. Streams opens the quality list with Copy and Open in mpv. Resolve is implementation language, never a button label.
+Source detail: cover, banner, synopsis and episode rows. Each row has a 96 by 56 thumbnail, using the episode image when the source provides one and the show banner or cover as a muted fallback, with an `EP n` badge in the bottom left. The episode action is Play, Resume or Rewatch. Play resolves the episode and starts the first stream, one click. Streams opens the quality list with Copy and Open in mpv. Resolve is implementation language, never a button label.
 
 ### VideoPlayer (libmpv surface)
 
