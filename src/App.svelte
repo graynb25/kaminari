@@ -2,8 +2,10 @@
   import { onMount } from "svelte";
   import ContinueCard from "./lib/ContinueCard.svelte";
   import DetailPage from "./lib/DetailPage.svelte";
+  import EmptyState from "./lib/EmptyState.svelte";
   import HeroCarousel from "./lib/HeroCarousel.svelte";
   import HistoryView from "./lib/HistoryView.svelte";
+  import Icon from "./lib/Icon.svelte";
   import LibraryView from "./lib/LibraryView.svelte";
   import NavRail from "./lib/NavRail.svelte";
   import PosterCard from "./lib/PosterCard.svelte";
@@ -34,7 +36,21 @@
     type ShelfKind,
   } from "./lib/api";
   import { displayTitle, isRateLimitMessage } from "./lib/format";
-  import type { Boot, ContinueItem, HistoryItem, JsSearchItem, LibraryItem, Media, RailState, SourceExtensionRef, SourceLibraryItem, Toast, ToastTone, View } from "./lib/types";
+  import type {
+    Boot,
+    ContinueItem,
+    HistoryItem,
+    JsSearchItem,
+    LibraryItem,
+    Media,
+    RailState,
+    SourceExtensionRef,
+    SourceLibraryItem,
+    Toast,
+    ToastAction,
+    ToastTone,
+    View,
+  } from "./lib/types";
 
   type SourceBrowserState = {
     extension: SourceExtensionRef;
@@ -45,6 +61,7 @@
   let boot = $state<Boot | null>(null);
   let library = $state<LibraryItem[]>([]);
   let libraryLoading = $state(true);
+  let libraryError = $state<string | null>(null);
   let rails = $state<Record<string, RailState>>({
     trending: { items: [], loading: true, error: null },
     trendingMore: { items: [], loading: true, error: null },
@@ -58,7 +75,10 @@
   let playNote = $state<string | null>(null);
   let watchedDetail = $state<number[]>([]);
   let continueItems = $state<ContinueItem[]>([]);
+  let continueError = $state<string | null>(null);
   let historyItems = $state<HistoryItem[]>([]);
+  let historyLoading = $state(true);
+  let historyError = $state<string | null>(null);
   let sourceLibraryItems = $state<SourceLibraryItem[]>([]);
   let sourceBrowser = $state<SourceBrowserState | null>(null);
   let paletteOpen = $state(false);
@@ -66,15 +86,24 @@
   let toasts = $state<Toast[]>([]);
   let toastSeq = $state(0);
   let lastFocus = $state<HTMLElement | null>(null);
+  let mainEl = $state<HTMLElement | null>(null);
   let online = $state(typeof navigator !== "undefined" ? navigator.onLine : true);
+  let detailRequest = 0;
 
   const PLAY_NOTE =
     "Playback needs a source extension. AniList gives us the catalogue, not the stream. The extension host lands in P1.";
 
-  function notify(text: string, tone: ToastTone = "info") {
+  const trendingRail = $derived(rails.trending);
+  const detailEntry = $derived.by(() => {
+    if (!detail) return undefined;
+    const id = detail.id;
+    return library.find((entry) => entry.media.id === id);
+  });
+
+  function notify(text: string, tone: ToastTone = "info", action?: ToastAction) {
     toastSeq += 1;
     const id = toastSeq;
-    toasts = [...toasts.slice(-2), { id, text, tone }];
+    toasts = [...toasts.slice(-2), { id, text, tone, action }];
     window.setTimeout(() => dismissToast(id), 4200);
   }
 
@@ -97,6 +126,7 @@
   }
 
   function goView(next: View) {
+    detailRequest += 1;
     detail = null;
     detailError = null;
     playNote = null;
@@ -107,16 +137,23 @@
   async function refreshContinue() {
     try {
       continueItems = await continueWatching();
-    } catch {
+      continueError = null;
+    } catch (e) {
       continueItems = [];
+      continueError = e instanceof Error ? e.message : String(e);
     }
   }
 
   async function refreshHistory() {
+    historyLoading = true;
     try {
       historyItems = await historyList(100);
-    } catch {
+      historyError = null;
+    } catch (e) {
       historyItems = [];
+      historyError = e instanceof Error ? e.message : String(e);
+    } finally {
+      historyLoading = false;
     }
   }
 
@@ -131,8 +168,9 @@
   async function refreshLibrary() {
     try {
       library = await listLibrary();
-    } catch {
-      // An empty library is a valid first run. Toast only on explicit actions.
+      libraryError = null;
+    } catch (e) {
+      libraryError = e instanceof Error ? e.message : String(e);
     } finally {
       libraryLoading = false;
     }
@@ -165,18 +203,24 @@
   }
 
   async function openDetail(item: Media, options: { keepNote?: boolean } = {}) {
+    const request = ++detailRequest;
     if (!options.keepNote) playNote = null;
     detailError = null;
     detail = item;
+    mainEl?.scrollTo({ top: 0, behavior: "auto" });
     try {
-      detail = await fetchDetail(item.id);
+      const full = await fetchDetail(item.id);
+      if (request === detailRequest) detail = full;
     } catch (e) {
-      detailError = e instanceof Error ? e.message : String(e);
+      if (request === detailRequest) {
+        detailError = e instanceof Error ? e.message : String(e);
+      }
     }
     try {
-      watchedDetail = await watchedList(item.id);
+      const seen = await watchedList(item.id);
+      if (request === detailRequest) watchedDetail = seen;
     } catch {
-      watchedDetail = [];
+      if (request === detailRequest) watchedDetail = [];
     }
   }
 
@@ -184,6 +228,22 @@
     playNote = PLAY_NOTE;
     notify("Source playback arrives in P1. Details are live now.", "info");
     void openDetail(item, { keepNote: true });
+  }
+
+  function openSourceBrowser(item: SourceLibraryItem) {
+    sourceBrowser = {
+      extension: { id: item.extensionId, name: item.extensionName },
+      initialShow: {
+        id: item.showId,
+        title: item.title,
+        cover: item.cover ?? null,
+        year: item.year ?? null,
+      },
+    };
+  }
+
+  function openExtension(extension: { id: string; name: string }) {
+    sourceBrowser = { extension: { id: extension.id, name: extension.name } };
   }
 
   async function toggleLibrary(item: Media) {
@@ -200,19 +260,31 @@
       await refreshContinue();
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      notify(`Library change failed: ${message}`, "error");
+      notify(`Library change failed: ${message}`, "error", {
+        label: "Retry",
+        run: () => void toggleLibrary(item),
+      });
     }
   }
 
   async function toggleWatched(episode: number) {
     if (!detail) return;
     const seen = watchedDetail.includes(episode);
+    const previous = watchedDetail;
+    // Optimistic first, then roll back if SQLite refuses the write.
+    watchedDetail = seen
+      ? previous.filter((value) => value !== episode)
+      : [...previous, episode].sort((a, b) => a - b);
     try {
       watchedDetail = await watchedSet(detail, episode, !seen);
       await Promise.all([refreshLibrary(), refreshContinue(), refreshHistory()]);
     } catch (e) {
+      watchedDetail = previous;
       const message = e instanceof Error ? e.message : String(e);
-      notify(`Episode update failed: ${message}`, "error");
+      notify(`Episode update failed: ${message}`, "error", {
+        label: "Retry",
+        run: () => void toggleWatched(episode),
+      });
     }
   }
 
@@ -229,7 +301,10 @@
       );
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      notify(`Episode update failed: ${message}`, "error");
+      notify(`Episode update failed: ${message}`, "error", {
+        label: "Retry",
+        run: () => void markAllWatched(seen),
+      });
     }
   }
 
@@ -240,11 +315,15 @@
       notify(`${displayTitle(item)} set to ${status}.`, "success");
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      notify(`Status update failed: ${message}`, "error");
+      notify(`Status update failed: ${message}`, "error", {
+        label: "Retry",
+        run: () => void setStatus(item, status),
+      });
     }
   }
 
   function closeDetail() {
+    detailRequest += 1;
     detail = null;
     detailError = null;
     playNote = null;
@@ -273,6 +352,13 @@
     })();
   });
 
+  // Keep the content at the top when the route or the open title changes.
+  $effect(() => {
+    view;
+    detail?.id;
+    if (mainEl) mainEl.scrollTop = 0;
+  });
+
   // Online and offline banner.
   $effect(() => {
     const show = () => {
@@ -292,6 +378,14 @@
   // Global keys. Palette input handles its own list keys.
   $effect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (document.body.dataset.playerOpen === "true" || document.body.dataset.overlay === "source") return;
+      if (shortcutsOpen) {
+        if (event.key === "Escape" || event.key === "?") {
+          event.preventDefault();
+          shortcutsOpen = false;
+        }
+        return;
+      }
       const mod = event.ctrlKey || event.metaKey;
       if (mod && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -318,267 +412,270 @@
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
-
-  const trendingRail = $derived(rails.trending);
 </script>
 
-<div class="h-screen flex flex-col">
-  <a
-    href="#content"
-    class="sr-only focus:not-sr-only focus:absolute focus:z-[60] focus:px-3 focus:py-2 focus:text-sm focus:rounded-lg"
-    style="focus:background: var(--volt-500);"
-  >
-    Skip to content
-  </a>
-  <TitleBar title={title} onOpenPalette={openPalette} />
+<div class="app-shell h-screen flex flex-col">
+  <div class="app-atmosphere" aria-hidden="true"></div>
+  <div class="app-grain" aria-hidden="true"></div>
 
-  <div class="flex flex-1 min-h-0">
-    <NavRail view={view} onNav={goView} />
+  <a href="#content" class="skip-link">Skip to content</a>
+  <TitleBar title={title} online={online} onOpenPalette={openPalette} />
+
+  <div class="relative z-10 flex flex-1 min-h-0">
+    <NavRail
+      view={view}
+      onNav={goView}
+      onOpenPalette={openPalette}
+      onOpenShortcuts={() => (shortcutsOpen = true)}
+    />
 
     <!-- The skip link focuses this region without adding it to the tab order. -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <main id="content" class="ambient flex-1 overflow-y-auto min-w-0" tabindex={-1}>
+    <main id="content" bind:this={mainEl} class="ambient flex-1 overflow-y-auto min-w-0" tabindex={-1}>
       {#if !online}
         <div
-          class="px-4 py-2 text-sm text-center"
-          style="background: rgb(251 191 36 / 0.12); border-bottom: 1px solid rgb(251 191 36 / 0.35); color: var(--paper-50);"
+          class="px-4 py-2 text-xs flex items-center justify-center gap-2"
+          style="background: rgb(251 191 36 / 0.1); border-bottom: 1px solid rgb(251 191 36 / 0.28); color: var(--paper-100);"
           role="status"
         >
+          <Icon name="wifiOff" size={14} />
           You are offline. Showing cached titles. Search and detail refresh will fail until you reconnect.
         </div>
       {/if}
 
-      {#if detail}
-        {#if detailError}
-          <div
-            class="mx-6 md:mx-8 mt-6 px-4 py-3 rounded-xl text-sm"
-            style="background: var(--void-800); border: 1px solid var(--line); color: var(--paper-300);"
-            role="alert"
-          >
-            Full details did not load ({detailError}). Showing the cached card.
-            <button class="btn-primary ml-3 px-3 py-1 text-xs" onclick={retryDetail}>Retry</button>
-          </div>
-        {/if}
-        <DetailPage
-          media={detail}
-          inLibrary={isInLibrary(detail.id)}
-          playNote={playNote}
-          watched={watchedDetail}
-          onBack={closeDetail}
-          onToggleLibrary={toggleLibrary}
-          onPlay={openPlay}
-          onToggleWatched={(episode) => void toggleWatched(episode)}
-          onMarkAll={(seen) => void markAllWatched(seen)}
-        />
-      {:else if view === "browse"}
-        {#if trendingRail.loading}
-          <div class="space-y-6 pb-8">
-            <Skeleton kind="hero" />
-            <div class="px-6 md:px-8 space-y-8 max-w-[1440px] mx-auto">
-              <Skeleton kind="row" />
-              <Skeleton kind="row" />
-            </div>
-          </div>
-        {:else if trendingRail.error}
-          <div class="p-6 md:p-8 max-w-[1440px] mx-auto">
-            <div
-              class="max-w-xl p-5 rounded-2xl"
-              style="background: var(--void-800); border: 1px solid var(--line);"
-              role="alert"
-            >
-              <h2 class="text-lg font-semibold" style="font-family: var(--font-display);">
-                AniList did not answer
-              </h2>
-              <p class="text-sm mt-2" style="color: var(--paper-300);">{trendingRail.error}</p>
-              <p class="text-xs mt-2" style="color: var(--paper-500);">
-                {#if isRateLimitMessage(trendingRail.error)}
-                  This is the public rate limit. It clears in under a minute. Other shelves load on their own.
-                {:else}
-                  Check your connection, then retry.
-                {/if}
-              </p>
-              <button
-                class="btn-primary mt-4 px-3 py-1.5 text-sm"
-                onclick={() => void loadRail("trending", "trending", 1)}
-              >
-                Retry
-              </button>
-            </div>
-          </div>
-        {:else if trendingRail.items.length === 0}
-          <div class="p-6 md:p-8 max-w-[1440px] mx-auto">
-            <div
-              class="max-w-xl p-5 rounded-2xl text-sm"
-              style="background: var(--void-800); border: 1px solid var(--line); color: var(--paper-300);"
-            >
-              AniList returned an empty shelf. Try again in a moment.
-              <button
-                class="btn-primary ml-3 px-3 py-1 text-xs"
-                onclick={() => void loadRail("trending", "trending", 1)}
-              >
-                Reload
-              </button>
-            </div>
-          </div>
-        {:else}
-          <HeroCarousel
-            items={trendingRail.items}
-            isInLibrary={isInLibrary}
-            onOpen={(item) => void openDetail(item)}
-            onToggleLibrary={toggleLibrary}
-            onPlay={openPlay}
-          />
-          <div class="px-6 md:px-8 py-6 space-y-8 max-w-[1440px] mx-auto">
-            {#if library.length === 0}
+      {#key detail ? `detail-${detail.id}` : view}
+        <div class="page-swap">
+          {#if detail}
+            {#if detailError}
               <div
-                class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm"
-                style="background: var(--void-900); border: 1px solid var(--line);"
+                class="mx-6 md:mx-8 mt-6 px-4 py-3 rounded-xl text-sm flex flex-col sm:flex-row sm:items-center gap-2"
+                style="background: rgb(251 191 36 / 0.08); border: 1px solid rgb(251 191 36 / 0.28); color: var(--paper-300);"
+                role="alert"
               >
-                <p class="flex-1" style="color: var(--paper-300);">
-                  New here? Save posters to build your library.
-                </p>
-                <button class="btn-ghost px-3 py-1.5 text-xs shrink-0" onclick={openPalette}>
-                  Search (Ctrl K)
-                </button>
+                <Icon name="alert" size={15} />
+                <span class="flex-1">Full details did not load ({detailError}). Showing the cached card.</span>
+                <button class="btn-primary px-3 py-1.5 text-xs" onclick={retryDetail}>Retry</button>
+              </div>
+            {/if}
+            <DetailPage
+              media={detail}
+              inLibrary={isInLibrary(detail.id)}
+              status={detailEntry?.status ?? null}
+              playNote={playNote}
+              watched={watchedDetail}
+              onBack={closeDetail}
+              onToggleLibrary={toggleLibrary}
+              onSetStatus={setStatus}
+              onPlay={openPlay}
+              onToggleWatched={(episode) => void toggleWatched(episode)}
+              onMarkAll={(seen) => void markAllWatched(seen)}
+            />
+          {:else if view === "browse"}
+            {#if trendingRail.loading}
+              <div class="space-y-6 pb-8">
+                <Skeleton kind="hero" />
+                <div class="px-6 md:px-8 space-y-8 max-w-[1440px] mx-auto">
+                  <Skeleton kind="row" />
+                  <Skeleton kind="row" />
+                </div>
+              </div>
+            {:else if trendingRail.error}
+              <div class="p-6 md:p-8 max-w-[1440px] mx-auto">
+                <EmptyState
+                  compact
+                  icon="error"
+                  title="AniList did not answer"
+                  body={isRateLimitMessage(trendingRail.error)
+                    ? "This is the public rate limit. It clears in under a minute. Other shelves load on their own."
+                    : `${trendingRail.error}. Check your connection, then retry.`}
+                  actionLabel="Retry"
+                  actionIcon="refresh"
+                  onAction={() => void loadRail("trending", "trending", 1)}
+                />
+              </div>
+            {:else if trendingRail.items.length === 0}
+              <div class="p-6 md:p-8 max-w-[1440px] mx-auto">
+                <EmptyState
+                  compact
+                  icon="search"
+                  title="Nothing trending right now"
+                  body="AniList returned an empty shelf. Try again in a moment."
+                  actionLabel="Reload"
+                  actionIcon="refresh"
+                  onAction={() => void loadRail("trending", "trending", 1)}
+                />
               </div>
             {:else}
-              <section aria-label="Continue watching">
-                <Shelf title="Continue Watching" count={continueItems.length}>
-                  {#if continueItems.length === 0}
-                    <div
-                      class="w-full rounded-xl px-4 py-3 text-sm"
-                      style="background: var(--void-900); border: 1px solid var(--line); color: var(--paper-500);"
-                    >
-                      Nothing in progress yet. Mark an episode watched and this row fills itself.
+              <HeroCarousel
+                items={trendingRail.items}
+                isInLibrary={isInLibrary}
+                onOpen={(item) => void openDetail(item)}
+                onToggleLibrary={toggleLibrary}
+                onPlay={openPlay}
+              />
+              <div class="px-6 md:px-8 py-6 space-y-8 max-w-[1440px] mx-auto">
+                {#if library.length === 0}
+                  <div class="start-callout">
+                    <span class="w-11 h-11 grid place-items-center rounded-xl shrink-0" style="background: rgb(108 107 245 / 0.14); border: 1px solid var(--line-volt); color: var(--volt-300);">
+                      <Icon name="sparkles" size={20} />
+                    </span>
+                    <div class="min-w-0 flex-1">
+                      <p class="text-sm font-semibold">Build your collection</p>
+                      <p class="text-xs mt-1 leading-relaxed" style="color: var(--paper-400);">
+                        Save a poster and it follows you across Continue Watching, Library and History.
+                        Search is the fastest way in.
+                      </p>
                     </div>
-                  {:else}
-                    {#each continueItems as entry (entry.media.id)}
-                      <div class="w-[280px] md:w-[320px] shrink-0">
-                        <ContinueCard item={entry} onOpen={(item) => void openDetail(item)} />
+                    <button class="btn-primary px-4 py-2 text-xs shrink-0" onclick={openPalette}>
+                      <Icon name="search" size={13} />
+                      Search titles
+                      <kbd class="kbd">Ctrl K</kbd>
+                    </button>
+                  </div>
+                {:else}
+                  <section aria-label="Continue watching">
+                    <Shelf title="Continue Watching" count={continueItems.length} onSeeAll={() => goView("library")}>
+                      {#if continueError}
+                        <div class="w-full surface px-4 py-4 flex items-center gap-3 text-sm" style="color: var(--paper-300);" role="alert">
+                          <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: rgb(251 113 133 / 0.1); color: var(--danger);">
+                            <Icon name="alert" size={16} />
+                          </span>
+                          <span class="flex-1">Progress did not load: {continueError}</span>
+                          <button class="btn-ghost px-3 py-1.5 text-[11px] shrink-0" onclick={() => void refreshContinue()}>Retry</button>
+                        </div>
+                      {:else if continueItems.length === 0}
+                        <div class="w-full surface px-4 py-4 flex items-center gap-3 text-sm" style="color: var(--paper-300);">
+                          <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: rgb(108 107 245 / 0.1); color: var(--volt-300);">
+                            <Icon name="playCircle" size={16} />
+                          </span>
+                          <span class="flex-1">Nothing in progress yet. Mark an episode watched and this row fills itself.</span>
+                          <button class="btn-ghost px-3 py-1.5 text-[11px] shrink-0" onclick={() => goView("library")}>Open library</button>
+                        </div>
+                      {:else}
+                        {#each continueItems as entry (entry.media.id)}
+                          <div class="w-[300px] md:w-[320px] shrink-0">
+                            <ContinueCard item={entry} onOpen={(item) => void openDetail(item)} />
+                          </div>
+                        {/each}
+                      {/if}
+                    </Shelf>
+                  </section>
+                {/if}
+
+                <Rail
+                  title="Top 10 Today"
+                  state={trendingRail}
+                  rank={true}
+                  isInLibrary={isInLibrary}
+                  onOpen={(item) => void openDetail(item)}
+                  onToggleLibrary={toggleLibrary}
+                  onPlay={openPlay}
+                  onRetry={() => void loadRail("trending", "trending", 1)}
+                />
+
+                <Rail
+                  title="Trending Now"
+                  state={rails.trendingMore}
+                  isInLibrary={isInLibrary}
+                  onOpen={(item) => void openDetail(item)}
+                  onToggleLibrary={toggleLibrary}
+                  onPlay={openPlay}
+                  onRetry={() => void loadRail("trendingMore", "trending", 2)}
+                />
+
+                <Rail
+                  title="Top Airing"
+                  state={rails.airing}
+                  isInLibrary={isInLibrary}
+                  onOpen={(item) => void openDetail(item)}
+                  onToggleLibrary={toggleLibrary}
+                  onPlay={openPlay}
+                  onRetry={() => void loadRail("airing", "airing", 1)}
+                />
+
+                <Rail
+                  title="Top Rated"
+                  state={rails.top}
+                  isInLibrary={isInLibrary}
+                  onOpen={(item) => void openDetail(item)}
+                  onToggleLibrary={toggleLibrary}
+                  onPlay={openPlay}
+                  onRetry={() => void loadRail("top", "top", 1)}
+                />
+
+                <Rail
+                  title="Popular"
+                  state={rails.popular}
+                  isInLibrary={isInLibrary}
+                  onOpen={(item) => void openDetail(item)}
+                  onToggleLibrary={toggleLibrary}
+                  onPlay={openPlay}
+                  onRetry={() => void loadRail("popular", "popular", 1)}
+                />
+
+                {#if library.length > 0}
+                  <Shelf
+                    title="Library Preview"
+                    count={library.length}
+                    onSeeAll={() => goView("library")}
+                  >
+                    {#each library.slice(0, 10) as entry (entry.media.id)}
+                      <div class="w-[164px] lg:w-[184px] shrink-0">
+                        <PosterCard
+                          item={entry.media}
+                          inLibrary={true}
+                          progress={entry.media.episodes ? { watched: entry.watchedCount, total: entry.media.episodes } : null}
+                          onOpen={(entryMedia) => void openDetail(entryMedia)}
+                          onToggleLibrary={toggleLibrary}
+                          onPlay={openPlay}
+                        />
                       </div>
                     {/each}
-                  {/if}
-                </Shelf>
-              </section>
+                  </Shelf>
+                {/if}
+
+                <footer class="pt-1 pb-6 text-center text-[10px] tracking-[0.08em]" style="color: var(--paper-500);">
+                  Kaminari 0.7.0 · AniList catalogue · local SQLite progress
+                </footer>
+              </div>
             {/if}
-
-            <Rail
-              title="Top 10 Today"
-              state={trendingRail}
-              rank={true}
-              isInLibrary={isInLibrary}
-              onOpen={(item) => void openDetail(item)}
-              onToggleLibrary={toggleLibrary}
-              onPlay={openPlay}
-              onRetry={() => void loadRail("trending", "trending", 1)}
-            />
-
-            <Rail
-              title="Trending Now"
-              state={rails.trendingMore}
-              isInLibrary={isInLibrary}
-              onOpen={(item) => void openDetail(item)}
-              onToggleLibrary={toggleLibrary}
-              onPlay={openPlay}
-              onRetry={() => void loadRail("trendingMore", "trending", 2)}
-            />
-
-            <Rail
-              title="Top Airing"
-              state={rails.airing}
-              isInLibrary={isInLibrary}
-              onOpen={(item) => void openDetail(item)}
-              onToggleLibrary={toggleLibrary}
-              onPlay={openPlay}
-              onRetry={() => void loadRail("airing", "airing", 1)}
-            />
-
-            <Rail
-              title="Top Rated"
-              state={rails.top}
-              isInLibrary={isInLibrary}
-              onOpen={(item) => void openDetail(item)}
-              onToggleLibrary={toggleLibrary}
-              onPlay={openPlay}
-              onRetry={() => void loadRail("top", "top", 1)}
-            />
-
-            <Rail
-              title="Popular"
-              state={rails.popular}
-              isInLibrary={isInLibrary}
-              onOpen={(item) => void openDetail(item)}
-              onToggleLibrary={toggleLibrary}
-              onPlay={openPlay}
-              onRetry={() => void loadRail("popular", "popular", 1)}
-            />
-
-            {#if library.length > 0}
-              <Shelf
-                title="Library Preview"
-                count={library.length}
-                onSeeAll={() => goView("library")}
-              >
-                {#each library.slice(0, 10) as entry (entry.media.id)}
-                  <div class="w-[160px] md:w-[180px] shrink-0">
-                    <PosterCard
-                      item={entry.media}
-                      inLibrary={true}
-                      onOpen={(entryMedia) => void openDetail(entryMedia)}
-                      onToggleLibrary={toggleLibrary}
-                      onPlay={openPlay}
-                    />
-                  </div>
-                {/each}
-              </Shelf>
+          {:else if view === "library"}
+            {#if libraryLoading && library.length === 0 && sourceLibraryItems.length === 0}
+              <div class="p-6 md:p-8 max-w-[1440px] mx-auto">
+                <Skeleton kind="grid" />
+              </div>
+            {:else}
+              <LibraryView
+                items={library}
+                sourceItems={sourceLibraryItems}
+                error={libraryError}
+                onRetry={() => void refreshLibrary()}
+                onOpen={(item) => void openDetail(item)}
+                onOpenSource={openSourceBrowser}
+                onToggleLibrary={toggleLibrary}
+                onPlay={openPlay}
+                onBrowse={() => goView("browse")}
+                onOpenSearch={openPalette}
+                onOpenSources={() => goView("sources")}
+                onSetStatus={(item, status) => void setStatus(item, status)}
+              />
             {/if}
-          </div>
-        {/if}
-      {:else if view === "library"}
-        {#if libraryLoading && library.length === 0}
-          <div class="p-6 md:p-8 max-w-[1440px] mx-auto">
-            <Skeleton kind="grid" />
-          </div>
-        {:else}
-          <LibraryView
-            items={library}
-            sourceItems={sourceLibraryItems}
-            onOpen={(item) => void openDetail(item)}
-            onOpenSource={(item) => {
-              sourceBrowser = {
-                extension: { id: item.extensionId, name: item.extensionName },
-                initialShow: {
-                  id: item.showId,
-                  title: item.title,
-                  cover: item.cover ?? null,
-                  year: item.year ?? null,
-                },
-              };
-            }}
-            onToggleLibrary={toggleLibrary}
-            onPlay={openPlay}
-            onBrowse={() => goView("browse")}
-            onSetStatus={(item, status) => void setStatus(item, status)}
-          />
-        {/if}
-      {:else if view === "history"}
-        <HistoryView
-          items={historyItems}
-          onOpen={(item) => void openDetail(item)}
-          onBrowse={() => goView("browse")}
-        />
-      {:else if view === "sources"}
-        <SourcesView
-          boot={boot}
-          notify={notify}
-          onBrowse={(extension) =>
-            (sourceBrowser = {
-              extension: { id: extension.id, name: extension.name },
-            })}
-        />
-      {:else}
-        <SettingsView boot={boot} />
-      {/if}
+          {:else if view === "history"}
+            <HistoryView
+              items={historyItems}
+              loading={historyLoading}
+              error={historyError}
+              onRetry={() => void refreshHistory()}
+              onOpen={(item) => void openDetail(item)}
+              onBrowse={() => goView("browse")}
+            />
+          {:else if view === "sources"}
+            <SourcesView boot={boot} notify={notify} onBrowse={openExtension} />
+          {:else}
+            <SettingsView boot={boot} onOpenShortcuts={() => (shortcutsOpen = true)} />
+          {/if}
+        </div>
+      {/key}
     </main>
   </div>
 </div>
@@ -586,9 +683,13 @@
 <SearchPalette
   open={paletteOpen}
   library={library}
+  sourceLibrary={sourceLibraryItems}
   onClose={closePalette}
   onOpen={(item) => void openDetail(item)}
-  notify={notify}
+  onPlay={openPlay}
+  onOpenSource={openSourceBrowser}
+  onNav={goView}
+  onOpenShortcuts={() => (shortcutsOpen = true)}
 />
 
 <ShortcutsDialog open={shortcutsOpen} onClose={() => (shortcutsOpen = false)} />
@@ -607,21 +708,21 @@
 <Toasts toasts={toasts} onDismiss={dismissToast} />
 
 <style>
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-  }
-  .sr-only:focus {
+  .skip-link {
     position: fixed;
-    top: 48px;
+    top: -64px;
     left: 88px;
-    width: auto;
-    height: auto;
-    clip: auto;
+    z-index: 80;
+    padding: 8px 14px;
+    border-radius: 10px;
     background: var(--volt-500);
     color: var(--paper-50);
+    font-size: 13px;
+    font-weight: 600;
+    transition: top 150ms var(--ease-out);
+  }
+
+  .skip-link:focus {
+    top: 48px;
   }
 </style>

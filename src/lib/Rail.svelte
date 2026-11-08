@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./Icon.svelte";
   import { isRateLimitMessage } from "./format";
   import PosterCard from "./PosterCard.svelte";
   import Shelf from "./Shelf.svelte";
@@ -37,11 +38,10 @@
     {#if state.loading}
       <Skeleton kind="row" />
     {:else if state.error}
-      <div
-        class="w-full rounded-xl px-4 py-3.5 flex flex-col sm:flex-row sm:items-center gap-2 text-sm"
-        style="background: var(--void-900); border: 1px solid var(--line);"
-        role="alert"
-      >
+      <div class="w-full surface px-4 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3 text-sm" role="alert">
+        <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: rgb(251 191 36 / 0.1); color: var(--warning);">
+          <Icon name="alert" size={16} />
+        </span>
         <p class="flex-1" style="color: var(--paper-300);">
           {isRateLimitMessage(state.error)
             ? `${title} hit the AniList rate limit. It clears in under a minute.`
@@ -49,11 +49,19 @@
         </p>
         <button class="btn-ghost px-3 py-1.5 text-xs shrink-0" onclick={onRetry}>Retry</button>
       </div>
+    {:else if shown.length === 0}
+      <div class="w-full surface px-4 py-3.5 text-sm" style="color: var(--paper-500);">
+        No titles in this shelf yet.
+      </div>
     {:else if rank}
       {#each shown as item, position (item.id)}
-        <div class="flex items-end shrink-0" aria-label="Rank {position + 1}: {item.title.english || item.title.romaji || 'Untitled'}">
+        <div
+          class="flex items-end shrink-0"
+          style={position === 0 ? "padding-left: 18px;" : ""}
+          aria-label="Rank {position + 1}: {item.title.english || item.title.romaji || 'Untitled'}"
+        >
           <span class="rank-num {position < 3 ? 'rank-hot' : ''}" aria-hidden="true">{String(position + 1).padStart(2, "0")}</span>
-          <div class="w-[160px] md:w-[180px] -ml-4 mb-1">
+          <div class="w-[164px] lg:w-[184px] -ml-5 mb-1">
             <PosterCard
               item={item}
               inLibrary={isInLibrary(item.id)}
@@ -66,7 +74,7 @@
       {/each}
     {:else}
       {#each shown as item (item.id)}
-        <div class="w-[160px] md:w-[180px] shrink-0">
+        <div class="w-[164px] lg:w-[184px] shrink-0">
           <PosterCard
             item={item}
             inLibrary={isInLibrary(item.id)}

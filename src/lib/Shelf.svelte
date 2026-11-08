@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import Icon from "./Icon.svelte";
 
   let {
     title,
@@ -25,50 +26,61 @@
     if (row) row.scrollLeft = 0;
   });
 
+  const reduceMotion =
+    typeof matchMedia !== "undefined" &&
+    matchMedia("(prefers-reduced-motion: reduce)").matches;
+
   function page(dir: 1 | -1) {
     if (!row) return;
-    row.scrollBy({ left: dir * row.clientWidth * 0.8, behavior: "smooth" });
+    row.scrollBy({
+      left: dir * row.clientWidth * 0.8,
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
+  }
+
+  function onKeys(event: KeyboardEvent) {
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      page(1);
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      page(-1);
+    }
   }
 </script>
 
 <section class="shelf-hover" aria-label={title}>
-  <div class="flex items-baseline gap-3 mb-3">
-    <h2 class="text-xl font-semibold" style="font-family: var(--font-display);">{title}</h2>
+  <div class="shelf-head">
+    <h2 class="shelf-title">{title}</h2>
     {#if count !== undefined}
-      <span class="text-sm" style="color: var(--paper-500);">{count}</span>
+      <span class="shelf-count">{count}</span>
     {/if}
     <div class="flex-1"></div>
     {#if onSeeAll}
-      <button
-        class="text-sm font-semibold"
-        style="color: var(--volt-300);"
-        onclick={onSeeAll}
-      >
+      <button class="flex items-center gap-1 text-xs font-semibold" style="color: var(--volt-300);" onclick={onSeeAll}>
         See all
+        <Icon name="arrowRight" size={13} />
       </button>
     {/if}
-    <div class="shelf-nav flex gap-1">
-      <button
-        class="w-7 h-7 grid place-items-center rounded-lg text-sm"
-        style="background: var(--void-800); border: 1px solid var(--line); color: var(--paper-300);"
-        aria-label="Scroll {title} back"
-        onclick={() => page(-1)}
-      >
-        ‹
+    <div class="shelf-nav">
+      <button class="shelf-arrow" aria-label="Scroll {title} back" onclick={() => page(-1)}>
+        <Icon name="chevronLeft" size={15} />
       </button>
-      <button
-        class="w-7 h-7 grid place-items-center rounded-lg text-sm"
-        style="background: var(--void-800); border: 1px solid var(--line); color: var(--paper-300);"
-        aria-label="Scroll {title} forward"
-        onclick={() => page(1)}
-      >
-        ›
+      <button class="shelf-arrow" aria-label="Scroll {title} forward" onclick={() => page(1)}>
+        <Icon name="chevronRight" size={15} />
       </button>
     </div>
   </div>
+  <!-- The scroll row is focusable so the arrow keys can page it. -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     bind:this={row}
-    class="shelf-scroll flex gap-4 overflow-x-auto pb-2"
+    class="shelf-scroll"
+    tabindex={0}
+    role="group"
+    aria-label="{title} row. Use left and right arrows to scroll."
+    onkeydown={onKeys}
   >
     {@render children()}
   </div>

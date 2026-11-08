@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import EmptyState from "./EmptyState.svelte";
+  import Icon from "./Icon.svelte";
+  import PlayerView from "./PlayerView.svelte";
   import {
     jsExtensionDetail,
     jsExtensionEpisodes,
@@ -20,7 +23,6 @@
     SourceLibraryItem,
     SourceProgress,
   } from "./types";
-  import PlayerView from "./PlayerView.svelte";
 
   let {
     extension,
@@ -52,6 +54,9 @@
   let activePlayback = $state<{ stream: JsStream; episode: JsEpisode; startSec: number } | null>(null);
   let progress = $state<SourceProgress[]>([]);
   let searchInput: HTMLInputElement | null = $state(null);
+  let dialog: HTMLDivElement | null = $state(null);
+  let closeButton: HTMLButtonElement | null = $state(null);
+  let previousFocus: HTMLElement | null = null;
 
   const inSourceLibrary = $derived(
     selected
@@ -63,6 +68,12 @@
   );
 
   onMount(() => {
+    previousFocus = document.activeElement as HTMLElement | null;
+    document.body.dataset.overlay = "source";
+    requestAnimationFrame(() => {
+      if (searchInput?.offsetParent) searchInput.focus();
+      else closeButton?.focus();
+    });
     void (async () => {
       if (initialShow) {
         await openShow(initialShow);
@@ -71,18 +82,39 @@
       }
     })();
     searchInput?.focus();
+
+    return () => {
+      delete document.body.dataset.overlay;
+      previousFocus?.focus?.();
+    };
   });
 
   $effect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-      }
+      if (event.key !== "Escape" || activePlayback) return;
+      event.preventDefault();
+      onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+
+  function trapTab(event: KeyboardEvent) {
+    if (event.key !== "Tab" || !dialog) return;
+    const items = [...dialog.querySelectorAll("button, input, select")].filter(
+      (el) => (el as HTMLElement).tabIndex >= 0,
+    ) as HTMLElement[];
+    if (items.length === 0) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
 
   async function runSearch() {
     loading = true;
@@ -283,23 +315,34 @@
       .replace(/\s+/g, " ")
       .trim();
   }
+
+  function hostOf(url: string): string {
+    try {
+      return new URL(url).host;
+    } catch {
+      return url.slice(0, 42);
+    }
+  }
 </script>
 
 <div
+  bind:this={dialog}
   class="fixed inset-0 z-40 flex flex-col"
-  style="background: var(--void-950);"
+  style="background: radial-gradient(900px 500px at 20% -10%, rgb(108 107 245 / 0.1), transparent 60%), var(--void-950);"
   role="dialog"
   aria-modal="true"
   aria-label="{extension.name} source browser"
+  tabindex={-1}
+  onkeydown={trapTab}
 >
-  <header
-    class="h-12 shrink-0 flex items-center gap-3 px-4"
-    style="background: var(--void-900); border-bottom: 1px solid var(--line);"
-  >
-    <button class="btn-ghost px-3 py-1.5 text-xs" onclick={onClose}>Close</button>
+  <header class="h-14 shrink-0 flex items-center gap-3 px-4 glass-strong" style="border-bottom: 1px solid var(--line);">
+    <button bind:this={closeButton} class="btn-ghost px-2.5 py-2 text-xs" onclick={onClose} aria-label="Close source browser">
+      <Icon name="close" size={15} />
+    </button>
+    <div class="source-tile" style="width: 34px; height: 34px; font-size: 10px;" aria-hidden="true">JS</div>
     <div class="min-w-0">
       <p class="text-sm font-semibold truncate">{extension.name}</p>
-      <p class="text-[10px] truncate" style="color: var(--paper-500); font-family: var(--font-mono);">
+      <p class="text-[10px] truncate" style="color: var(--paper-450); font-family: var(--font-mono);">
         {extension.id}
       </p>
     </div>
@@ -310,16 +353,22 @@
         void runSearch();
       }}
     >
-      <input
-        bind:this={searchInput}
-        bind:value={query}
-        placeholder="Search this source"
-        class="h-8 w-[260px] rounded-lg px-3 text-sm outline-none"
-        style="background: var(--void-800); border: 1px solid var(--line); color: var(--paper-50);"
-        aria-label="Search this source"
-      />
-      <button type="submit" class="btn-primary px-3 py-1.5 text-xs" disabled={loading}>
-        {loading ? "Searching." : "Search"}
+      <label class="relative hidden sm:block">
+        <span class="sr-only">Search this source</span>
+        <span class="absolute left-3 top-1/2 -translate-y-1/2" style="color: var(--paper-450);">
+          <Icon name="search" size={13} />
+        </span>
+        <input
+          bind:this={searchInput}
+          bind:value={query}
+          placeholder="Search this source"
+          class="h-8 w-[240px] rounded-lg pl-8 pr-3 text-sm outline-none"
+          style="background: rgb(255 255 255 / 0.05); border: 1px solid var(--line); color: var(--paper-50);"
+          aria-label="Search this source"
+        />
+      </label>
+      <button type="submit" class="btn-primary px-3 py-1.5 text-[11px]" disabled={loading}>
+        {loading ? "Searching" : "Search"}
       </button>
     </form>
   </header>
@@ -327,9 +376,10 @@
   <main class="flex-1 overflow-y-auto">
     {#if selected}
       <div class="max-w-[1200px] mx-auto p-6 md:p-8">
-        <div class="flex items-center gap-2 mb-4">
+        <div class="flex flex-wrap items-center gap-2 mb-4">
           <button class="btn-ghost px-3 py-1.5 text-xs" onclick={backToResults}>
-            ← Back to results
+            <Icon name="arrowLeft" size={14} />
+            Back to results
           </button>
           <button
             class={inSourceLibrary ? "btn-ghost" : "btn-primary"}
@@ -338,89 +388,116 @@
             class:text-xs={true}
             onclick={() => void toggleSourceLibrary()}
           >
-            {inSourceLibrary ? "✓ In Library" : "+ Library"}
+            <Icon name={inSourceLibrary ? "check" : "plus"} size={14} />
+            {inSourceLibrary ? "In Library" : "Library"}
           </button>
         </div>
 
+        <div class="relative overflow-hidden rounded-3xl" style="border: 1px solid var(--line-strong); box-shadow: var(--shadow-pop);">
+          {#if selected.banner || selected.cover}
+            <img src={selected.banner || selected.cover} alt="" class="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-40" />
+          {/if}
+          <div class="absolute inset-0" style="background: linear-gradient(90deg, var(--void-950) 0%, rgb(8 8 15 / 0.78) 52%, rgb(8 8 15 / 0.22) 100%), linear-gradient(0deg, var(--void-950) 0%, transparent 70%);"></div>
+          <div class="relative flex flex-col sm:flex-row gap-6 p-6 md:p-8">
+            <div
+              class="w-[150px] sm:w-[190px] shrink-0 aspect-[2/3] rounded-2xl overflow-hidden"
+              style="background: var(--void-800); border: 1px solid var(--line-strong); box-shadow: 0 20px 50px rgb(0 0 0 / 0.55);"
+            >
+              {#if selected.cover}
+                <img src={selected.cover} alt="" class="w-full h-full object-cover" />
+              {:else}
+                <div class="w-full h-full grid place-items-center">
+                  <span class="text-4xl font-bold" style="color: var(--paper-450); font-family: var(--font-display);">{selected.title.slice(0, 1)}</span>
+                </div>
+              {/if}
+            </div>
+            <div class="min-w-0 flex-1 self-end">
+              <p class="eyebrow">Source result</p>
+              <h1 class="mt-1 leading-[1.04] line-clamp-2" style="font-family: var(--font-display); font-size: clamp(28px, 3.6vw, 46px); font-weight: 750; letter-spacing: -0.03em;">
+                {selected.title}
+              </h1>
+              <div class="flex flex-wrap items-center gap-2 mt-2.5">
+                {#if selected.year}<span class="chip text-[11px] px-2.5 py-1">{selected.year}</span>{/if}
+                {#if selected.status}<span class="chip text-[11px] px-2.5 py-1">{selected.status}</span>{/if}
+                <span class="chip chip-volt text-[11px] px-2.5 py-1">
+                  <Icon name="package" size={11} />
+                  {extension.name}
+                </span>
+              </div>
+              {#if selected.genres?.length}
+                <div class="flex flex-wrap gap-1.5 mt-2.5">
+                  {#each selected.genres as genre}
+                    <span class="chip text-[10px] px-2 py-0.5">{genre}</span>
+                  {/each}
+                </div>
+              {/if}
+              <p class="text-sm mt-3 leading-relaxed max-w-2xl line-clamp-3" style="color: var(--paper-300);">
+                {clean(selected.synopsis) || "This source did not return a synopsis."}
+              </p>
+            </div>
+          </div>
+        </div>
+
         {#if showError}
-          <div
-            class="rounded-xl px-4 py-3 text-sm mb-4"
-            style="background: var(--void-800); border: 1px solid var(--line); color: var(--paper-300);"
-            role="alert"
-          >
+          <div class="mt-4 surface px-4 py-3 text-sm flex items-start gap-2.5" role="alert" style="color: var(--paper-300);">
+            <Icon name="alert" size={15} class="mt-0.5 shrink-0" />
             {showError}
           </div>
         {/if}
 
-        <div class="flex flex-col sm:flex-row gap-6">
-          <div
-            class="w-[160px] sm:w-[200px] shrink-0 aspect-[2/3] rounded-2xl overflow-hidden"
-            style="background: var(--void-800); border: 1px solid var(--line);"
-          >
-            {#if selected.cover}
-              <img src={selected.cover} alt="" class="w-full h-full object-cover" />
-            {/if}
-          </div>
-          <div class="min-w-0 flex-1">
-            <p class="eyebrow">Source result</p>
-            <h1
-              class="mt-1 leading-tight"
-              style="font-family: var(--font-display); font-size: clamp(26px, 3vw, 38px); font-weight: 700;"
-            >
-              {selected.title}
-            </h1>
-            <p class="text-sm mt-2" style="color: var(--paper-300);">
-              {selected.year ?? ""}
-              {#if selected.status} · {selected.status}{/if}
-            </p>
-            {#if selected.genres?.length}
-              <div class="flex flex-wrap gap-1.5 mt-3">
-                {#each selected.genres as genre}
-                  <span class="chip text-xs px-2 py-0.5">{genre}</span>
-                {/each}
-              </div>
-            {/if}
-            <p class="text-sm mt-4 leading-relaxed max-w-2xl" style="color: var(--paper-300);">
-              {clean(selected.synopsis) || "This source did not return a synopsis."}
-            </p>
-          </div>
-        </div>
-
         <div class="flex items-baseline gap-3 mt-8 mb-3">
-          <h2 class="text-lg font-semibold">Episodes</h2>
-          <span class="text-sm" style="color: var(--paper-500);">{episodes.length}</span>
+          <h2 class="shelf-title">Episodes</h2>
+          <span class="shelf-count">{episodes.length}</span>
+          <span class="ml-auto text-[10px]" style="color: var(--paper-450); font-family: var(--font-mono);">
+            {progress.filter((row) => row.watched).length} watched
+          </span>
         </div>
 
         {#if showLoading}
-          <p class="text-sm" style="color: var(--paper-500);">Reading metadata and episodes.</p>
+          <div class="space-y-2">
+            {#each Array(4) as _}
+              <div class="surface p-3 flex items-center gap-3">
+                <div class="shimmer w-24 h-14 rounded-lg shrink-0"></div>
+                <div class="flex-1 space-y-2">
+                  <div class="shimmer h-3 w-1/2 rounded"></div>
+                  <div class="shimmer h-2 w-1/3 rounded"></div>
+                </div>
+                <div class="shimmer h-8 w-20 rounded-lg"></div>
+              </div>
+            {/each}
+          </div>
         {:else if episodes.length === 0}
-          <p class="text-sm" style="color: var(--paper-500);">
+          <div class="surface px-4 py-5 text-sm flex items-center gap-3" style="color: var(--paper-300);">
+            <span style="color: var(--paper-450);"><Icon name="info" size={16} /></span>
             This source returned no episodes for this title.
-          </p>
+          </div>
         {:else}
           <div class="space-y-2">
             {#each episodes as episode (episode.id)}
               {@const saved = progressFor(episode.id)}
-              <div
-                class="rounded-xl overflow-hidden"
-                style="background: var(--void-900); border: 1px solid var(--line);"
-              >
-                <div class="flex items-center gap-3 px-3 py-2.5">
-                  <span
-                    class="w-8 h-8 grid place-items-center rounded-lg text-xs font-semibold shrink-0"
-                    style="background: var(--void-800); color: var(--volt-300); font-family: var(--font-mono);"
-                  >
-                    {episode.number}
-                  </span>
+              <div class="surface overflow-hidden">
+                <div class="flex items-center gap-3 p-3">
+                  <div class="w-24 h-14 shrink-0 rounded-lg overflow-hidden relative" style="background: var(--void-700); border: 1px solid var(--line);">
+                    {#if episode.thumbnail}
+                      <img src={episode.thumbnail} alt="" loading="lazy" decoding="async" class="w-full h-full object-cover" />
+                    {:else}
+                      <div class="w-full h-full grid place-items-center font-mono text-sm" style="color: var(--volt-300);">{episode.number}</div>
+                    {/if}
+                  </div>
                   <div class="min-w-0 flex-1">
-                    <p class="text-sm font-semibold truncate">
-                      {episode.title || `Episode ${episode.number}`}
-                    </p>
-                    <p class="text-[11px]" style="color: var(--paper-500);">
-                      {duration(episode.durationSec)}
+                    <div class="flex items-center gap-2">
+                      <p class="text-sm font-semibold truncate">
+                        {episode.title || `Episode ${episode.number}`}
+                      </p>
+                      {#if saved?.watched}
+                        <span class="chip chip-live text-[9px] px-1.5 py-0.5">Watched</span>
+                      {/if}
+                    </div>
+                    <p class="text-[11px] mt-0.5" style="color: var(--paper-450); font-family: var(--font-mono);">
+                      EP {episode.number}{duration(episode.durationSec) ? ` · ${duration(episode.durationSec)}` : ""}
                     </p>
                     {#if saved}
-                      <div class="h-0.5 rounded-full mt-1 overflow-hidden" style="background: var(--void-700);" aria-hidden="true">
+                      <div class="h-0.5 rounded-full mt-1.5 overflow-hidden" style="background: var(--void-700);" aria-hidden="true">
                         <div
                           class="h-full"
                           style="width: {saved.durationSec > 0
@@ -428,7 +505,7 @@
                             : 0}%; background: var(--volt-400);"
                         ></div>
                       </div>
-                      <p class="text-[10px] mt-0.5" style="color: var(--paper-500);">
+                      <p class="text-[10px] mt-0.5" style="color: var(--paper-450);">
                         {saved.watched
                           ? "Watched"
                           : saved.positionSec > 0
@@ -438,42 +515,37 @@
                     {/if}
                   </div>
                   <button
-                    class="btn-primary px-3 py-1.5 text-xs shrink-0"
+                    class="btn-primary px-3 py-1.5 text-[11px] shrink-0"
                     disabled={resolving === episode.id}
                     onclick={() => void resolve(episode)}
                   >
-                    {resolving === episode.id ? "Resolving." : "Resolve"}
+                    <Icon name="playCircle" size={13} />
+                    {resolving === episode.id ? "Resolving" : "Resolve"}
                   </button>
                 </div>
                 {#if streams[episode.id]}
-                  <div class="px-3 pb-3 space-y-1.5">
+                  <div class="px-3 pb-3 space-y-1.5" style="border-top: 1px solid var(--line); padding-top: 10px;">
                     {#each streams[episode.id] as stream}
-                      <div
-                        class="flex items-center gap-2 px-2 py-1.5 rounded-lg"
-                        style="background: var(--void-800); border: 1px solid var(--line);"
-                      >
-                        <span class="text-[10px] font-semibold" style="color: var(--volt-300);">
+                      <div class="flex items-center gap-2 px-2.5 py-2 rounded-lg" style="background: rgb(5 5 11 / 0.4); border: 1px solid var(--line);">
+                        <span class="chip chip-volt text-[9px] px-1.5 py-0.5 shrink-0">
                           {stream.type.toUpperCase()}
-                          {#if stream.quality} · {stream.quality}{/if}
                         </span>
-                        <span
-                          class="text-[10px] truncate flex-1"
-                          style="color: var(--paper-500); font-family: var(--font-mono);"
-                          title={stream.url}
-                        >
-                          {stream.url}
+                        {#if stream.quality}
+                          <span class="text-[10px] font-semibold shrink-0" style="color: var(--paper-300);">{stream.quality}</span>
+                        {/if}
+                        <span class="text-[10px] truncate flex-1" style="color: var(--paper-450); font-family: var(--font-mono);" title={stream.url}>
+                          {hostOf(stream.url)}
                         </span>
-                        <button
-                          class="btn-primary px-2 py-0.5 text-[10px] shrink-0"
-                          onclick={() => void playStream(stream, episode)}
-                        >
+                        <button class="btn-primary px-2.5 py-1 text-[10px] shrink-0" onclick={() => void playStream(stream, episode)}>
+                          <Icon name="play" size={10} />
                           {resumeFor(episode.id) > 0 ? "Resume" : "Play"}
                         </button>
-                        <button
-                          class="btn-ghost px-2 py-0.5 text-[10px] shrink-0"
-                          onclick={() => void copyStream(stream.url)}
-                        >
+                        <button class="btn-ghost px-2.5 py-1 text-[10px] shrink-0" onclick={() => void copyStream(stream.url)}>
+                          <Icon name="copy" size={10} />
                           Copy
+                        </button>
+                        <button class="btn-ghost px-2.5 py-1 text-[10px] shrink-0" onclick={() => void openExternal(stream, episode)} aria-label="Open in mpv">
+                          <Icon name="external" size={10} />
                         </button>
                       </div>
                     {/each}
@@ -483,15 +555,12 @@
             {/each}
           </div>
           {#if streamError}
-            <div
-              class="mt-3 rounded-lg px-3 py-2 text-xs"
-              style="background: rgb(248 113 113 / 0.1); border: 1px solid rgb(248 113 113 / 0.35);"
-              role="alert"
-            >
+            <div class="mt-3 rounded-lg px-3 py-2 text-xs flex items-start gap-2" style="background: rgb(251 113 133 / 0.1); border: 1px solid rgb(251 113 133 / 0.35);" role="alert">
+              <Icon name="alert" size={13} class="mt-0.5 shrink-0" />
               {streamError}
             </div>
           {/if}
-          <p class="text-xs mt-3" style="color: var(--paper-500);">
+          <p class="text-xs mt-3" style="color: var(--paper-450);">
             Play opens the in-app player. Open in mpv is the fallback for formats the WebView cannot
             decode.
           </p>
@@ -500,10 +569,14 @@
     {:else}
       <div class="max-w-[1440px] mx-auto p-6 md:p-8">
         <div class="flex items-baseline gap-3 mb-4">
-          <h2 class="text-xl font-semibold" style="font-family: var(--font-display);">
-            Search results
-          </h2>
-          <span class="text-sm" style="color: var(--paper-500);">{results.length}</span>
+          <div>
+            <p class="eyebrow">Source browser</p>
+            <h2 class="shelf-title mt-1">Search results</h2>
+          </div>
+          <span class="shelf-count">{results.length}</span>
+          <span class="ml-auto text-[10px]" style="color: var(--paper-450); font-family: var(--font-mono);">
+            {extension.name}
+          </span>
         </div>
 
         {#if loading}
@@ -516,38 +589,52 @@
             {/each}
           </div>
         {:else if error}
-          <div
-            class="max-w-xl rounded-2xl px-5 py-4 text-sm"
-            style="background: var(--void-800); border: 1px solid var(--line); color: var(--paper-300);"
-            role="alert"
-          >
-            {error}
-            <button class="btn-primary ml-3 px-3 py-1 text-xs" onclick={() => void runSearch()}>
-              Retry
-            </button>
-          </div>
+          <EmptyState
+            compact
+            icon="search"
+            title={error.startsWith("No results") ? "No matches in this source" : "Source search failed"}
+            body={error}
+            actionLabel="Retry"
+            actionIcon="refresh"
+            onAction={() => void runSearch()}
+          />
+        {:else if results.length === 0}
+          <EmptyState
+            compact
+            icon="search"
+            title="Search this source"
+            body="Type a title and run a search. Results come straight from the extension host."
+            actionLabel="Search"
+            onAction={() => void runSearch()}
+          />
         {:else}
           <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
             {#each results as item (item.id)}
               <button
-                class="poster-card group text-left rounded-xl overflow-hidden"
-                style="background: var(--void-800); border: 1px solid var(--line);"
+                class="poster-card group block w-full text-left"
                 onclick={() => void openShow(item)}
                 aria-label="Open {item.title}"
               >
-                <div class="aspect-[2/3] relative overflow-hidden" style="background: var(--void-700);">
+                <div class="poster-art aspect-[2/3]">
                   {#if item.cover}
-                    <img
-                      src={item.cover}
-                      alt=""
-                      loading="lazy"
-                      class="zoom w-full h-full object-cover"
-                    />
+                    <img src={item.cover} alt="" loading="lazy" decoding="async" class="w-full h-full object-cover" />
+                  {:else}
+                    <div class="w-full h-full grid place-items-center" style="background: radial-gradient(circle at 30% 20%, rgb(139 138 255 / 0.2), transparent 60%), var(--void-800);">
+                      <span class="text-3xl font-bold" style="color: var(--paper-450); font-family: var(--font-display);">{item.title.slice(0, 1)}</span>
+                    </div>
+                  {/if}
+                  <span class="poster-scrim" aria-hidden="true"></span>
+                  <span class="poster-badge">Source</span>
+                  {#if item.score}
+                    <span class="poster-score">
+                      <Icon name="star" size={9} />
+                      {(item.score / 10).toFixed(1)}
+                    </span>
                   {/if}
                 </div>
-                <div class="p-2.5">
-                  <p class="text-[13px] font-semibold leading-snug line-clamp-2">{item.title}</p>
-                  <p class="text-xs mt-1" style="color: var(--paper-500);">{item.year ?? ""}</p>
+                <div class="poster-body">
+                  <p class="poster-title">{item.title}</p>
+                  <p class="poster-meta">{item.year ?? "Source result"}{item.episodes ? ` · ${item.episodes} eps` : ""}</p>
                 </div>
               </button>
             {/each}
@@ -574,3 +661,13 @@
     {notify}
   />
 {/if}
+
+<style>
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+</style>

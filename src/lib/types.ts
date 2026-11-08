@@ -209,8 +209,14 @@ export type RailState = {
 
 export type ToastTone = "info" | "success" | "error";
 
+export type ToastAction = {
+  label: string;
+  run: () => void;
+};
+
 export type Toast = {
   id: number;
   text: string;
   tone: ToastTone;
+  action?: ToastAction;
 };

@@ -1,26 +1,39 @@
 <script lang="ts">
+  import Icon from "./Icon.svelte";
   import { searchAniList } from "./api";
-  import { coverOf, displayTitle, metaOf } from "./format";
-  import type { LibraryItem, Media } from "./types";
+  import { coverOf, displayTitle, metaOf, scoreOutOfTen } from "./format";
+  import type { LibraryItem, Media, SourceLibraryItem, View } from "./types";
 
   let {
     open,
     library,
+    sourceLibrary = [],
     onClose,
     onOpen,
-    notify,
+    onPlay,
+    onOpenSource,
+    onNav,
+    onOpenShortcuts,
   }: {
     open: boolean;
     library: LibraryItem[];
+    sourceLibrary?: SourceLibraryItem[];
     onClose: () => void;
     onOpen: (item: Media) => void;
-    notify: (text: string, tone?: "info" | "success" | "error") => void;
+    onPlay: (item: Media) => void;
+    onOpenSource: (item: SourceLibraryItem) => void;
+    onNav: (view: View) => void;
+    onOpenShortcuts: () => void;
   } = $props();
 
   const RECENT_KEY = "kaminari.recentSearches";
   const ACTIONS = [
-    { id: "library", label: "Go to Library", hint: "2" },
-    { id: "browse", label: "Browse trending", hint: "1" },
+    { id: "browse", label: "Browse trending", hint: "1", icon: "grid", view: "browse" as View },
+    { id: "library", label: "Go to Library", hint: "2", icon: "library", view: "library" as View },
+    { id: "history", label: "Open History", hint: "3", icon: "clock", view: "history" as View },
+    { id: "sources", label: "Manage Sources", hint: "4", icon: "package", view: "sources" as View },
+    { id: "settings", label: "Open Settings", hint: "5", icon: "settings", view: "settings" as View },
+    { id: "shortcuts", label: "Keyboard shortcuts", hint: "?", icon: "keyboard", view: null },
   ];
 
   let query = $state("");
@@ -38,22 +51,59 @@
   type Row =
     | { kind: "lib"; item: Media }
     | { kind: "net"; item: Media }
-    | { kind: "action"; id: string; label: string };
+    | { kind: "source"; item: SourceLibraryItem }
+    | { kind: "action"; id: string; label: string; hint: string; icon: string; view: View | null };
+
+  const term = $derived(query.trim());
 
   const libHits = $derived(
-    query.trim().length >= 2
+    term.length >= 2
       ? library
-          .filter((entry) => displayTitle(entry.media).toLowerCase().includes(query.trim().toLowerCase()))
+          .filter((entry) => displayTitle(entry.media).toLowerCase().includes(term.toLowerCase()))
           .slice(0, 3)
           .map((entry) => entry.media)
       : [],
   );
 
-  const rows = $derived<Row[]>([
-    ...libHits.map((item): Row => ({ kind: "lib", item })),
-    ...results.map((item): Row => ({ kind: "net", item })),
-    ...(query.trim().length < 2 ? ACTIONS.map((a): Row => ({ kind: "action", id: a.id, label: a.label })) : []),
-  ]);
+  const sourceHits = $derived(
+    term.length >= 2
+      ? sourceLibrary
+          .filter((entry) => entry.title.toLowerCase().includes(term.toLowerCase()))
+          .slice(0, 3)
+      : [],
+  );
+
+  const actionHits = $derived(
+    term.length >= 2
+      ? ACTIONS.filter((action) => action.label.toLowerCase().includes(term.toLowerCase()))
+      : ACTIONS,
+  );
+
+  const groups = $derived.by(() => {
+    const out: { label: string; rows: Row[] }[] = [];
+    if (term.length >= 2) {
+      if (libHits.length > 0) {
+        out.push({ label: "Library", rows: libHits.map((item): Row => ({ kind: "lib", item })) });
+      }
+      if (results.length > 0) {
+        out.push({ label: "AniList", rows: results.map((item): Row => ({ kind: "net", item })) });
+      }
+      if (sourceHits.length > 0) {
+        out.push({ label: "Sources", rows: sourceHits.map((item): Row => ({ kind: "source", item })) });
+      }
+      if (actionHits.length > 0) {
+        out.push({
+          label: "Actions",
+          rows: actionHits.map((action): Row => ({ kind: "action", ...action })),
+        });
+      }
+    } else {
+      out.push({ label: "Jump to", rows: ACTIONS.map((action): Row => ({ kind: "action", ...action })) });
+    }
+    return out;
+  });
+
+  const flatRows = $derived(groups.flatMap((group) => group.rows));
 
   function loadRecent(): string[] {
     try {
@@ -65,13 +115,22 @@
     }
   }
 
-  function saveRecent(term: string) {
-    const next = [term, ...recent.filter((r) => r !== term)].slice(0, 8);
+  function saveRecent(value: string) {
+    const next = [value, ...recent.filter((entry) => entry !== value)].slice(0, 8);
     recent = next;
     try {
       localStorage.setItem(RECENT_KEY, JSON.stringify(next));
     } catch {
       // Private mode or blocked storage. Recent list just stays in memory.
+    }
+  }
+
+  function clearRecent() {
+    recent = [];
+    try {
+      localStorage.removeItem(RECENT_KEY);
+    } catch {
+      // Nothing to do.
     }
   }
 
@@ -91,9 +150,19 @@
     }
   });
 
+  $effect(() => {
+    term;
+    active = 0;
+  });
+
+  $effect(() => {
+    if (!open || !dialog) return;
+    const row = dialog.querySelector(`[data-palette-index="${active}"]`);
+    row?.scrollIntoView({ block: "nearest" });
+  });
+
   // Debounced live search. Stale responses are dropped by request id.
   $effect(() => {
-    const term = query.trim();
     if (!open || term.length < 2) {
       results = [];
       searching = false;
@@ -116,6 +185,9 @@
           const message = e instanceof Error ? e.message : String(e);
           error = message;
           rateLimited = /429|rate|retry/i.test(message);
+          if (rateLimited && lastGood.length > 0) {
+            results = lastGood;
+          }
         } finally {
           if (id === requestId) searching = false;
         }
@@ -124,7 +196,7 @@
     return () => window.clearTimeout(timer);
   });
 
-  // Keep Tab cycling inside the dialog. Esc always closes, handled above.
+  // Keep Tab cycling inside the dialog. Esc always closes.
   function trapTab(event: KeyboardEvent) {
     if (event.key !== "Tab" || !dialog) return;
     const items = [...dialog.querySelectorAll("button, input")].filter(
@@ -145,24 +217,43 @@
   function choose(row: Row | undefined) {
     if (!row) return;
     if (row.kind === "action") {
-      notify(row.id === "library" ? "Library opens on key 2." : "Trending is already on screen.", "info");
       onClose();
+      if (row.view) onNav(row.view);
+      else onOpenShortcuts();
       return;
     }
-    if (query.trim().length >= 2) saveRecent(query.trim());
-    onOpen(row.item);
+    if (row.kind === "source") {
+      onClose();
+      onOpenSource(row.item);
+      return;
+    }
+    if (term.length >= 2) saveRecent(term);
     onClose();
+    onOpen(row.item);
   }
 
-  function onKeys(event: KeyboardEvent) {    if (event.key === "ArrowDown") {
+  function play(row: Row | undefined) {
+    if (!row) return;
+    if (row.kind === "lib" || row.kind === "net") {
+      if (term.length >= 2) saveRecent(term);
+      onClose();
+      onPlay(row.item);
+      return;
+    }
+    choose(row);
+  }
+
+  function onKeys(event: KeyboardEvent) {
+    if (event.key === "ArrowDown") {
       event.preventDefault();
-      active = rows.length ? (active + 1) % rows.length : 0;
+      active = flatRows.length ? (active + 1) % flatRows.length : 0;
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      active = rows.length ? (active - 1 + rows.length) % rows.length : 0;
+      active = flatRows.length ? (active - 1 + flatRows.length) % flatRows.length : 0;
     } else if (event.key === "Enter") {
       event.preventDefault();
-      choose(rows[active]);
+      if (event.shiftKey) play(flatRows[active]);
+      else choose(flatRows[active]);
     } else if (event.key === "Escape") {
       event.preventDefault();
       onClose();
@@ -172,8 +263,8 @@
 
 {#if open}
   <div
-    class="fixed inset-0 z-50 flex justify-center px-4"
-    style="background: rgb(4 4 8 / 0.6); padding-top: 15vh;"
+    class="fixed inset-0 z-[60] flex justify-center px-4 overlay-backdrop"
+    style="padding-top: 12vh;"
     onclick={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}
@@ -183,132 +274,286 @@
       bind:this={dialog}
       onkeydown={trapTab}
       tabindex={-1}
-      class="modal-in glass w-full max-w-[640px] h-fit rounded-[20px] overflow-hidden"
-      style="border: 1px solid var(--line); box-shadow: var(--shadow-pop);"
+      class="modal-in glass-strong w-full max-w-[680px] h-fit rounded-[22px] overflow-hidden"
+      style="border: 1px solid var(--line-strong); box-shadow: var(--shadow-deep);"
       role="dialog"
       aria-modal="true"
-      aria-label="Search"
+      aria-label="Search Kaminari"
     >
-      <div class="flex items-center gap-2 px-4" style="border-bottom: 1px solid var(--line);">
-        <span aria-hidden="true" style="color: var(--paper-500);">⌕</span>
+      <div class="palette-input-row flex items-center gap-3 px-4 h-14" style="border-bottom: 1px solid var(--line);">
+        <Icon name="search" size={18} class="shrink-0" />
         <input
           bind:this={input}
           bind:value={query}
           onkeydown={onKeys}
-          placeholder="Search AniList, two or more chars"
-          class="flex-1 h-12 bg-transparent text-sm outline-none"
+          placeholder="Search AniList, library, sources, actions"
+          class="palette-input flex-1 h-full bg-transparent text-[15px] outline-none"
           style="color: var(--paper-50);"
-          aria-label="Search AniList"
+          aria-label="Search AniList, library, sources and actions"
           autocomplete="off"
           spellcheck={false}
         />
         {#if searching}
-          <span class="text-xs" style="color: var(--paper-500);">Searching</span>
+          <span class="w-3.5 h-3.5 rounded-full border-2 border-t-transparent animate-spin shrink-0" style="border-color: var(--volt-400); border-top-color: transparent;" aria-label="Searching"></span>
         {/if}
-        <button
-          class="text-xs px-2 py-1 rounded-md"
-          style="background: var(--void-800); border: 1px solid var(--line); color: var(--paper-300);"
-          onclick={onClose}
-          aria-label="Close search"
-        >
-          Esc
-        </button>
+        <button class="kbd" onclick={onClose} aria-label="Close search">Esc</button>
       </div>
 
-      <div class="max-h-[46vh] overflow-y-auto p-2">
+      <div class="max-h-[56vh] overflow-y-auto p-2">
+        <p class="sr-only" aria-live="polite">
+          {searching ? "Searching AniList" : `${flatRows.length} results`}
+        </p>
+
         {#if rateLimited}
           <div
-            class="m-2 px-3 py-2 rounded-lg text-sm"
+            class="m-2 px-3 py-2 rounded-lg text-sm flex items-start gap-2"
             style="background: rgb(251 191 36 / 0.1); border: 1px solid rgb(251 191 36 / 0.35); color: var(--paper-50);"
             role="status"
           >
-            AniList is rate limiting. Showing last good results. Try again in a few seconds.
+            <Icon name="alert" size={14} class="mt-0.5 shrink-0" />
+            AniList is rate limiting. Showing the last good results. Try again in a few seconds.
           </div>
         {:else if error}
           <div
-            class="m-2 px-3 py-2 rounded-lg text-sm"
+            class="m-2 px-3 py-2 rounded-lg text-sm flex items-start gap-2"
             style="background: var(--void-800); border: 1px solid var(--line); color: var(--paper-300);"
             role="alert"
           >
+            <Icon name="xCircle" size={14} class="mt-0.5 shrink-0" />
             Search failed: {error}
           </div>
         {/if}
 
-        {#if query.trim().length < 2}
+        {#if term.length < 2}
           {#if recent.length > 0}
-            <p class="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--paper-500);">
-              Recent
-            </p>
-            {#each recent as term}
-              <button
-                class="w-full text-left px-3 py-2 rounded-lg text-sm"
-                style="color: var(--paper-300);"
-                onclick={() => {
-                  query = term;
-                }}
-              >
-                ↺ {term}
-              </button>
-            {/each}
+            <div class="flex items-center gap-2 px-3 pt-2 pb-1">
+              <p class="text-[10px] font-semibold uppercase tracking-[0.18em]" style="color: var(--paper-500);">Recent</p>
+              <span class="flex-1"></span>
+              <button class="text-[10px]" style="color: var(--paper-500);" onclick={clearRecent}>Clear</button>
+            </div>
+            <div class="flex flex-wrap gap-1.5 px-3 pb-2">
+              {#each recent as value}
+                <button
+                  class="chip text-[11px] px-2.5 py-1 hover:border-[var(--line-volt)]"
+                  onclick={() => {
+                    query = value;
+                  }}
+                >
+                  <Icon name="clock" size={11} />
+                  {value}
+                </button>
+              {/each}
+            </div>
           {:else}
-            <p class="px-3 py-4 text-sm" style="color: var(--paper-500);">
+            <p class="px-3 py-3 text-sm" style="color: var(--paper-500);">
               Type two or more characters. Library matches show first, AniList next.
             </p>
           {/if}
-        {:else if rows.length === 0 && !searching}
-          <p class="px-3 py-4 text-sm" style="color: var(--paper-500);">
-            No matches yet. Try romaji or a shorter title.
-            {#if lastGood.length > 0}Last results are kept below.{/if}
-          </p>
         {/if}
 
-        {#each rows as row, position (row.kind + (row.kind === "action" ? row.id : row.item.id))}
-          {@const isActive = position === active}
-          {#if row.kind === "action"}
-            <button
-              class="w-full text-left px-3 py-2 rounded-lg text-sm"
-              style="background: {isActive ? 'var(--void-700)' : 'transparent'}; color: var(--paper-50);"
-              onmouseenter={() => (active = position)}
-              onclick={() => choose(row)}
-            >
-              → {row.label}
-            </button>
-          {:else}
-            {@const art = coverOf(row.item)}
-            <button
-              class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left"
-              style="background: {isActive ? 'var(--void-700)' : 'transparent'};"
-              onmouseenter={() => (active = position)}
-              onclick={() => choose(row)}
-              aria-label="Open {displayTitle(row.item)}"
-            >
-              <span
-                class="w-10 h-[60px] rounded-md overflow-hidden shrink-0"
-                style="background: {row.item.coverImage?.color ?? 'var(--void-700)'};"
-              >
-                {#if art}
-                  <img src={art} alt="" loading="lazy" class="w-full h-full object-cover" />
-                {/if}
-              </span>
-              <span class="min-w-0">
-                <span class="block text-sm font-semibold truncate">{displayTitle(row.item)}</span>
-                <span class="block text-xs mt-0.5" style="color: var(--paper-500);">
-                  {row.kind === "lib" ? "In your library · " : ""}{metaOf(row.item)}
-                </span>
-              </span>
-            </button>
-          {/if}
+        {#if flatRows.length === 0 && !searching}
+          <div class="px-4 py-8 text-center">
+            <div class="empty-icon mx-auto" aria-hidden="true">
+              <Icon name="search" size={24} />
+            </div>
+            <p class="text-sm font-semibold">No results for "{query.trim()}"</p>
+            <p class="text-xs mt-1" style="color: var(--paper-500);">Try romaji, a shorter title, or check spelling.</p>
+          </div>
+        {/if}
+
+        {#each groups as group (group.label)}
+          <div class="mb-1">
+            <div class="flex items-center gap-2 px-3 pt-2 pb-1">
+              <p class="text-[10px] font-semibold uppercase tracking-[0.18em]" style="color: var(--paper-500);">{group.label}</p>
+              <span class="text-[10px]" style="color: var(--paper-500); font-family: var(--font-mono);">{group.rows.length}</span>
+            </div>
+            {#each group.rows as row (row.kind + (row.kind === "action" ? row.id : row.kind === "source" ? row.item.showId : row.item.id))}
+              {@const index = flatRows.indexOf(row)}
+              {@const isActive = index === active}
+              {#if row.kind === "action"}
+                <button
+                  class="palette-row {isActive ? 'is-active' : ''}"
+                  data-palette-index={index}
+                  onmouseenter={() => (active = index)}
+                  onclick={() => choose(row)}
+                  aria-current={isActive ? "true" : undefined}
+                >
+                  <span class="palette-row-icon">
+                    <Icon name={row.icon} size={15} />
+                  </span>
+                  <span class="flex-1 text-sm font-medium">{row.label}</span>
+                  <kbd class="kbd">{row.hint}</kbd>
+                </button>
+              {:else if row.kind === "source"}
+                <button
+                  class="palette-row {isActive ? 'is-active' : ''}"
+                  data-palette-index={index}
+                  onmouseenter={() => (active = index)}
+                  onclick={() => choose(row)}
+                  aria-current={isActive ? "true" : undefined}
+                  aria-label="Open {row.item.title} from {row.item.extensionName}"
+                >
+                  <span class="palette-cover">
+                    {#if row.item.cover}
+                      <img src={row.item.cover} alt="" loading="lazy" decoding="async" />
+                    {:else}
+                      <Icon name="package" size={16} />
+                    {/if}
+                  </span>
+                  <span class="min-w-0 flex-1">
+                    <span class="flex items-center gap-2">
+                      <span class="block text-sm font-semibold truncate">{row.item.title}</span>
+                      <span class="chip text-[9px] px-1.5 py-0.5">Source</span>
+                    </span>
+                    <span class="block text-xs mt-0.5 truncate" style="color: var(--paper-500);">
+                      {row.item.extensionName}{row.item.year ? ` · ${row.item.year}` : ""}
+                    </span>
+                  </span>
+                  <Icon name="chevronRight" size={14} class="shrink-0" />
+                </button>
+              {:else}
+                {@const art = coverOf(row.item)}
+                <button
+                  class="palette-row {isActive ? 'is-active' : ''}"
+                  data-palette-index={index}
+                  onmouseenter={() => (active = index)}
+                  onclick={() => choose(row)}
+                  aria-current={isActive ? "true" : undefined}
+                  aria-label="Open {displayTitle(row.item)}"
+                >
+                  <span class="palette-cover" style="background: {row.item.coverImage?.color ?? 'var(--void-700)'};">
+                    {#if art}
+                      <img src={art} alt="" loading="lazy" decoding="async" />
+                    {:else}
+                      <Icon name="film" size={16} />
+                    {/if}
+                  </span>
+                  <span class="min-w-0 flex-1">
+                    <span class="flex items-center gap-2">
+                      <span class="block text-sm font-semibold truncate">{displayTitle(row.item)}</span>
+                      {#if row.kind === "lib"}
+                        <span class="chip chip-volt text-[9px] px-1.5 py-0.5">Library</span>
+                      {/if}
+                    </span>
+                    <span class="block text-xs mt-0.5 truncate" style="color: var(--paper-500);">
+                      {row.kind === "lib" ? "In your library · " : "AniList · "}{metaOf(row.item)}
+                    </span>
+                  </span>
+                  {#if row.item.averageScore}
+                    <span class="inline-flex items-center gap-1 text-[10px]" style="color: var(--volt-300); font-family: var(--font-mono);">
+                      <Icon name="star" size={9} />
+                      {scoreOutOfTen(row.item.averageScore)}
+                    </span>
+                  {/if}
+                  <Icon name="chevronRight" size={14} class="shrink-0" />
+                </button>
+              {/if}
+            {/each}
+          </div>
         {/each}
+
+        {#if searching && flatRows.length === 0}
+          <div class="space-y-1.5 px-2 py-2" aria-hidden="true">
+            {#each Array(3) as _}
+              <div class="flex items-center gap-3 p-2">
+                <div class="shimmer w-9 h-[52px] rounded-md"></div>
+                <div class="flex-1 space-y-2">
+                  <div class="shimmer h-3 w-1/2 rounded"></div>
+                  <div class="shimmer h-2 w-1/3 rounded"></div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
       </div>
 
       <div
-        class="flex gap-4 px-4 py-2.5 text-[11px]"
+        class="flex flex-wrap gap-4 px-4 py-2.5 text-[10px]"
         style="border-top: 1px solid var(--line); color: var(--paper-500);"
       >
-        <span><b>↑↓</b> move</span>
-        <span><b>Enter</b> open</span>
-        <span><b>Esc</b> close</span>
+        <span><b class="kbd mr-1">↑↓</b> move</span>
+        <span><b class="kbd mr-1">Enter</b> open</span>
+        <span><b class="kbd mr-1">Shift</b><b class="kbd">Enter</b> play</span>
+        <span><b class="kbd mr-1">Esc</b> close</span>
+        <span class="ml-auto hidden sm:inline">Kaminari search</span>
       </div>
     </div>
   </div>
 {/if}
+
+<style>
+  .palette-input-row {
+    transition: box-shadow 120ms ease-out;
+  }
+
+  .palette-input-row:focus-within {
+    box-shadow: inset 0 -1px 0 var(--volt-400);
+  }
+
+  .palette-input,
+  .palette-input:focus-visible {
+    outline: none !important;
+  }
+
+  .palette-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 10px;
+    border-radius: 10px;
+    color: var(--paper-100);
+    text-align: left;
+    border: 1px solid transparent;
+    transition: background 100ms ease-out, border-color 100ms ease-out;
+  }
+
+  .palette-row:hover,
+  .palette-row.is-active {
+    background: rgb(139 138 255 / 0.1);
+    border-color: rgb(139 138 255 / 0.18);
+  }
+
+  .palette-row.is-active {
+    box-shadow: inset 2px 0 0 var(--volt-400);
+  }
+
+  .palette-row-icon {
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    border-radius: 8px;
+    background: rgb(255 255 255 / 0.05);
+    border: 1px solid var(--line);
+    color: var(--paper-300);
+  }
+
+  .palette-cover {
+    width: 36px;
+    height: 52px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    overflow: hidden;
+    border-radius: 6px;
+    background: var(--void-700);
+    border: 1px solid var(--line);
+    color: var(--paper-500);
+  }
+
+  .palette-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+</style>

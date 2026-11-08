@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { coverOf, cleanHtml, displayTitle, metaOf, scoreOutOfTen } from "./format";
+  import Icon from "./Icon.svelte";
+  import { coverOf, cleanHtml, displayTitle, scoreOutOfTen } from "./format";
   import type { Media } from "./types";
 
   let {
@@ -62,6 +63,20 @@
       go(index - 1);
     }
   }
+
+  function seasonLabel(): string {
+    const now = new Date();
+    const month = now.getMonth();
+    const season = month < 2 || month === 11 ? "Winter" : month < 5 ? "Spring" : month < 8 ? "Summer" : "Fall";
+    return `${season} ${now.getFullYear()}`;
+  }
+
+  function statusLabel(status?: string | null): string {
+    if (status === "RELEASING") return "Airing";
+    if (status === "FINISHED") return "Finished";
+    if (status === "NOT_YET_RELEASED") return "Upcoming";
+    return status ? status.toLowerCase() : "";
+  }
 </script>
 
 {#if slides.length > 0}
@@ -69,8 +84,7 @@
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <section
-    class="hero-edge relative h-[clamp(320px,38vw,440px)] overflow-hidden shrink-0"
-    style="border-bottom: 1px solid var(--line);"
+    class="hero-shell hero-edge"
     aria-label="Trending highlights"
     aria-roledescription="carousel"
     tabindex={0}
@@ -83,89 +97,114 @@
   >
     {#each slides as slide, position (slide.id)}
       {@const active = position === index % slides.length}
-      {@const art = slide.bannerImage || coverOf(slide)}
+      {@const banner = slide.bannerImage}
+      {@const cover = coverOf(slide)}
       <div class="hero-slide {active ? 'active' : ''}" aria-hidden={active ? undefined : "true"}>
-        {#if art}
+        {#if banner}
           <img
-            src={art}
+            src={banner}
             alt=""
             class="kenburns absolute inset-0 w-full h-full object-cover"
             loading={position === 0 ? "eager" : "lazy"}
+            decoding="async"
+          />
+        {:else if cover}
+          <!-- Missing banner: blurred cover at 4x plus the scrim, never a broken slot. -->
+          <img
+            src={cover}
+            alt=""
+            class="kenburns absolute inset-0 w-full h-full object-cover blur-2xl scale-125 opacity-55"
+            loading={position === 0 ? "eager" : "lazy"}
+            decoding="async"
           />
         {:else}
           <div class="absolute inset-0" style="background: var(--void-800);"></div>
         {/if}
-        <div
-          class="absolute inset-0"
-          style="background: linear-gradient(90deg, var(--void-950) 20%, rgb(8 8 15 / 0.85) 50%, rgb(8 8 15 / 0.25) 75%, transparent 100%), linear-gradient(0deg, var(--void-950) 10%, transparent 50%);"
-          aria-hidden="true"
-        ></div>
+        <div class="hero-scrim" aria-hidden="true"></div>
       </div>
     {/each}
 
     <div class="absolute inset-0 pointer-events-none">
-      <div class="relative h-full max-w-[1440px] mx-auto px-6 md:px-8">
+      <div class="relative h-full max-w-[1440px] mx-auto">
         {#each slides as slide, position (slide.id)}
           {@const active = position === index % slides.length}
           <div
-            class="hero-copy {active ? 'active' : ''} absolute inset-y-0 left-6 md:left-8 right-6 flex flex-col justify-center max-w-2xl min-w-0"
+            class="hero-copy {active ? 'active' : ''}"
             aria-hidden={active ? undefined : "true"}
             inert={!active}
           >
-              <p class="eyebrow">#{position + 1} Trending{slide.averageScore ? ` · ${scoreOutOfTen(slide.averageScore)}/10` : ""}</p>
-              <h1
-                class="mt-3 leading-[1.08] line-clamp-2"
-                style="font-family: var(--font-display); font-size: clamp(28px, 3.4vw, 40px); font-weight: 700; letter-spacing: -0.02em;"
-              >
-                {displayTitle(slide)}
-              </h1>
-              <p class="text-sm mt-2" style="color: var(--paper-300);">{metaOf(slide)}</p>
-              <p class="text-sm mt-3 line-clamp-2 max-w-xl leading-relaxed" style="color: var(--paper-300);">
-                {cleanHtml(slide.description) || "AniList has no synopsis for this title yet."}
-              </p>
-              <div class="flex flex-wrap gap-2 mt-5">
-                <button class="btn-primary px-4 py-2 text-sm" onclick={() => onOpen(slide)}>
-                  ▶ Play
-                </button>
-                <button class="btn-ghost px-4 py-2 text-sm" onclick={() => onToggleLibrary(slide)}>
-                  {isInLibrary(slide.id) ? "✓ In Library" : "+ Library"}
-                </button>
-                <button class="btn-ghost px-4 py-2 text-sm" onclick={() => onOpen(slide)}>
-                  Details
-                </button>
-              </div>
+            <p class="hero-eyebrow">
+              <span class="live-dot" aria-hidden="true"></span>
+              #{position + 1} Trending
+              <span style="color: var(--paper-500);">/</span>
+              {seasonLabel()}
+            </p>
+            <h1 class="hero-title line-clamp-2">{displayTitle(slide)}</h1>
+            {#if slide.title.romaji && slide.title.romaji !== displayTitle(slide)}
+              <p class="hero-subtitle line-clamp-1">{slide.title.romaji}</p>
+            {/if}
+            <div class="hero-meta">
+              {#if slide.averageScore}
+                <span class="hero-meta-item is-score" title="AniList score {slide.averageScore} out of 100">
+                  <Icon name="star" size={11} />
+                  {scoreOutOfTen(slide.averageScore)}/10
+                </span>
+              {/if}
+              {#if slide.seasonYear}
+                <span class="hero-meta-item">{slide.seasonYear}</span>
+              {/if}
+              {#if slide.format}
+                <span class="hero-meta-item">{slide.format}</span>
+              {/if}
+              {#if slide.episodes}
+                <span class="hero-meta-item">{slide.episodes} eps</span>
+              {/if}
+              {#if slide.status}
+                <span class="hero-meta-item">{statusLabel(slide.status)}</span>
+              {/if}
             </div>
+            <p class="hero-synopsis">
+              {cleanHtml(slide.description) || "AniList has no synopsis for this title yet."}
+            </p>
+            <div class="hero-actions">
+              <button class="btn-primary px-4 py-2.5 text-sm" onclick={() => onPlay(slide)}>
+                <Icon name="play" size={14} />
+                Play
+              </button>
+              <button class="btn-ghost px-4 py-2.5 text-sm" onclick={() => onToggleLibrary(slide)}>
+                <Icon name={isInLibrary(slide.id) ? "check" : "plus"} size={14} />
+                {isInLibrary(slide.id) ? "In Library" : "Library"}
+              </button>
+              <button class="btn-ghost px-4 py-2.5 text-sm" onclick={() => onOpen(slide)}>
+                Details
+                <Icon name="arrowRight" size={14} />
+              </button>
+            </div>
+          </div>
         {/each}
 
-        <div class="absolute bottom-4 left-6 md:left-8 flex items-center gap-2 pointer-events-auto">
-          {#each slides as slide, position (slide.id)}
-            <button
-              class="h-1.5 rounded-full"
-              style="width: {position === index % slides.length ? '28px' : '8px'}; background: {position === index % slides.length ? 'var(--volt-400)' : 'var(--void-700)'}; transition: width 250ms var(--ease-out), background 250ms var(--ease-out);"
-              aria-label="Go to slide {position + 1}: {displayTitle(slide)}"
-              aria-current={position === index % slides.length ? "true" : undefined}
-              onclick={() => go(position)}
-            ></button>
-          {/each}
-        </div>
-
-        <div class="absolute bottom-3 right-6 md:right-8 flex gap-1.5 pointer-events-auto">
-          <button
-            class="w-8 h-8 grid place-items-center rounded-lg"
-            style="background: rgb(8 8 15 / 0.72); border: 1px solid var(--line); backdrop-filter: blur(12px); color: var(--paper-50);"
-            aria-label="Previous highlight"
-            onclick={() => go(index - 1)}
-          >
-            ‹
-          </button>
-          <button
-            class="w-8 h-8 grid place-items-center rounded-lg"
-            style="background: rgb(8 8 15 / 0.72); border: 1px solid var(--line); backdrop-filter: blur(12px); color: var(--paper-50);"
-            aria-label="Next highlight"
-            onclick={() => go(index + 1)}
-          >
-            ›
-          </button>
+        <div class="hero-controls">
+          <div class="hero-dots">
+            {#each slides as slide, position (slide.id)}
+              <button
+                class="hero-dot {position === index % slides.length ? 'active' : ''}"
+                aria-label="Go to slide {position + 1}: {displayTitle(slide)}"
+                aria-current={position === index % slides.length ? "true" : undefined}
+                onclick={() => go(position)}
+              ></button>
+            {/each}
+          </div>
+          <span class="hero-counter">
+            {String((index % slides.length) + 1).padStart(2, "0")} / {String(slides.length).padStart(2, "0")}
+          </span>
+          <div class="hero-arrows">
+            <button class="hero-arrow" aria-label="Previous highlight" onclick={() => go(index - 1)}>
+              <Icon name="chevronLeft" size={16} />
+            </button>
+            <button class="hero-arrow" aria-label="Next highlight" onclick={() => go(index + 1)}>
+              <Icon name="chevronRight" size={16} />
+            </button>
+          </div>
         </div>
       </div>
     </div>

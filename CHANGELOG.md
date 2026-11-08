@@ -4,6 +4,17 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.8.0 - 2026-11-08
+
+- Visual pass: bundled Sora, Inter and JetBrains Mono, layered atmosphere, glass title bar, palette, player, toasts and dialogs
+- Shell: richer title bar, nav rail active pill, page transitions, skip link, offline and error states
+- Home: cinematic hero with score and meta chips, stronger scrims, rank rail spacing, continue watching and library preview polish
+- Library and history: collection stats, source runs, grouped history, loading and error states
+- Sources and source browser: registry and extension cards, installed toggles, searchable source results, stream rows
+- Detail and player: status menu, score ring, episode progress card, glass player controls, fill, subtitles, diagnostics and keyboard coverage
+- Accessibility: focus traps, restored focus, reduced motion, 44px touch targets in the player
+- Version: bump to 0.8.0
+
 ## 0.7.0 - 2026-11-08
 
 - Source library: add a JavaScript source show from the source browser, see it under Library, resume it later

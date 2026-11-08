@@ -1,16 +1,21 @@
 <script lang="ts">
+  import Icon from "./Icon.svelte";
   import { coverOf, displayTitle, metaOf, scoreOutOfTen } from "./format";
   import type { Media } from "./types";
 
   let {
     item,
     inLibrary,
+    progress = null,
+    badge = null,
     onOpen,
     onToggleLibrary,
     onPlay,
   }: {
     item: Media;
     inLibrary: boolean;
+    progress?: { watched: number; total: number } | null;
+    badge?: string | null;
     onOpen: (item: Media) => void;
     onToggleLibrary: (item: Media) => void;
     onPlay: (item: Media) => void;
@@ -18,6 +23,12 @@
 
   const title = $derived(displayTitle(item));
   const art = $derived(coverOf(item));
+  const isAiring = $derived(item.status === "RELEASING");
+  const percent = $derived(
+    progress && progress.total > 0
+      ? Math.min(100, Math.max(0, (progress.watched / progress.total) * 100))
+      : 0,
+  );
 
   // Card body and quick actions are siblings. Nothing interactive nests.
   // Enter, P and L work from either button.
@@ -37,11 +48,10 @@
 </script>
 
 <article
-  class="poster-card group relative rounded-2xl overflow-hidden"
-  style="background: var(--void-800); border: 1px solid var(--line);"
+  class="poster-card group"
   aria-label="{title}, {metaOf(item)}"
 >
-  <div class="aspect-[2/3] relative overflow-hidden" style="background: {item.coverImage?.color ?? 'var(--void-700)'};">
+  <div class="poster-art aspect-[2/3]">
     <button
       class="absolute inset-0 w-full h-full text-left"
       onclick={() => onOpen(item)}
@@ -49,52 +59,66 @@
       aria-label="Open {title}"
     >
       {#if art}
-        <img src={art} alt="" loading="lazy" class="zoom w-full h-full object-cover" />
+        <img src={art} alt="" loading="lazy" decoding="async" class="zoom w-full h-full object-cover" />
       {:else}
-        <span class="w-full h-full grid place-items-center">
+        <span
+          class="w-full h-full grid place-items-center"
+          style="background: radial-gradient(circle at 30% 20%, rgb(139 138 255 / 0.18), transparent 60%), var(--void-800);"
+        >
           <span class="text-4xl font-bold" style="color: var(--paper-500); font-family: var(--font-display);">
             {title.slice(0, 1)}
           </span>
         </span>
       {/if}
-      <span
-        class="absolute inset-x-0 bottom-0 h-16 pointer-events-none"
-        style="background: linear-gradient(0deg, rgb(8 8 15 / 0.75), transparent);"
-        aria-hidden="true"
-      ></span>
+      <span class="poster-scrim" aria-hidden="true"></span>
+      {#if badge}
+        <span class="poster-badge">{badge}</span>
+      {:else if isAiring}
+        <span class="poster-badge is-airing">
+          <span class="status-dot" style="width: 4px; height: 4px;" aria-hidden="true"></span>
+          AIRING
+        </span>
+      {/if}
       {#if item.averageScore}
         <span
-          class="absolute top-2 right-2 text-xs font-semibold px-1.5 py-0.5 rounded-md"
-          style="background: rgb(8 8 15 / 0.78); color: var(--volt-300); font-family: var(--font-mono);"
+          class="poster-score"
           title="AniList score {item.averageScore} out of 100"
         >
-          ★ {scoreOutOfTen(item.averageScore)}
+          <Icon name="star" size={9} />
+          {scoreOutOfTen(item.averageScore)}
+        </span>
+      {/if}
+      {#if progress && progress.total > 0}
+        <span class="poster-progress" aria-hidden="true">
+          <span style="width: {percent}%;"></span>
         </span>
       {/if}
     </button>
-    <div class="quick absolute inset-x-2 bottom-2 flex gap-1.5">
+
+    <div class="poster-quick">
       <button
-        class="flex-1 text-xs font-semibold px-2 py-1.5 rounded-lg"
-        style="background: var(--volt-500); color: var(--paper-50);"
+        class="quick-play"
         onclick={() => onPlay(item)}
         onkeydown={onKey}
         aria-label="Play {title}"
       >
-        ▶ Play
+        <Icon name="play" size={11} />
+        Play
       </button>
       <button
-        class="flex-1 text-xs font-semibold px-2 py-1.5 rounded-lg"
-        style="background: rgb(8 8 15 / 0.86); border: 1px solid var(--line); color: var(--paper-50);"
+        class="quick-save"
         onclick={() => onToggleLibrary(item)}
         onkeydown={onKey}
         aria-label={inLibrary ? `Remove ${title} from library` : `Add ${title} to library`}
       >
-        {inLibrary ? "✓ Saved" : "+ Save"}
+        <Icon name={inLibrary ? "check" : "plus"} size={11} />
+        {inLibrary ? "Saved" : "Save"}
       </button>
     </div>
   </div>
-  <button class="block w-full text-left p-2.5" onclick={() => onOpen(item)} onkeydown={onKey}>
-    <p class="text-[13px] font-semibold leading-snug line-clamp-2">{title}</p>
-    <p class="text-xs mt-1" style="color: var(--paper-500);">{metaOf(item)}</p>
+
+  <button class="poster-body" onclick={() => onOpen(item)} onkeydown={onKey}>
+    <span class="poster-title">{title}</span>
+    <span class="poster-meta">{metaOf(item)}</span>
   </button>
 </article>

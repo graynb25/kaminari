@@ -76,6 +76,16 @@ What we measured. On 2026-11-08 the sample opened an archive.org title, returned
 
 What we did not do. Playback. The resolve panel shows and copies URLs; libmpv is the next milestone.
 
+## 2026-11-08 Visual system pass
+
+Context. The app worked but read as flat dark panels. The spec promised glass overlays, cinematic depth and confident type, and the implementation did not deliver.
+
+What we shipped. Local Sora, Inter and JetBrains Mono woff2 subsets with OFL notices. Layered atmosphere, vignette and grain behind the shell. Glass for the title bar, palette, player controls, toasts and dialogs only. Rebuilt the hero, shelves, library stats, source library cards, history groups, source registry cards, detail score ring and status menu, and the full player control bar. Added focus traps, focus restore and reduced-motion handling. The UI session verified layouts with mocked IPC at 1600, 1280 and 1024 widths before the orchestrator ran the real app.
+
+What we measured. The production build bundles about 225 KB of JS, 63 KB of CSS and 214 KB of fonts before compression. The main JS is 69 KB gzipped. The lazy hls.js chunk stays at 187 KB gzipped and only loads for HLS. The real Tauri app rendered Home, Library and Sources with live data at 1920 by 1080 without layout breaks.
+
+What we did not do. Embedded libmpv/libass, blurhash, i18n keys and 500-poster virtualization. The docs mark those as later work. The player still uses the in-app WebView surface for MP4 and HLS, with mpv as the fallback.
+
 ## 2026-11-08 Source library and resume progress
 
 Context. The player could play one episode, but it forgot everything when the window closed. Source shows had no library of their own.

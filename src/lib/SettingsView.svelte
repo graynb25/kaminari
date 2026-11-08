@@ -1,9 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import Icon from "./Icon.svelte";
   import { playerStatus } from "./api";
   import type { Boot, PlayerStatus } from "./types";
 
-  let { boot }: { boot: Boot | null } = $props();
+  let {
+    boot,
+    onOpenShortcuts,
+  }: { boot: Boot | null; onOpenShortcuts?: () => void } = $props();
+
   let player = $state<PlayerStatus | null>(null);
 
   onMount(() => {
@@ -16,17 +21,14 @@
     })();
   });
 
-  const iconProps =
-    'width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--volt-400)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
-
-  // Static section shape. The two rows that depend on the async boot snapshot
+  // Static section shape. The rows that depend on the async boot snapshot
   // resolve through rowValue below, so the template stays reactive.
   const sections = [
     {
       title: "App",
-      icon: `<svg ${iconProps}><circle cx="12" cy="12" r="8.5" /><path d="M12 8h.01M12 11.5V16" /></svg>`,
+      icon: "monitor",
       rows: [
-        { label: "Version", value: "0.7.0" },
+        { label: "Version", value: "0.8.0" },
         {
           label: "Stack",
           value: "Tauri 2, Svelte 5 Runes, QuickJS host, in-app player, mpv fallback",
@@ -36,7 +38,7 @@
     },
     {
       title: "Data",
-      icon: `<svg ${iconProps}><ellipse cx="12" cy="5.5" rx="7.5" ry="2.8" /><path d="M4.5 5.5v13c0 1.6 3.4 2.8 7.5 2.8s7.5-1.2 7.5-2.8v-13" /><path d="M4.5 12c0 1.6 3.4 2.8 7.5 2.8s7.5-1.2 7.5-2.8" /></svg>`,
+      icon: "database",
       rows: [
         { label: "AniList endpoint", value: "" },
         { label: "Library", value: "One local SQLite file, WAL mode, portable backup" },
@@ -44,7 +46,7 @@
     },
     {
       title: "Appearance",
-      icon: `<svg ${iconProps}><path d="M20 13.5A8 8 0 1 1 10.5 4 6.5 6.5 0 0 0 20 13.5z" /></svg>`,
+      icon: "moon",
       rows: [
         { label: "Theme", value: "Dark is home. Light lands in P2." },
         { label: "Motion", value: "Follows your OS reduce motion setting" },
@@ -52,17 +54,27 @@
     },
     {
       title: "Updates and diagnostics",
-      icon: `<svg ${iconProps}><path d="M20 12a8 8 0 1 1-2.4-5.7" /><path d="M20 3v4.5h-4.5" /></svg>`,
+      icon: "refresh",
       rows: [
-        {
-          label: "Extension budget",
-          value: "",
-        },
+        { label: "Extension budget", value: "" },
         { label: "Auto update", value: "One click restart, lands in P3" },
         { label: "Diagnostics export", value: "Redacted bundle, lands in P3" },
       ],
     },
   ];
+
+  const playerLabel = $derived(
+    player === null
+      ? "Checking"
+      : player.found
+        ? player.version ?? "mpv found"
+        : "Not found",
+  );
+
+  const memoryLabel = $derived(
+    boot ? `${Math.round(boot.limits.extMemoryBytes / 1024 / 1024)}MB per runtime` : "Loading",
+  );
+
   function rowValue(label: string, fallback: string): string {
     if (label === "AniList endpoint") return boot?.anilistEndpoint ?? "Loading";
     if (label === "Extension budget") {
@@ -82,19 +94,53 @@
 </script>
 
 <div class="p-6 md:p-8 max-w-[1440px] mx-auto">
-  <div class="flex items-baseline gap-3 mb-1">
-    <h1 class="text-[28px] font-bold" style="font-family: var(--font-display);">Settings</h1>
-    <span class="text-sm" style="color: var(--paper-500);">everything here is real</span>
+  <div class="flex flex-wrap items-start gap-4 mb-6">
+    <div>
+      <p class="eyebrow">System</p>
+      <h1 class="page-title mt-1">Settings</h1>
+      <p class="page-sub mt-1 max-w-2xl">
+        Controls appear as they ship. Nothing on this page pretends to work before then.
+      </p>
+    </div>
+    {#if onOpenShortcuts}
+      <button class="btn-ghost ml-auto px-3.5 py-2 text-xs" onclick={onOpenShortcuts}>
+        <Icon name="keyboard" size={14} />
+        Keyboard shortcuts
+      </button>
+    {/if}
   </div>
-  <p class="text-sm mb-6 max-w-2xl leading-relaxed" style="color: var(--paper-300);">
-    Controls appear as they ship. Nothing on this page pretends to work before then.
-  </p>
+
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+    <div class="stat-card">
+      <p class="stat-label">Version</p>
+      <p class="stat-value">0.7.0</p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-label">Player</p>
+      <div class="flex items-center gap-2 mt-1">
+        <span class="status-dot {player && !player.found ? 'is-offline' : ''}" aria-hidden="true"></span>
+        <p class="text-sm font-semibold truncate">{playerLabel}</p>
+      </div>
+    </div>
+    <div class="stat-card">
+      <p class="stat-label">AniList</p>
+      <p class="text-sm font-semibold truncate mt-1" title={boot?.anilistEndpoint ?? "Loading"}>
+        {boot?.anilistEndpoint ? "Configured" : "Loading"}
+      </p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-label">Runtime budget</p>
+      <p class="text-sm font-semibold truncate mt-1">{memoryLabel}</p>
+    </div>
+  </div>
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     {#each sections as section}
-      <div class="p-5 rounded-2xl" style="background: var(--void-900); border: 1px solid var(--line);">
+      <section class="surface p-5">
         <div class="flex items-center gap-2.5 mb-3">
-          {@html section.icon}
+          <span class="w-8 h-8 grid place-items-center rounded-lg" style="background: rgb(108 107 245 / 0.1); border: 1px solid var(--line-volt); color: var(--volt-300);">
+            <Icon name={section.icon} size={16} />
+          </span>
           <h2 class="text-[15px] font-semibold">{section.title}</h2>
         </div>
         <dl>
@@ -103,12 +149,29 @@
               class="flex flex-col sm:flex-row sm:items-baseline gap-1 py-2.5"
               style={position > 0 ? "border-top: 1px solid var(--line);" : ""}
             >
-              <dt class="text-sm sm:w-40 shrink-0" style="color: var(--paper-500);">{row.label}</dt>
+              <dt class="text-sm sm:w-40 shrink-0" style="color: var(--paper-450);">{row.label}</dt>
               <dd class="text-sm break-all" style="color: var(--paper-50);">{rowValue(row.label, row.value)}</dd>
             </div>
           {/each}
         </dl>
-      </div>
+      </section>
     {/each}
+  </div>
+
+  <div class="surface p-5 mt-4 flex flex-wrap items-center gap-4">
+    <span class="w-10 h-10 grid place-items-center rounded-xl shrink-0" style="background: rgb(108 107 245 / 0.1); border: 1px solid var(--line-volt); color: var(--volt-300);">
+      <Icon name="shield" size={18} />
+    </span>
+    <div class="min-w-0 flex-1">
+      <p class="text-sm font-semibold">Local first</p>
+      <p class="text-xs mt-0.5" style="color: var(--paper-400);">
+        Library, progress and source runs live in SQLite on this machine. AniList is the only network
+        dependency for catalogue data.
+      </p>
+    </div>
+    <span class="chip chip-live text-[10px] px-2.5 py-1">
+      <span class="status-dot" style="width: 4px; height: 4px;" aria-hidden="true"></span>
+      SQLite
+    </span>
   </div>
 </div>
