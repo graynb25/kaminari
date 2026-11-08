@@ -4,6 +4,15 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.9.0 - 2026-11-08
+
+- Continue Watching: source runs join the shelf with cover, extension, resume position and a progress strip
+- Continue Watching: the shelf now appears when only source progress exists, not only after saving an AniList title
+- History: AniList watched events and source episode progress merge into one timeline, sorted by day
+- History: source rows show In progress or Watched and reopen the show in the source browser
+- Source continue: one card per show, using the episode with the newest progress
+- Version: bump to 0.9.0
+
 ## 0.8.2 - 2026-11-08
 
 - Hero: only trending titles with a real banner feed the carousel, so every slide is a clear full-bleed image with the slow zoom

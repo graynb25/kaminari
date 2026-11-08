@@ -64,7 +64,9 @@ fn main() {
             commands::source_library_add,
             commands::source_library_remove,
             commands::source_progress_get,
-            commands::source_progress_set
+            commands::source_progress_set,
+            commands::source_continue,
+            commands::source_history
         ])
         .run(tauri::generate_context!())
         .expect("error starting Kaminari");

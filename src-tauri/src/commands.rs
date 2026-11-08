@@ -7,8 +7,8 @@ use tauri::State;
 
 use crate::anilist::{AniListClient, Media, ShelfKind};
 use crate::db::{
-    ContinueItem, Db, HistoryItem, InstalledSource, JsExtensionRow, LibraryItem, SourceLibraryItem,
-    SourceProgress,
+    ContinueItem, Db, HistoryItem, InstalledSource, JsExtensionRow, LibraryItem,
+    SourceContinueItem, SourceHistoryItem, SourceLibraryItem, SourceProgress,
 };
 use crate::error::AppError;
 use crate::ext_host::{self, ExtPackage, ExtStorage};
@@ -361,5 +361,25 @@ pub fn source_progress_set(
             duration_sec,
             watched,
         )
+        .map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn source_continue(
+    state: State<'_, Db>,
+    limit: Option<usize>,
+) -> Result<Vec<SourceContinueItem>, String> {
+    state
+        .source_continue(limit.unwrap_or(20))
+        .map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn source_history(
+    state: State<'_, Db>,
+    limit: Option<usize>,
+) -> Result<Vec<SourceHistoryItem>, String> {
+    state
+        .source_history(limit.unwrap_or(100))
         .map_err(ipc_error)
 }

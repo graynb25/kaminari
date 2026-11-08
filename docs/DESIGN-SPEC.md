@@ -74,7 +74,9 @@ Current build: Play opens a note until sources land. Episodes are a numbered gri
 
 ### Progress
 
-Watched episodes live in SQLite. Continue Watching only joins series in the library with status watching, ordered by the newest progress. It shows the last watched episode and watched count. Library cards show watched over total plus a thin volt bar. A series with zero watched episodes is not in Continue Watching.
+Watched episodes live in SQLite. Continue Watching joins series in the library with status watching, ordered by the newest progress. It shows the last watched episode and watched count. Library cards show watched over total plus a thin volt bar. A series with zero watched episodes is not in Continue Watching.
+
+Native source runs join the same shelf from their own table. One card per show, always the episode with the newest progress. The card shows a 16:9 cover, the extension name, position over duration and a volt progress strip. The shelf only shows the start callout when the library and both continue lists are empty.
 
 ### Sources
 
@@ -93,6 +95,8 @@ Status filters across the top: All, Watching, Planning, Completed, Paused, Dropp
 ### History
 
 Newest first, one row per series and episode. Cover, title, episode number, relative time, and a Watched label. Clicking a row opens the series. The empty state points back to Browse.
+
+Native source progress merges into the same day groups, sorted by the time it was saved. Source rows show the show title, episode, extension name, and either In progress or Watched. Clicking one opens the source detail with that show selected. Events, titles and the latest timestamp in the header count both libraries.
 
 ### TitleBar, nav, SourceCard, toast, EmptyState, skeleton
 

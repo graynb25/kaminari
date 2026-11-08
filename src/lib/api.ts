@@ -20,6 +20,8 @@ import type {
   PlayerStatus,
   SourceLibraryItem,
   SourceProgress,
+  SourceContinueItem,
+  SourceHistoryItem,
 } from "./types";
 
 export function bootSnapshot(): Promise<Boot> {
@@ -192,4 +194,12 @@ export function sourceProgressSet(input: {
   watched: boolean;
 }): Promise<void> {
   return invoke<void>("source_progress_set", input);
+}
+
+export function sourceContinue(limit = 20): Promise<SourceContinueItem[]> {
+  return invoke<SourceContinueItem[]>("source_continue", { limit });
+}
+
+export function sourceHistory(limit = 100): Promise<SourceHistoryItem[]> {
+  return invoke<SourceHistoryItem[]>("source_history", { limit });
 }

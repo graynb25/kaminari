@@ -193,6 +193,32 @@ export type SourceProgress = {
   updatedAt: number;
 };
 
+export type SourceContinueItem = {
+  extensionId: string;
+  extensionName: string;
+  showId: string;
+  title: string;
+  cover?: string | null;
+  episodeId: string;
+  episodeNumber: number;
+  episodeTitle?: string | null;
+  positionSec: number;
+  durationSec: number;
+  updatedAt: number;
+};
+
+export type SourceHistoryItem = {
+  extensionId: string;
+  extensionName: string;
+  showId: string;
+  title: string;
+  cover?: string | null;
+  episodeNumber: number;
+  episodeTitle?: string | null;
+  watched: boolean;
+  updatedAt: number;
+};
+
 export type HistoryItem = {
   media: Media;
   episode: number;

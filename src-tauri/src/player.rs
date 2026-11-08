@@ -201,7 +201,7 @@ fn build_args(request: &PlaybackRequest) -> Vec<String> {
         })
         .unwrap_or(false);
     if !has_user_agent {
-        args.push("--user-agent=Kaminari/0.8.2".to_string());
+        args.push("--user-agent=Kaminari/0.9.0".to_string());
     }
 
     if let Some(title) = &request.title {
@@ -281,7 +281,7 @@ mod tests {
         let mut request = request();
         request.headers = None;
         let args = build_args(&request);
-        assert!(args.contains(&"--user-agent=Kaminari/0.8.2".to_string()));
+        assert!(args.contains(&"--user-agent=Kaminari/0.9.0".to_string()));
     }
 
     #[test]

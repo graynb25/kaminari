@@ -66,6 +66,16 @@ What we measured. On 2026-11-08 the sample was installed and searched through th
 
 What we did not do. `getShow`, `getEpisodes` and `resolveEpisode` are implemented in the sample but not wired to a browse UI yet. Async methods return `ASYNC_UNSUPPORTED`. Packages are unsigned and stay local. No registry.
 
+## 2026-11-08 Source continue and merged history
+
+Context. The source library could resume an episode, but the home shelf and the history page only knew about AniList. A user who only watched source shows saw an empty home and an empty history.
+
+What we shipped. `source_continue` and `source_history` read from `source_progress` joined to `source_library` and the installed extension name. Home renders source cards inside Continue Watching with the cover, extension name, position over duration and a volt progress strip. History merges AniList watched events and source progress rows into the same day groups, newest first. Source rows carry In progress or Watched and open the show in the source browser.
+
+What we measured. A seeded `PopeyeWithBettyBoop` row at 120 of 456 seconds rendered on home as `2:00 / 7:36` with EP 1 and RESUME, and on History as an In progress row one hour old. The window at 2560 by 1400 showed both lists without overflow. The source continue query uses `ROW_NUMBER()` per extension and show, so two episodes with progress produce one card, the newest. The Rust test covers that case.
+
+What we did not do. Per event source history. The table stores one row per episode with its latest position, so History shows the latest state of each episode, not every pause. AniList events remain one row per watched mark.
+
 ## 2026-11-08 Native source browser
 
 Context. Search worked, but a source had no detail, episode or resolve path in the UI.

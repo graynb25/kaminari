@@ -15,6 +15,7 @@
   import Shelf from "./lib/Shelf.svelte";
   import ShortcutsDialog from "./lib/ShortcutsDialog.svelte";
   import Skeleton from "./lib/Skeleton.svelte";
+  import SourceContinueCard from "./lib/SourceContinueCard.svelte";
   import SourceBrowser from "./lib/SourceBrowser.svelte";
   import SourcesView from "./lib/SourcesView.svelte";
   import TitleBar from "./lib/TitleBar.svelte";
@@ -29,6 +30,8 @@
     removeFromLibrary,
     setLibraryStatus,
     sourceLibraryList,
+    sourceContinue,
+    sourceHistory,
     shelf,
     watchedList,
     watchedMarkAll,
@@ -45,6 +48,8 @@
     Media,
     RailState,
     SourceExtensionRef,
+    SourceContinueItem,
+    SourceHistoryItem,
     SourceLibraryItem,
     Toast,
     ToastAction,
@@ -56,6 +61,10 @@
     extension: SourceExtensionRef;
     initialShow?: JsSearchItem;
   };
+
+  type ContinueRow =
+    | { kind: "anilist"; at: number; item: ContinueItem }
+    | { kind: "source"; at: number; item: SourceContinueItem };
 
   let title = $state("Kaminari");
   let boot = $state<Boot | null>(null);
@@ -80,6 +89,8 @@
   let historyLoading = $state(true);
   let historyError = $state<string | null>(null);
   let sourceLibraryItems = $state<SourceLibraryItem[]>([]);
+  let sourceContinueItems = $state<SourceContinueItem[]>([]);
+  let sourceHistoryItems = $state<SourceHistoryItem[]>([]);
   let sourceBrowser = $state<SourceBrowserState | null>(null);
   let paletteOpen = $state(false);
   let shortcutsOpen = $state(false);
@@ -94,6 +105,14 @@
     "Playback needs a source extension. AniList gives us the catalogue, not the stream. The extension host lands in P1.";
 
   const trendingRail = $derived(rails.trending);
+
+  const continueRows = $derived.by(() => {
+    const rows: ContinueRow[] = [
+      ...continueItems.map((item) => ({ kind: "anilist" as const, at: item.updatedAt, item })),
+      ...sourceContinueItems.map((item) => ({ kind: "source" as const, at: item.updatedAt, item })),
+    ];
+    return rows.sort((a, b) => b.at - a.at);
+  });
   const detailEntry = $derived.by(() => {
     if (!detail) return undefined;
     const id = detail.id;
@@ -132,6 +151,10 @@
     playNote = null;
     watchedDetail = [];
     view = next;
+    if (next === "history") {
+      void refreshHistory();
+      void refreshSourceHistory();
+    }
   }
 
   async function refreshContinue() {
@@ -163,6 +186,30 @@
     } catch {
       sourceLibraryItems = [];
     }
+  }
+
+  async function refreshSourceContinue() {
+    try {
+      sourceContinueItems = await sourceContinue(20);
+    } catch {
+      sourceContinueItems = [];
+    }
+  }
+
+  async function refreshSourceHistory() {
+    try {
+      sourceHistoryItems = await sourceHistory(100);
+    } catch {
+      sourceHistoryItems = [];
+    }
+  }
+
+  async function refreshSourceActivity() {
+    await Promise.all([
+      refreshSourceLibrary(),
+      refreshSourceContinue(),
+      refreshSourceHistory(),
+    ]);
   }
 
   async function refreshLibrary() {
@@ -230,7 +277,14 @@
     void openDetail(item, { keepNote: true });
   }
 
-  function openSourceBrowser(item: SourceLibraryItem) {
+  function openSourceShow(item: {
+    extensionId: string;
+    extensionName: string;
+    showId: string;
+    title: string;
+    cover?: string | null;
+    year?: number | null;
+  }) {
     sourceBrowser = {
       extension: { id: item.extensionId, name: item.extensionName },
       initialShow: {
@@ -347,7 +401,7 @@
       await refreshLibrary();
       await refreshContinue();
       await refreshHistory();
-      await refreshSourceLibrary();
+      await refreshSourceActivity();
       await loadBrowse();
     })();
   });
@@ -514,7 +568,7 @@
                 onPlay={openPlay}
               />
               <div class="px-6 md:px-8 py-6 space-y-8 max-w-[1440px] mx-auto">
-                {#if library.length === 0}
+                {#if library.length === 0 && continueRows.length === 0}
                   <div class="start-callout">
                     <span class="w-11 h-11 grid place-items-center rounded-xl shrink-0" style="background: rgb(108 107 245 / 0.14); border: 1px solid var(--line-volt); color: var(--volt-300);">
                       <Icon name="sparkles" size={20} />
@@ -534,7 +588,11 @@
                   </div>
                 {:else}
                   <section aria-label="Continue watching">
-                    <Shelf title="Continue Watching" count={continueItems.length} onSeeAll={() => goView("library")}>
+                    <Shelf
+                      title="Continue Watching"
+                      count={continueRows.length}
+                      onSeeAll={() => goView("library")}
+                    >
                       {#if continueError}
                         <div class="w-full surface px-4 py-4 flex items-center gap-3 text-sm" style="color: var(--paper-300);" role="alert">
                           <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: rgb(251 113 133 / 0.1); color: var(--danger);">
@@ -543,18 +601,22 @@
                           <span class="flex-1">Progress did not load: {continueError}</span>
                           <button class="btn-ghost px-3 py-1.5 text-[11px] shrink-0" onclick={() => void refreshContinue()}>Retry</button>
                         </div>
-                      {:else if continueItems.length === 0}
+                      {:else if continueRows.length === 0}
                         <div class="w-full surface px-4 py-4 flex items-center gap-3 text-sm" style="color: var(--paper-300);">
                           <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: rgb(108 107 245 / 0.1); color: var(--volt-300);">
                             <Icon name="playCircle" size={16} />
                           </span>
-                          <span class="flex-1">Nothing in progress yet. Mark an episode watched and this row fills itself.</span>
+                          <span class="flex-1">Nothing in progress yet. Start a source episode and this row fills itself.</span>
                           <button class="btn-ghost px-3 py-1.5 text-[11px] shrink-0" onclick={() => goView("library")}>Open library</button>
                         </div>
                       {:else}
-                        {#each continueItems as entry (entry.media.id)}
+                        {#each continueRows as row (row.kind === "anilist" ? `a:${row.item.media.id}` : `s:${row.item.extensionId}:${row.item.showId}`)}
                           <div class="w-[300px] md:w-[320px] shrink-0">
-                            <ContinueCard item={entry} onOpen={(item) => void openDetail(item)} />
+                            {#if row.kind === "anilist"}
+                              <ContinueCard item={row.item} onOpen={(item) => void openDetail(item)} />
+                            {:else}
+                              <SourceContinueCard item={row.item} onOpen={openSourceShow} />
+                            {/if}
                           </div>
                         {/each}
                       {/if}
@@ -651,7 +713,7 @@
                 error={libraryError}
                 onRetry={() => void refreshLibrary()}
                 onOpen={(item) => void openDetail(item)}
-                onOpenSource={openSourceBrowser}
+                onOpenSource={openSourceShow}
                 onToggleLibrary={toggleLibrary}
                 onPlay={openPlay}
                 onBrowse={() => goView("browse")}
@@ -663,10 +725,15 @@
           {:else if view === "history"}
             <HistoryView
               items={historyItems}
+              sourceItems={sourceHistoryItems}
               loading={historyLoading}
               error={historyError}
-              onRetry={() => void refreshHistory()}
+              onRetry={() => {
+                void refreshHistory();
+                void refreshSourceHistory();
+              }}
               onOpen={(item) => void openDetail(item)}
+              onOpenSource={openSourceShow}
               onBrowse={() => goView("browse")}
             />
           {:else if view === "sources"}
@@ -687,7 +754,7 @@
   onClose={closePalette}
   onOpen={(item) => void openDetail(item)}
   onPlay={openPlay}
-  onOpenSource={openSourceBrowser}
+  onOpenSource={openSourceShow}
   onNav={goView}
   onOpenShortcuts={() => (shortcutsOpen = true)}
 />
@@ -699,7 +766,7 @@
     extension={sourceBrowser.extension}
     initialShow={sourceBrowser.initialShow}
     sourceLibrary={sourceLibraryItems}
-    onLibraryChanged={() => void refreshSourceLibrary()}
+    onLibraryChanged={() => void refreshSourceActivity()}
     onClose={() => (sourceBrowser = null)}
     notify={notify}
   />

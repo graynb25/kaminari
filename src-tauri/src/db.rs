@@ -103,6 +103,36 @@ pub struct SourceProgress {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceContinueItem {
+    pub extension_id: String,
+    pub extension_name: String,
+    pub show_id: String,
+    pub title: String,
+    pub cover: Option<String>,
+    pub episode_id: String,
+    pub episode_number: i64,
+    pub episode_title: Option<String>,
+    pub position_sec: f64,
+    pub duration_sec: f64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceHistoryItem {
+    pub extension_id: String,
+    pub extension_name: String,
+    pub show_id: String,
+    pub title: String,
+    pub cover: Option<String>,
+    pub episode_number: i64,
+    pub episode_title: Option<String>,
+    pub watched: bool,
+    pub updated_at: i64,
+}
+
 impl Db {
     pub fn new(path: &str) -> AppResult<Self> {
         let conn = Connection::open(path)?;
@@ -601,6 +631,75 @@ impl Db {
         Ok(())
     }
 
+    pub fn source_continue(&self, limit: usize) -> AppResult<Vec<SourceContinueItem>> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let mut statement = conn.prepare(
+            "SELECT sp.extension_id, COALESCE(je.name, sp.extension_id),
+                    sp.show_id, sl.title, sl.cover,
+                    sp.episode_id, sp.episode_number, sp.episode_title,
+                    sp.position_sec, sp.duration_sec, sp.updated_at
+             FROM (
+               SELECT latest.*, ROW_NUMBER() OVER (
+                 PARTITION BY latest.extension_id, latest.show_id
+                 ORDER BY latest.updated_at DESC, latest.episode_number DESC
+               ) AS rank
+               FROM source_progress latest
+               WHERE latest.watched = 0 AND latest.position_sec > 0
+             ) sp
+             JOIN source_library sl
+               ON sl.extension_id = sp.extension_id AND sl.show_id = sp.show_id
+             LEFT JOIN js_extensions je ON je.id = sp.extension_id
+             WHERE sp.rank = 1
+             ORDER BY sp.updated_at DESC
+             LIMIT ?1",
+        )?;
+        let rows = statement.query_map([limit as i64], |row| {
+            Ok(SourceContinueItem {
+                extension_id: row.get(0)?,
+                extension_name: row.get(1)?,
+                show_id: row.get(2)?,
+                title: row.get(3)?,
+                cover: row.get(4)?,
+                episode_id: row.get(5)?,
+                episode_number: row.get(6)?,
+                episode_title: row.get(7)?,
+                position_sec: row.get(8)?,
+                duration_sec: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn source_history(&self, limit: usize) -> AppResult<Vec<SourceHistoryItem>> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let mut statement = conn.prepare(
+            "SELECT sp.extension_id, COALESCE(je.name, sp.extension_id),
+                    sp.show_id, sl.title, sl.cover,
+                    sp.episode_number, sp.episode_title, sp.watched, sp.updated_at
+             FROM source_progress sp
+             JOIN source_library sl
+               ON sl.extension_id = sp.extension_id AND sl.show_id = sp.show_id
+             LEFT JOIN js_extensions je ON je.id = sp.extension_id
+             ORDER BY sp.updated_at DESC
+             LIMIT ?1",
+        )?;
+        let rows = statement.query_map([limit as i64], |row| {
+            Ok(SourceHistoryItem {
+                extension_id: row.get(0)?,
+                extension_name: row.get(1)?,
+                show_id: row.get(2)?,
+                title: row.get(3)?,
+                cover: row.get(4)?,
+                episode_number: row.get(5)?,
+                episode_title: row.get(6)?,
+                watched: row.get::<_, i64>(7)? != 0,
+                updated_at: row.get(8)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
     pub fn list_sources(&self) -> AppResult<Vec<InstalledSource>> {
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         let mut statement = conn.prepare(
@@ -974,6 +1073,31 @@ mod tests {
         assert_eq!(items[0].last_episode, Some(1));
         assert_eq!(items[0].last_position, Some(120.0));
 
+        let continue_items = db.source_continue(10).unwrap();
+        assert_eq!(continue_items.len(), 1);
+        assert_eq!(continue_items[0].episode_number, 1);
+        assert_eq!(continue_items[0].position_sec, 120.0);
+        let history = db.source_history(10).unwrap();
+        assert_eq!(history.len(), 1);
+        assert!(!history[0].watched);
+
+        db.source_progress_set(
+            &package.manifest.id,
+            "show-1",
+            "ep-2",
+            2,
+            Some("Episode 2"),
+            30.0,
+            600.0,
+            false,
+        )
+        .unwrap();
+        let continue_items = db.source_continue(10).unwrap();
+        assert_eq!(continue_items.len(), 1);
+        assert_eq!(continue_items[0].episode_number, 2);
+        assert_eq!(continue_items[0].position_sec, 30.0);
+        assert_eq!(db.source_history(10).unwrap().len(), 2);
+
         db.source_progress_set(
             &package.manifest.id,
             "show-1",
@@ -986,6 +1110,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(db.source_library_list().unwrap()[0].watched_count, 1);
+        assert_eq!(db.source_continue(10).unwrap()[0].episode_number, 2);
+        assert!(db.source_history(10).unwrap().iter().any(|row| row.watched));
 
         db.source_library_remove(&package.manifest.id, "show-1")
             .unwrap();
