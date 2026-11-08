@@ -4,6 +4,8 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+- Tests: 15 Vitest cases covering titles, covers, HTML cleanup, scores, rate limit copy and relative time
+
 ## 0.11.1 - 2026-11-08
 
 - Cards: finished titles show a COMPLETED badge in amber with a check, matching the AIRING badge shape
