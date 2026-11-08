@@ -9,6 +9,7 @@ Every visible change gets a line here. Keep lines short and specific.
 - UI: theme-aware accent and status surfaces replace the hard-coded colors that drifted in Daylight
 - UI: glass dialogs share one material with border, inset highlight and shadow
 - UI: poster cards get a 2px focus ring, press feedback, and quick actions that stay visible on touch
+- UI: keyboard focus starts in the content instead of the maximize control
 - UI: source grids reach four columns at 1280 and wider
 - Type: paragraph wrapping, optical sizing and tabular numerals
 - Docs: Papyrus styling review distilled into `docs/PLAN-UI-POLISH.md`, phase 1 shipped

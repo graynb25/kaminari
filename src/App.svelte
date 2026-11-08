@@ -420,6 +420,8 @@
   }
 
   onMount(() => {
+    // Start keyboard focus in the content, not on the window controls.
+    mainEl?.focus();
     void (async () => {
       try {
         boot = await bootSnapshot();
@@ -829,5 +831,9 @@
 
   .skip-link:focus {
     top: 48px;
+  }
+
+  #content:focus {
+    outline: none;
   }
 </style>
