@@ -24,6 +24,7 @@
   const title = $derived(displayTitle(item));
   const art = $derived(coverOf(item));
   const isAiring = $derived(item.status === "RELEASING");
+  const isCompleted = $derived(item.status === "FINISHED");
   const percent = $derived(
     progress && progress.total > 0
       ? Math.min(100, Math.max(0, (progress.watched / progress.total) * 100))
@@ -77,6 +78,11 @@
         <span class="poster-badge is-airing">
           <span class="status-dot" style="width: 4px; height: 4px;" aria-hidden="true"></span>
           AIRING
+        </span>
+      {:else if isCompleted}
+        <span class="poster-badge is-completed" title="Finished airing">
+          <Icon name="check" size={9} />
+          COMPLETED
         </span>
       {/if}
       {#if item.averageScore}

@@ -54,7 +54,7 @@ The light theme is not an inversion. The atmosphere keeps the violet current, th
 
 ### PosterCard (2:3)
 
-Fixed ratio, radius 16, blurhash behind the image. Title clamps to two lines, 13px semibold. Caption holds year and score. Progress bar is 3px volt when continuing. Badges are small and rare: NEW, DUB, AIRING.
+Fixed ratio, radius 16, blurhash behind the image. Title clamps to two lines, 13px semibold. Caption holds year and score. Progress bar is 3px volt when continuing. Badges are small and rare: AIRING is green, COMPLETED is amber with a check, custom badges such as NEW or DUB use the neutral badge.
 
 Hover lifts 4px and scales to 1.03 over 160ms. Inner image scales to 1.06 over 320ms. Glow is a 1px volt ring plus a soft volt shadow. Focus visible uses 2px accent ring with 2px offset. Keyboard: Enter opens detail, P plays, L toggles library. Loading shows shimmer at the same ratio. Missing art shows a solid void tile with title initial, never a broken icon.
 

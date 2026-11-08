@@ -1393,6 +1393,12 @@ body[data-overlay] #content {
   background: rgb(8 8 15 / 0.72);
 }
 
+.poster-badge.is-completed {
+  color: var(--warning);
+  border-color: rgb(251 191 36 / 0.3);
+  background: rgb(8 8 15 / 0.72);
+}
+
 .poster-score {
   position: absolute;
   top: 8px;

@@ -4,6 +4,11 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.11.1 - 2026-11-08
+
+- Cards: finished titles show a COMPLETED badge in amber with a check, matching the AIRING badge shape
+- Version: bump to 0.11.1
+
 ## 0.11.0 - 2026-11-08
 
 - Versioning: root `VERSION` is the single source; prebuild and pretauri sync `package.json` and `Cargo.toml` before the build
