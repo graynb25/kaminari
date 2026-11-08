@@ -21,14 +21,8 @@ fn main() {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             let db_path = data_dir.join("kaminari.db");
-            match db::open(db_path.to_string_lossy().as_ref()) {
-                Ok(mut conn) => {
-                    if let Err(err) = db::apply_migrations(&mut conn) {
-                        tracing::error!(%err, "database migration failed");
-                    }
-                }
-                Err(err) => tracing::error!(%err, "database open failed"),
-            }
+            let database = db::Db::new(db_path.to_string_lossy().as_ref())?;
+            app.manage(database);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -36,6 +30,9 @@ fn main() {
             commands::anilist_trending,
             commands::anilist_search,
             commands::anilist_detail,
+            commands::library_list,
+            commands::library_add,
+            commands::library_remove,
             commands::source_validate_id
         ])
         .run(tauri::generate_context!())

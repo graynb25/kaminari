@@ -9,3 +9,4 @@ Every visible change gets a line here. Keep lines short and specific.
 - App: wire SQLite migrations on first run, validate source ids, expose host limits in the boot snapshot
 - AniList: live trending, search and detail commands with a token bucket and typed errors
 - UI: real poster grid, hero backdrop, loading skeletons, error and empty states, frameless title bar with window controls
+- Library: SQLite backed add and remove, your own shelf, hover action on posters

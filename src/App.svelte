@@ -41,9 +41,17 @@
     };
   };
 
+  type LibraryItem = {
+    media: Media;
+    status: string;
+    addedAt: number;
+  };
+
   let title = $state("Kaminari");
   let boot = $state<Boot | null>(null);
   let media = $state<Media[]>([]);
+  let library = $state<LibraryItem[]>([]);
+  let view = $state<"browse" | "library">("browse");
   let heading = $state("Trending now");
   let query = $state("");
   let lastQuery = $state("");
@@ -78,9 +86,41 @@
     return bits.join(" · ");
   }
 
+  async function loadLibrary() {
+    loading = true;
+    error = null;
+    view = "library";
+    heading = "Your library";
+    try {
+      library = await invoke<LibraryItem[]>("library_list");
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    } finally {
+      loading = false;
+    }
+  }
+
+  function isInLibrary(id: number): boolean {
+    return library.some((entry) => entry.media.id === id);
+  }
+
+  async function toggleLibrary(item: Media) {
+    try {
+      if (isInLibrary(item.id)) {
+        await invoke("library_remove", { id: item.id });
+      } else {
+        await invoke("library_add", { media: item, status: "watching" });
+      }
+      library = await invoke<LibraryItem[]>("library_list");
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    }
+  }
+
   async function loadTrending() {
     loading = true;
     error = null;
+    view = "browse";
     heading = "Trending now";
     lastQuery = "";
     try {
@@ -102,6 +142,7 @@
     error = null;
     heading = `Results for "${trimmed}"`;
     lastQuery = trimmed;
+    view = "browse";
     try {
       media = await invoke<Media[]>("anilist_search", { query: trimmed, page: 1 });
     } catch (e) {
@@ -119,11 +160,28 @@
       } catch {
         // Boot snapshot is informational. The shelves still load.
       }
+      try {
+        library = await invoke<LibraryItem[]>("library_list");
+      } catch {
+        // An empty library is a valid first run.
+      }
       await loadTrending();
     })();
   });
 
-  const hero = $derived(media[0] ?? null);
+  const hero = $derived(view === "browse" ? (media[0] ?? null) : null);
+  const visibleMedia = $derived(view === "library" ? library.map((entry) => entry.media) : media);
+  const visibleHeading = $derived(view === "library" ? "Your library" : heading);
+
+  function retry() {
+    if (view === "library") {
+      void loadLibrary();
+    } else if (lastQuery) {
+      void runSearch();
+    } else {
+      void loadTrending();
+    }
+  }
 </script>
 
 <div class="h-screen flex flex-col">
@@ -135,8 +193,20 @@
     <div class="flex items-center gap-3" data-tauri-drag-region>
       <span class="font-semibold tracking-wide" data-tauri-drag-region>⚡ {title}</span>
       <nav class="flex gap-1 text-sm" style="color: var(--paper-300);">
-        <button class="px-2 py-1 rounded-md" style="color: var(--paper-50);">Library</button>
-        <button class="px-2 py-1 rounded-md" onclick={() => loadTrending()}>Browse</button>
+        <button
+          class="px-2 py-1 rounded-md"
+          style="color: {view === 'library' ? 'var(--paper-50)' : 'var(--paper-300)'};"
+          onclick={() => loadLibrary()}
+        >
+          Library
+        </button>
+        <button
+          class="px-2 py-1 rounded-md"
+          style="color: {view === 'browse' ? 'var(--paper-50)' : 'var(--paper-300)'};"
+          onclick={() => loadTrending()}
+        >
+          Browse
+        </button>
         <button class="px-2 py-1 rounded-md">Sources</button>
       </nav>
     </div>
@@ -223,28 +293,32 @@
           <button
             class="mt-4 px-3 py-1.5 rounded-md text-sm font-semibold"
             style="background: var(--volt-500);"
-            onclick={() => (lastQuery ? runSearch() : loadTrending())}
+            onclick={retry}
           >
             Retry
           </button>
         </div>
       </div>
-    {:else if media.length === 0}
+    {:else if visibleMedia.length === 0}
       <div class="h-full grid place-items-center p-6">
         <div class="text-center max-w-md">
           <p class="text-4xl mb-3">⚡</p>
-          <h2 class="text-xl font-semibold">Nothing here yet</h2>
+          <h2 class="text-xl font-semibold">
+            {view === "library" ? "Your library is empty" : "Nothing here yet"}
+          </h2>
           <p class="text-sm mt-2" style="color: var(--paper-300);">
-            {lastQuery
-              ? `No results for "${lastQuery}". Try romaji or a shorter title.`
-              : "AniList returned an empty shelf. Try again in a moment."}
+            {view === "library"
+              ? "Add a title from Browse and it will live here, with progress and history beside it."
+              : lastQuery
+                ? `No results for "${lastQuery}". Try romaji or a shorter title.`
+                : "AniList returned an empty shelf. Try again in a moment."}
           </p>
           <button
             class="mt-4 px-4 py-2 rounded-lg text-sm font-semibold"
             style="background: var(--volt-500);"
-            onclick={() => (lastQuery ? runSearch() : loadTrending())}
+            onclick={() => (view === "library" ? loadTrending() : retry())}
           >
-            Reload
+            {view === "library" ? "Browse trending" : "Reload"}
           </button>
         </div>
       </div>
@@ -290,8 +364,9 @@
                 <button
                   class="px-4 py-2 rounded-lg text-sm font-semibold"
                   style="background: var(--void-800); border: 1px solid var(--line);"
+                  onclick={() => toggleLibrary(hero)}
                 >
-                  + Library
+                  {isInLibrary(hero.id) ? "✓ In Library" : "+ Library"}
                 </button>
               </div>
             </div>
@@ -301,13 +376,13 @@
 
       <section class="p-6">
         <div class="flex items-baseline gap-3 mb-4">
-          <h2 class="text-lg font-semibold">{heading}</h2>
-          <span class="text-sm" style="color: var(--paper-500);">{media.length} titles</span>
+          <h2 class="text-lg font-semibold">{visibleHeading}</h2>
+          <span class="text-sm" style="color: var(--paper-500);">{visibleMedia.length} titles</span>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {#each media as item (item.id)}
+          {#each visibleMedia as item (item.id)}
             <article
-              class="poster-card rounded-2xl overflow-hidden cursor-pointer"
+              class="poster-card group rounded-2xl overflow-hidden cursor-pointer"
               style="background: var(--void-800); border: 1px solid var(--line);"
             >
               <div
@@ -330,6 +405,17 @@
                     ★ {item.averageScore}
                   </span>
                 {/if}
+                <button
+                  class="absolute bottom-2 right-2 h-7 w-7 grid place-items-center rounded-full text-sm font-bold opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-150"
+                  style="background: rgb(8 8 15 / 0.86); border: 1px solid var(--line); color: var(--paper-50);"
+                  aria-label={isInLibrary(item.id) ? `Remove ${displayTitle(item)} from library` : `Add ${displayTitle(item)} to library`}
+                  onclick={(event) => {
+                    event.stopPropagation();
+                    void toggleLibrary(item);
+                  }}
+                >
+                  {isInLibrary(item.id) ? "✓" : "+"}
+                </button>
               </div>
               <div class="p-2.5">
                 <p class="text-sm font-semibold leading-snug line-clamp-2">{displayTitle(item)}</p>

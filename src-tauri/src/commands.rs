@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::anilist::{AniListClient, Media};
+use crate::db::{Db, LibraryItem};
 use crate::error::AppError;
 use crate::ext_host;
 
@@ -67,6 +68,26 @@ pub async fn anilist_search(
 #[tauri::command]
 pub async fn anilist_detail(state: State<'_, AniListClient>, id: i64) -> Result<Media, String> {
     state.detail(id).await.map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn library_list(state: State<'_, Db>) -> Result<Vec<LibraryItem>, String> {
+    state.list_library().map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn library_add(
+    state: State<'_, Db>,
+    media: Media,
+    status: Option<String>,
+) -> Result<(), String> {
+    let status = status.unwrap_or_else(|| "watching".to_string());
+    state.add_to_library(&media, &status).map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn library_remove(state: State<'_, Db>, id: i64) -> Result<(), String> {
+    state.remove_from_library(id).map_err(ipc_error)
 }
 
 #[tauri::command]
