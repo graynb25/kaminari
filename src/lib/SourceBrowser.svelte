@@ -193,6 +193,12 @@
     return row.positionSec;
   }
 
+  function episodeAction(episode: JsEpisode): string {
+    const row = progressFor(episode.id);
+    if (row?.watched) return "Rewatch";
+    return resumeFor(episode.id) > 0 ? "Resume" : "Play";
+  }
+
   async function toggleSourceLibrary() {
     if (!selected) return;
     try {
@@ -276,6 +282,22 @@
 
   async function playStream(stream: JsStream, episode: JsEpisode) {
     activePlayback = { stream, episode, startSec: resumeFor(episode.id) };
+  }
+
+  async function playEpisode(episode: JsEpisode) {
+    const cached = streams[episode.id];
+    const list = cached && cached.length > 0 ? cached : await resolve(episode);
+    if (list.length > 0) await playStream(list[0], episode);
+  }
+
+  function toggleStreams(episode: JsEpisode) {
+    if (streams[episode.id]) {
+      const next = { ...streams };
+      delete next[episode.id];
+      streams = next;
+      return;
+    }
+    void resolve(episode);
   }
 
   async function openExternal(stream: JsStream, episode: JsEpisode) {
@@ -530,14 +552,26 @@
                       </p>
                     {/if}
                   </div>
-                  <button
-                    class="btn-primary px-3 py-1.5 text-[11px] shrink-0"
-                    disabled={resolving === episode.id}
-                    onclick={() => void resolve(episode)}
-                  >
-                    <Icon name="playCircle" size={13} />
-                    {resolving === episode.id ? "Resolving" : "Resolve"}
-                  </button>
+                  <div class="flex items-center gap-1.5 shrink-0">
+                    <button
+                      class="btn-primary px-3 py-1.5 text-[11px] shrink-0"
+                      disabled={resolving === episode.id}
+                      onclick={() => void playEpisode(episode)}
+                      aria-label="{resolving === episode.id ? 'Resolving' : episodeAction(episode)} episode {episode.number}"
+                    >
+                      <Icon name="playCircle" size={13} />
+                      {resolving === episode.id ? "Resolving" : episodeAction(episode)}
+                    </button>
+                    <button
+                      class="btn-ghost px-2.5 py-1.5 text-[11px] shrink-0"
+                      disabled={resolving === episode.id}
+                      onclick={() => toggleStreams(episode)}
+                      aria-label="{streams[episode.id] ? 'Hide' : 'Show'} streams for episode {episode.number}"
+                    >
+                      <Icon name="list" size={12} />
+                      {streams[episode.id] ? "Hide" : "Streams"}
+                    </button>
+                  </div>
                 </div>
                 {#if streams[episode.id]}
                   <div class="px-3 pb-3 space-y-1.5" style="border-top: 1px solid var(--line); padding-top: 10px;">
@@ -554,7 +588,7 @@
                         </span>
                         <button class="btn-primary px-2.5 py-1 text-[10px] shrink-0" onclick={() => void playStream(stream, episode)}>
                           <Icon name="play" size={10} />
-                          {resumeFor(episode.id) > 0 ? "Resume" : "Play"}
+                          {episodeAction(episode)}
                         </button>
                         <button class="btn-ghost px-2.5 py-1 text-[10px] shrink-0" onclick={() => void copyStream(stream.url)}>
                           <Icon name="copy" size={10} />
@@ -577,8 +611,8 @@
             </div>
           {/if}
           <p class="text-xs mt-3" style="color: var(--paper-450);">
-            Play opens the in-app player. Open in mpv is the fallback for formats the WebView cannot
-            decode.
+            Play starts the first stream in the in-app player. Streams lists every quality, with Copy
+            and Open in mpv for the ones the WebView cannot decode.
           </p>
         {/if}
       </div>

@@ -66,6 +66,16 @@ What we measured. On 2026-11-08 the sample was installed and searched through th
 
 What we did not do. `getShow`, `getEpisodes` and `resolveEpisode` are implemented in the sample but not wired to a browse UI yet. Async methods return `ASYNC_UNSUPPORTED`. Packages are unsigned and stay local. No registry.
 
+## 2026-11-08 Icon refresh and episode actions
+
+Context. The first icon was a flat lavender bolt on black. It read as a placeholder. The user asked for a professional icon. Source episode rows also said Resolve, which is host language, not a viewer action.
+
+What we shipped. A new squircle tile: deep indigo gradient, volt halo, low floor glow, 4px rim, and one beveled bolt with a soft glow and shadow. The editable source is `assets/brand/icon.svg`; the full Windows, macOS, iOS and Android set came from `pnpm tauri icon assets/brand/icon-1024.png`. Source episode actions are now Play, Resume or Rewatch. Play resolves and starts the first stream in one click. A second Streams button opens the quality list with Copy and Open in mpv. Resolve stays in code and logs.
+
+What we measured. The icon reads at 32px in the headless preview and the generated 32px PNG still shows the bolt silhouette. The 128px and 512px renders keep the rim and glow without muddying the edge. In the app, Play started the episode at 0:00, the row changed to Resume after progress saved, and Streams showed the MP4 row with Resume, Copy and the mpv fallback. No page errors.
+
+What we did not do. No icon animation, no alternate icon, no transparency variant for the Windows taskbar. The 48px transparent margin is intentional so the squircle does not clip.
+
 ## 2026-11-08 Light theme and theme modes
 
 Context. The app only shipped dark. That is the signature, but it is not a reasonable default for everyone. The user asked for a light mode and room for other styles.

@@ -4,6 +4,14 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.10.1 - 2026-11-08
+
+- Icon: new squircle tile with a beveled volt bolt, deep indigo gradient, soft glow and rim light
+- Icon: generated the full Windows, macOS, iOS and Android set from `assets/brand/icon.svg`
+- Source episodes: the primary action is now Play, Resume or Rewatch instead of Resolve
+- Source episodes: Play resolves and starts the first stream in one click, while Streams opens the full quality list
+- Version: bump to 0.10.1
+
 ## 0.10.0 - 2026-11-08
 
 - Themes: System, Dark and Light modes, persisted locally and initialized before the first paint

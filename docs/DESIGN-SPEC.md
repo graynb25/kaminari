@@ -92,6 +92,8 @@ Native source runs join the same shelf from their own table. One card per show, 
 
 The Sources page leads with a registry URL field. Loading the yuzono Aniyomi index returned 250 packages in a live check on 2026-11-08. Installed packages render first, then available packages with name, package id, version, language, source count, and NSFW or torrent badges. A filter narrows the list. Cards render 60 at a time with a Show more button, so 250 packages do not land in the DOM at once. Add stores metadata only. No APK downloads, no package code runs until the QuickJS host lands. The page says that in plain copy.
 
+Source detail: cover, banner, synopsis and episode rows. The episode action is Play, Resume or Rewatch. Play resolves the episode and starts the first stream, one click. Streams opens the quality list with Copy and Open in mpv. Resolve is implementation language, never a button label.
+
 ### VideoPlayer (libmpv surface)
 
 Full window route `/watch/:id/:ep`. Black field. mpv canvas fills. Custom bar in glass, hides after 2.5 seconds idle, returns on move or focus. Time shows current and total in mono. Sliders scrub with 100ms linear response.
@@ -121,6 +123,10 @@ Toast: bottom right, max 3, 4200ms, icon plus text plus one action (Undo, Retry)
 EmptyState: centered icon at 48px, H3, one body line in paper 300, one primary action plus one link. Copy names the cause and the next step. Example: `No results for "frieren". Try romaji or check spelling.`
 
 Skeleton: same shape as the content, shimmer 1200ms loop, static fill when reduced motion asks for stillness.
+
+### App icon
+
+1024 square, 928 squircle at radius 232 with transparent corners. Deep indigo gradient from `#2C2368` to `#06050D`, a volt halo, a low floor glow and a 4px rim. One beveled bolt from `#FFFFFF` to `#7B79FF` with a soft glow and a 26px shadow. No text and no play glyph. Source lives at `assets/brand/icon.svg` and renders to `assets/brand/icon-1024.png`. Regenerate every platform size with `pnpm tauri icon assets/brand/icon-1024.png`. The taskbar read is the test: 32px must still read as a bolt, not a blob.
 
 ## Motion
 

@@ -66,6 +66,6 @@
         <Icon name="help" size={17} />
       </button>
     {/if}
-    <span class="mt-1 font-mono text-[8px] tracking-[0.16em]" style="color: var(--paper-500);">0.10.0</span>
+    <span class="mt-1 font-mono text-[8px] tracking-[0.16em]" style="color: var(--paper-500);">0.10.1</span>
   </div>
 </nav>
