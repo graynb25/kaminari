@@ -30,11 +30,13 @@ If you already know React, the Rust side does not care. The contract stays the s
 
 ## Status
 
-Scaffold in place. The Tauri shell, SQLite migrations, and the first live AniList queries run. Docs in `docs/` are the source of truth for what comes next.
+Working today: cinematic browse with five AniList rails, Top 10 Today, Ctrl K palette, detail pages, a local library, watched episode tracking, Continue Watching, and an Aniyomi registry reader that stores source metadata.
+
+Next: the QuickJS extension host and libmpv playback. The app does not download APKs or run package code yet.
 
 Windows is the first target. macOS and Linux come later.
 
-## Run it (once scaffolded)
+## Run it
 
 ```bash
 pnpm install
