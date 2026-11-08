@@ -1,5 +1,6 @@
 // Pure rules for the loopback proxy. Svelte components stay thin around these.
-// P0 proxies MP4 only. HLS with headers still goes direct so mpv can carry them.
+// MP4 and HLS with headers go through the loopback proxy. Headerless media
+// stays direct so mpv and public sample URLs keep their current path.
 
 import type { JsStream } from "./types";
 
@@ -11,16 +12,22 @@ export function hasStreamHeaders(stream: JsStream): boolean {
   );
 }
 
+export function isHlsStream(stream: JsStream): boolean {
+  const type = (stream.type ?? "").trim().toLowerCase();
+  if (type === "hls") return true;
+  const path = stream.url.split(/[?#]/)[0].toLowerCase();
+  return path.endsWith(".m3u8");
+}
+
 export function isMp4Stream(stream: JsStream): boolean {
   const type = (stream.type ?? "").trim().toLowerCase();
-  if (type === "hls") return false;
+  if (isHlsStream(stream)) return false;
   const path = stream.url.split(/[?#]/)[0].toLowerCase();
-  if (path.endsWith(".m3u8")) return false;
   return type === "mp4" || path.endsWith(".mp4");
 }
 
 export function shouldProxy(stream: JsStream): boolean {
-  return isMp4Stream(stream) && hasStreamHeaders(stream);
+  return hasStreamHeaders(stream) && (isMp4Stream(stream) || isHlsStream(stream));
 }
 
 export function playbackUrl(stream: JsStream): string {

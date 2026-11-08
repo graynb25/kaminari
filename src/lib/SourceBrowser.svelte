@@ -17,7 +17,7 @@
     sourceProgressGet,
     sourceProgressSet,
   } from "./api";
-  import { proxyFlagEnabled, shouldProxy } from "./streamProxy";
+  import { isHlsStream, proxyFlagEnabled, shouldProxy } from "./streamProxy";
   import type {
     JsEpisode,
     JsSearchItem,
@@ -302,7 +302,7 @@
         if (status.enabled) {
           const registered = await proxyRegister(extension.id, {
             url: stream.url,
-            kind: stream.type,
+            kind: isHlsStream(stream) ? "hls" : "mp4",
             headers: stream.headers ?? null,
           });
           prepared = {

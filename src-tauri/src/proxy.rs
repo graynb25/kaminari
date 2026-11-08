@@ -1,6 +1,7 @@
-// Loopback stream proxy for protected MP4 playback. See docs/PLAN-STREAM-PROXY.md.
-// The WebView gets an opaque loopback URL. Rust keeps the upstream URL, the
-// allowlisted headers and the per entry token in memory only.
+// Loopback stream proxy for protected MP4 and HLS playback.
+// See docs/PLAN-STREAM-PROXY.md. The WebView gets an opaque loopback URL.
+// Rust keeps the upstream URL, the allowlisted headers, the per entry token
+// and the rewritten playlist children in memory only.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -14,7 +15,7 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
-use futures_util::TryStreamExt;
+use futures_util::{StreamExt, TryStreamExt};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncReadExt;
@@ -28,16 +29,23 @@ pub const ABSOLUTE_TTL: Duration = Duration::from_secs(4 * 60 * 60);
 pub const MAX_ENTRIES: usize = 64;
 pub const MAX_HEADERS: usize = 16;
 pub const MAX_HEADER_BYTES: usize = 8 * 1024;
+pub const MAX_CHILDREN: usize = 256;
+pub const MAX_PLAYLIST_BYTES: usize = 2 * 1024 * 1024;
+pub const MAX_KEY_BYTES: usize = 64 * 1024;
+pub const MAX_SUBTITLE_BYTES: usize = 512 * 1024;
 pub const MAX_RANGE_SKIP: u64 = 16 * 1024 * 1024;
 pub const STREAM_CHUNK_BYTES: usize = 64 * 1024;
 pub const SWEEP_SECS: u64 = 60;
 
 const MAX_REDIRECTS: usize = 3;
+const MAX_PLAYLIST_LINES: usize = 2000;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const FIRST_BYTE_TIMEOUT: Duration = Duration::from_secs(15);
+const PLAYLIST_TIMEOUT: Duration = Duration::from_secs(15);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 const DNS_TIMEOUT: Duration = Duration::from_secs(10);
 const EXPIRES_IN_SEC: u64 = 2 * 60 * 60;
+const PLAYLIST_CONTENT_TYPE: &str = "application/vnd.apple.mpegurl";
 
 const ALLOWED_HEADERS: [&str; 7] = [
     "user-agent",
@@ -75,6 +83,44 @@ pub struct ProxyStreamInput {
     pub headers: Option<HashMap<String, String>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChildKind {
+    Playlist,
+    Subtitle,
+    Key,
+    Segment,
+    Map,
+    File,
+}
+
+impl ChildKind {
+    fn default_content_type(self) -> Option<&'static str> {
+        match self {
+            Self::Playlist | Self::Subtitle => Some(PLAYLIST_CONTENT_TYPE),
+            Self::Key => Some("application/octet-stream"),
+            Self::Segment | Self::Map | Self::File => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ChildEntry {
+    child_id: String,
+    upstream_url: String,
+    content_type: Option<String>,
+    byte_range: Option<String>,
+    kind: ChildKind,
+    last_used: Instant,
+}
+
+#[derive(Debug, Clone)]
+struct ChildSpec {
+    upstream_url: String,
+    content_type: Option<String>,
+    byte_range: Option<String>,
+    kind: ChildKind,
+}
+
 #[derive(Clone)]
 struct ProxyEntry {
     opaque_id: String,
@@ -87,6 +133,7 @@ struct ProxyEntry {
     allow_private: bool,
     created_at: Instant,
     last_used: Instant,
+    children: HashMap<String, ChildEntry>,
 }
 
 struct StoreState {
@@ -107,9 +154,13 @@ enum LookupError {
     Expired,
 }
 
+#[derive(Debug)]
 enum ProxyError {
     Upstream(&'static str),
     Timeout,
+    MasterPlaylist,
+    Oversized(&'static str),
+    BadPlaylist,
 }
 
 struct ByteRange {
@@ -120,6 +171,24 @@ struct ByteRange {
 #[derive(Deserialize)]
 struct TokenQuery {
     token: Option<String>,
+}
+
+enum PlaylistLine {
+    Text(String),
+    UriTag {
+        text: String,
+        uri_start: usize,
+        uri_end: usize,
+        spec: usize,
+    },
+    Segment {
+        spec: usize,
+    },
+}
+
+struct ParsedPlaylist {
+    lines: Vec<PlaylistLine>,
+    specs: Vec<ChildSpec>,
 }
 
 impl ProxyStore {
@@ -174,7 +243,19 @@ impl ProxyStore {
             .route("/healthz", get(healthz).options(healthz_options))
             .route(
                 "/s/{id}/file",
-                get(file_handler).head(file_handler).options(file_options),
+                get(file_handler).head(file_handler).options(route_options),
+            )
+            .route(
+                "/s/{id}/manifest.m3u8",
+                get(manifest_handler)
+                    .head(manifest_handler)
+                    .options(route_options),
+            )
+            .route(
+                "/s/{id}/seg/{child}",
+                get(segment_handler)
+                    .head(segment_handler)
+                    .options(route_options),
             )
             .layer(middleware::from_fn(cors))
             .with_state(self.clone())
@@ -246,17 +327,19 @@ impl ProxyStore {
         let opaque_id = random_hex()?;
         let token = random_hex()?;
         let now = Instant::now();
+        let kind = stream.kind.to_ascii_lowercase();
         let entry = ProxyEntry {
             opaque_id: opaque_id.clone(),
             token: token.clone(),
             extension_id: extension_id.to_string(),
             upstream_url: url.to_string(),
-            kind: stream.kind.to_ascii_lowercase(),
+            kind: kind.clone(),
             headers,
             allowed,
             allow_private,
             created_at: now,
             last_used: now,
+            children: HashMap::new(),
         };
 
         let port = {
@@ -294,11 +377,16 @@ impl ProxyStore {
             "proxy: registered stream"
         );
 
+        let route = if kind == "hls" {
+            "manifest.m3u8"
+        } else {
+            "file"
+        };
         Ok(ProxyUrl {
-            proxy_url: format!("http://127.0.0.1:{port}/s/{opaque_id}/file?token={token}"),
+            proxy_url: format!("http://127.0.0.1:{port}/s/{opaque_id}/{route}?token={token}"),
             opaque_id,
             expires_in_sec: EXPIRES_IN_SEC,
-            kind: stream.kind.to_ascii_lowercase(),
+            kind,
         })
     }
 
@@ -322,18 +410,92 @@ impl ProxyStore {
         let Some(entry) = state.entries.get(id) else {
             return Err(LookupError::NotFound);
         };
-        if !constant_time_eq(entry.token.as_bytes(), token.as_bytes()) {
-            return Err(LookupError::Forbidden);
-        }
+        check_entry(entry, token)?;
         let now = Instant::now();
-        if now.duration_since(entry.created_at) >= ABSOLUTE_TTL
-            || now.duration_since(entry.last_used) >= IDLE_TTL
-        {
-            return Err(LookupError::Expired);
-        }
         let entry = state.entries.get_mut(id).ok_or(LookupError::NotFound)?;
         entry.last_used = now;
         Ok(entry.clone())
+    }
+
+    fn lookup_child(
+        &self,
+        id: &str,
+        token: &str,
+        child_id: &str,
+    ) -> Result<(ProxyEntry, ChildEntry), LookupError> {
+        let mut state = self.inner.lock().map_err(|_| LookupError::NotFound)?;
+        let Some(entry) = state.entries.get(id) else {
+            return Err(LookupError::NotFound);
+        };
+        check_entry(entry, token)?;
+        let now = Instant::now();
+        let entry = state.entries.get_mut(id).ok_or(LookupError::NotFound)?;
+        entry.last_used = now;
+        let child = match entry.children.get_mut(child_id) {
+            Some(child) => {
+                child.last_used = now;
+                child.clone()
+            }
+            None => return Err(LookupError::NotFound),
+        };
+        Ok((entry.clone(), child))
+    }
+
+    fn reconcile_children(&self, id: &str, specs: &[ChildSpec]) -> Result<Vec<String>, ProxyError> {
+        let mut state = self
+            .inner
+            .lock()
+            .map_err(|_| ProxyError::Upstream("store"))?;
+        let Some(entry) = state.entries.get_mut(id) else {
+            return Err(ProxyError::Upstream("entry"));
+        };
+        let now = Instant::now();
+        let mut ids = Vec::with_capacity(specs.len());
+        for spec in specs {
+            if let Some(child) = entry
+                .children
+                .values_mut()
+                .find(|child| child.upstream_url == spec.upstream_url)
+            {
+                if spec.content_type.is_some() {
+                    child.content_type = spec.content_type.clone();
+                }
+                child.byte_range = spec.byte_range.clone();
+                child.kind = spec.kind;
+                child.last_used = now;
+                ids.push(child.child_id.clone());
+                continue;
+            }
+
+            if entry.children.len() >= MAX_CHILDREN {
+                if let Some(key) = entry
+                    .children
+                    .iter()
+                    .min_by_key(|(_, child)| child.last_used)
+                    .map(|(key, _)| key.clone())
+                {
+                    entry.children.remove(&key);
+                }
+            }
+
+            let mut child_id = random_hex_n(8).map_err(|_| ProxyError::Upstream("random"))?;
+            while entry.children.contains_key(&child_id) {
+                child_id = random_hex_n(8).map_err(|_| ProxyError::Upstream("random"))?;
+            }
+            entry.children.insert(
+                child_id.clone(),
+                ChildEntry {
+                    child_id: child_id.clone(),
+                    upstream_url: spec.upstream_url.clone(),
+                    content_type: spec.content_type.clone(),
+                    byte_range: spec.byte_range.clone(),
+                    kind: spec.kind,
+                    last_used: now,
+                },
+            );
+            ids.push(child_id);
+        }
+        Ok(ids)
     }
 
     pub fn sweep(&self) {
@@ -381,9 +543,21 @@ impl ProxyStore {
         url: &str,
         headers: Option<HashMap<String, String>>,
     ) -> Result<ProxyUrl, String> {
+        self.register_fixture_with_kind(extension_id, url, "mp4", headers)
+            .await
+    }
+
+    #[cfg(test)]
+    async fn register_fixture_with_kind(
+        &self,
+        extension_id: &str,
+        url: &str,
+        kind: &str,
+        headers: Option<HashMap<String, String>>,
+    ) -> Result<ProxyUrl, String> {
         let stream = ProxyStreamInput {
             url: url.to_string(),
-            kind: "mp4".to_string(),
+            kind: kind.to_string(),
             headers,
         };
         self.register_inner(extension_id, &stream, None, true).await
@@ -437,11 +611,12 @@ async fn healthz_options() -> StatusCode {
     StatusCode::NO_CONTENT
 }
 
-async fn file_options(
+async fn route_options(
     State(store): State<ProxyStore>,
-    Path(id): Path<String>,
+    Path(params): Path<HashMap<String, String>>,
     Query(query): Query<TokenQuery>,
 ) -> Response {
+    let id = params.get("id").cloned().unwrap_or_default();
     let token = query.token.unwrap_or_default();
     match store.lookup(&id, &token) {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
@@ -452,6 +627,256 @@ async fn file_options(
         }
         Err(LookupError::Expired) => short(StatusCode::GONE, "expired"),
     }
+}
+
+async fn manifest_handler(
+    State(store): State<ProxyStore>,
+    Path(id): Path<String>,
+    Query(query): Query<TokenQuery>,
+    method: Method,
+) -> Response {
+    let token = query.token.unwrap_or_default();
+    let entry = match store.lookup(&id, &token) {
+        Ok(entry) => entry,
+        Err(LookupError::NotFound) => return short(StatusCode::NOT_FOUND, "not-found"),
+        Err(LookupError::Forbidden) => {
+            tracing::warn!(id = %id_prefix(&id), "proxy: rejected a bad token");
+            return short(StatusCode::FORBIDDEN, "forbidden");
+        }
+        Err(LookupError::Expired) => return short(StatusCode::GONE, "expired"),
+    };
+    if entry.kind != "hls" {
+        return short(StatusCode::NOT_FOUND, "not-hls");
+    }
+
+    let (upstream, final_url) =
+        match fetch_upstream_from(&entry, &entry.upstream_url, &Method::GET, None).await {
+            Ok(fetched) => fetched,
+            Err(err) => return proxy_error_response(err),
+        };
+    if !upstream.status().is_success() {
+        tracing::debug!(
+            id = %id_prefix(&entry.opaque_id),
+            status = upstream.status().as_u16(),
+            "proxy: playlist upstream refused"
+        );
+        return short(StatusCode::BAD_GATEWAY, "upstream-error");
+    }
+    let content_type = header_string(upstream.headers(), header::CONTENT_TYPE);
+    let body = match read_capped(upstream, MAX_PLAYLIST_BYTES, "playlist-too-large").await {
+        Ok(body) => body,
+        Err(err) => return proxy_error_response(err),
+    };
+    if !is_playlist_content_type(content_type.as_deref()) && !looks_like_playlist(&body) {
+        return proxy_error_response(ProxyError::BadPlaylist);
+    }
+    let text = String::from_utf8_lossy(&body);
+    if is_master_playlist(&text) {
+        return proxy_error_response(ProxyError::MasterPlaylist);
+    }
+    let parsed = match parse_media_playlist(&final_url, &text) {
+        Ok(parsed) => parsed,
+        Err(err) => return proxy_error_response(err),
+    };
+    let child_ids = match store.reconcile_children(&id, &parsed.specs) {
+        Ok(ids) => ids,
+        Err(err) => return proxy_error_response(err),
+    };
+    let rewritten = render_playlist(&entry, &parsed, &child_ids);
+    playlist_response(rewritten, &method)
+}
+
+async fn segment_handler(
+    State(store): State<ProxyStore>,
+    Path((id, child_id)): Path<(String, String)>,
+    Query(query): Query<TokenQuery>,
+    method: Method,
+    headers: HeaderMap,
+) -> Response {
+    let token = query.token.unwrap_or_default();
+    let (entry, child) = match store.lookup_child(&id, &token, &child_id) {
+        Ok(found) => found,
+        Err(LookupError::NotFound) => return short(StatusCode::NOT_FOUND, "not-found"),
+        Err(LookupError::Forbidden) => {
+            tracing::warn!(id = %id_prefix(&id), "proxy: rejected a bad token");
+            return short(StatusCode::FORBIDDEN, "forbidden");
+        }
+        Err(LookupError::Expired) => return short(StatusCode::GONE, "expired"),
+    };
+    if entry.kind != "hls" {
+        return short(StatusCode::NOT_FOUND, "not-hls");
+    }
+
+    match child.kind {
+        ChildKind::Playlist | ChildKind::Subtitle => {
+            playlist_child_response(&store, &entry, &child, &method).await
+        }
+        ChildKind::Key => {
+            buffered_child_response(&entry, &child, &method, MAX_KEY_BYTES, "key-too-large").await
+        }
+        ChildKind::File => {
+            buffered_child_response(
+                &entry,
+                &child,
+                &method,
+                MAX_SUBTITLE_BYTES,
+                "subtitle-too-large",
+            )
+            .await
+        }
+        ChildKind::Segment | ChildKind::Map => {
+            stream_child_response(&entry, &child, &method, &headers).await
+        }
+    }
+}
+
+async fn playlist_child_response(
+    store: &ProxyStore,
+    entry: &ProxyEntry,
+    child: &ChildEntry,
+    method: &Method,
+) -> Response {
+    let cap = if child.kind == ChildKind::Subtitle {
+        MAX_SUBTITLE_BYTES
+    } else {
+        MAX_PLAYLIST_BYTES
+    };
+    let too_large = if child.kind == ChildKind::Subtitle {
+        "subtitle-too-large"
+    } else {
+        "playlist-too-large"
+    };
+    let (upstream, final_url) =
+        match fetch_upstream_from(entry, &child.upstream_url, &Method::GET, None).await {
+            Ok(fetched) => fetched,
+            Err(err) => return proxy_error_response(err),
+        };
+    if !upstream.status().is_success() {
+        return short(StatusCode::BAD_GATEWAY, "upstream-error");
+    }
+    let content_type = header_string(upstream.headers(), header::CONTENT_TYPE);
+    let body = match read_capped(upstream, cap, too_large).await {
+        Ok(body) => body,
+        Err(err) => return proxy_error_response(err),
+    };
+    let is_playlist =
+        looks_like_playlist(&body) || is_playlist_content_type(content_type.as_deref());
+    if !is_playlist && child.kind == ChildKind::Subtitle {
+        return buffered_response(method, body, content_type.as_deref(), "text/vtt", true);
+    }
+    if !is_playlist {
+        return proxy_error_response(ProxyError::BadPlaylist);
+    }
+    let text = String::from_utf8_lossy(&body);
+    if is_master_playlist(&text) {
+        return proxy_error_response(ProxyError::MasterPlaylist);
+    }
+    let parsed = match parse_media_playlist(&final_url, &text) {
+        Ok(parsed) => parsed,
+        Err(err) => return proxy_error_response(err),
+    };
+    let child_ids = match store.reconcile_children(&entry.opaque_id, &parsed.specs) {
+        Ok(ids) => ids,
+        Err(err) => return proxy_error_response(err),
+    };
+    let rewritten = render_playlist(entry, &parsed, &child_ids);
+    playlist_response(rewritten, method)
+}
+
+async fn buffered_child_response(
+    entry: &ProxyEntry,
+    child: &ChildEntry,
+    method: &Method,
+    cap: usize,
+    too_large: &'static str,
+) -> Response {
+    let (upstream, _) =
+        match fetch_upstream_from(entry, &child.upstream_url, &Method::GET, None).await {
+            Ok(fetched) => fetched,
+            Err(err) => return proxy_error_response(err),
+        };
+    if !upstream.status().is_success() {
+        return short(StatusCode::BAD_GATEWAY, "upstream-error");
+    }
+    let content_type = header_string(upstream.headers(), header::CONTENT_TYPE);
+    let body = match read_capped(upstream, cap, too_large).await {
+        Ok(body) => body,
+        Err(err) => return proxy_error_response(err),
+    };
+    let fallback = child
+        .content_type
+        .as_deref()
+        .or_else(|| child.kind.default_content_type())
+        .unwrap_or("application/octet-stream");
+    buffered_response(method, body, content_type.as_deref(), fallback, true)
+}
+
+async fn stream_child_response(
+    entry: &ProxyEntry,
+    child: &ChildEntry,
+    method: &Method,
+    headers: &HeaderMap,
+) -> Response {
+    let requested = headers
+        .get(header::RANGE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let effective = requested.clone().or_else(|| {
+        child
+            .byte_range
+            .as_ref()
+            .map(|range| format!("bytes={range}"))
+    });
+    let range = effective.as_deref().and_then(parse_range);
+
+    let upstream =
+        match fetch_upstream_from(entry, &child.upstream_url, method, effective.as_deref()).await {
+            Ok((response, _)) => response,
+            Err(err) => return proxy_error_response(err),
+        };
+
+    stream_response(upstream, method, range, effective.is_some()).await
+}
+
+fn playlist_response(body: String, method: &Method) -> Response {
+    let body = if method == Method::HEAD {
+        Body::empty()
+    } else {
+        Body::from(body)
+    };
+    let mut response = Response::new(body);
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(PLAYLIST_CONTENT_TYPE),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert(header::ACCEPT_RANGES, HeaderValue::from_static("none"));
+    response
+}
+
+fn buffered_response(
+    method: &Method,
+    body: Vec<u8>,
+    upstream_type: Option<&str>,
+    fallback_type: &str,
+    no_store: bool,
+) -> Response {
+    let content_type = upstream_type.unwrap_or(fallback_type);
+    let content_type = HeaderValue::from_str(content_type)
+        .unwrap_or(HeaderValue::from_static("application/octet-stream"));
+    let body = if method == Method::HEAD {
+        Body::empty()
+    } else {
+        Body::from(body)
+    };
+    let mut response = Response::new(body);
+    let headers = response.headers_mut();
+    headers.insert(header::CONTENT_TYPE, content_type);
+    if no_store {
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
+    response
 }
 
 async fn file_handler(
@@ -499,7 +924,18 @@ async fn fetch_upstream(
     method: &Method,
     range: Option<&str>,
 ) -> Result<reqwest::Response, ProxyError> {
-    let original = Url::parse(&entry.upstream_url).map_err(|_| ProxyError::Upstream("url"))?;
+    fetch_upstream_from(entry, &entry.upstream_url, method, range)
+        .await
+        .map(|(response, _)| response)
+}
+
+async fn fetch_upstream_from(
+    entry: &ProxyEntry,
+    start_url: &str,
+    method: &Method,
+    range: Option<&str>,
+) -> Result<(reqwest::Response, Url), ProxyError> {
+    let original = Url::parse(start_url).map_err(|_| ProxyError::Upstream("url"))?;
     let mut current = original.clone();
 
     for hop in 0..=MAX_REDIRECTS {
@@ -543,7 +979,7 @@ async fn fetch_upstream(
             .map_err(|_| ProxyError::Upstream("send"))?;
 
         if !response.status().is_redirection() {
-            return Ok(response);
+            return Ok((response, current));
         }
         if hop == MAX_REDIRECTS {
             return Err(ProxyError::Upstream("redirects"));
@@ -701,6 +1137,11 @@ fn relay(upstream: reqwest::Response, status: StatusCode, method: &Method) -> Re
 fn proxy_error_response(error: ProxyError) -> Response {
     match error {
         ProxyError::Timeout => short(StatusCode::GATEWAY_TIMEOUT, "timeout"),
+        ProxyError::MasterPlaylist => {
+            short(StatusCode::NOT_IMPLEMENTED, "master-playlist-unsupported")
+        }
+        ProxyError::Oversized(reason) => (StatusCode::BAD_GATEWAY, reason).into_response(),
+        ProxyError::BadPlaylist => short(StatusCode::BAD_GATEWAY, "not-a-playlist"),
         ProxyError::Upstream(reason) => {
             tracing::debug!(reason, "proxy: upstream request failed");
             short(StatusCode::BAD_GATEWAY, "upstream-error")
@@ -710,6 +1151,427 @@ fn proxy_error_response(error: ProxyError) -> Response {
 
 fn short(status: StatusCode, body: &'static str) -> Response {
     (status, body).into_response()
+}
+
+fn check_entry(entry: &ProxyEntry, token: &str) -> Result<(), LookupError> {
+    if !constant_time_eq(entry.token.as_bytes(), token.as_bytes()) {
+        return Err(LookupError::Forbidden);
+    }
+    let now = Instant::now();
+    if now.duration_since(entry.created_at) >= ABSOLUTE_TTL
+        || now.duration_since(entry.last_used) >= IDLE_TTL
+    {
+        return Err(LookupError::Expired);
+    }
+    Ok(())
+}
+
+fn header_string(headers: &HeaderMap, name: header::HeaderName) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string)
+}
+
+async fn read_capped(
+    response: reqwest::Response,
+    cap: usize,
+    too_large: &'static str,
+) -> Result<Vec<u8>, ProxyError> {
+    if let Some(length) = response.content_length() {
+        if length > cap as u64 {
+            return Err(ProxyError::Oversized(too_large));
+        }
+    }
+    let mut stream = response.bytes_stream();
+    tokio::time::timeout(PLAYLIST_TIMEOUT, async move {
+        let mut out = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|_| ProxyError::Upstream("read"))?;
+            if out.len() + chunk.len() > cap {
+                return Err(ProxyError::Oversized(too_large));
+            }
+            out.extend_from_slice(&chunk);
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(|_| ProxyError::Timeout)?
+}
+
+fn is_playlist_content_type(value: Option<&str>) -> bool {
+    value
+        .map(str::to_ascii_lowercase)
+        .is_some_and(|value| value.contains("mpegurl"))
+}
+
+fn looks_like_playlist(body: &[u8]) -> bool {
+    let text = String::from_utf8_lossy(body);
+    text.trim_start_matches('\u{feff}')
+        .trim_start()
+        .starts_with("#EXTM3U")
+}
+
+fn is_master_playlist(text: &str) -> bool {
+    text.lines().any(|line| {
+        let line = line.trim();
+        line.starts_with("#EXT-X-STREAM-INF") || line.starts_with("#EXT-X-I-FRAME-STREAM-INF")
+    })
+}
+
+fn parse_media_playlist(base: &Url, text: &str) -> Result<ParsedPlaylist, ProxyError> {
+    let mut lines = Vec::new();
+    let mut specs = Vec::new();
+    let mut defines: HashMap<String, String> = HashMap::new();
+    let mut pending_range: Option<String> = None;
+    let mut next_offset = 0u64;
+    let mut count = 0usize;
+
+    for raw in text.lines() {
+        count += 1;
+        if count > MAX_PLAYLIST_LINES {
+            return Err(ProxyError::Oversized("playlist-too-large"));
+        }
+        let line = raw.trim();
+        if line.is_empty() {
+            lines.push(PlaylistLine::Text(String::new()));
+            continue;
+        }
+        if line.starts_with("#EXT-X-STREAM-INF") || line.starts_with("#EXT-X-I-FRAME-STREAM-INF") {
+            return Err(ProxyError::MasterPlaylist);
+        }
+        if line.starts_with("#EXT-X-DEFINE") {
+            if has_attr(line, "IMPORT") {
+                tracing::debug!(tag = %tag_name(line), "proxy: dropped a playlist import");
+                continue;
+            }
+            if let (Some(name), Some(value)) = (attr_value(line, "NAME"), attr_value(line, "VALUE"))
+            {
+                defines.insert(name.to_string(), value.to_string());
+            }
+            lines.push(PlaylistLine::Text(line.to_string()));
+            continue;
+        }
+        if line.starts_with("#EXT-X-BYTERANGE") {
+            if let Some((_, value)) = line.split_once(':') {
+                pending_range = parse_byte_range(value, &mut next_offset);
+            }
+            lines.push(PlaylistLine::Text(line.to_string()));
+            continue;
+        }
+        if line.starts_with("#EXT-X-KEY") || line.starts_with("#EXT-X-SESSION-KEY") {
+            if attr_value(line, "METHOD").is_some_and(|method| method.eq_ignore_ascii_case("NONE"))
+            {
+                lines.push(PlaylistLine::Text(line.to_string()));
+            } else {
+                push_uri_tag(
+                    line,
+                    ChildKind::Key,
+                    None,
+                    &defines,
+                    base,
+                    &mut lines,
+                    &mut specs,
+                );
+            }
+            continue;
+        }
+        if line.starts_with("#EXT-X-MAP") {
+            let mut map_offset = 0u64;
+            let range = attr_value(line, "BYTERANGE")
+                .and_then(|value| parse_byte_range(value, &mut map_offset));
+            push_uri_tag(
+                line,
+                ChildKind::Map,
+                range,
+                &defines,
+                base,
+                &mut lines,
+                &mut specs,
+            );
+            continue;
+        }
+        if line.starts_with("#EXT-X-MEDIA") {
+            let kind = match attr_value(line, "TYPE") {
+                Some(kind) if kind.eq_ignore_ascii_case("SUBTITLES") => ChildKind::Subtitle,
+                _ => ChildKind::Playlist,
+            };
+            push_uri_tag(line, kind, None, &defines, base, &mut lines, &mut specs);
+            continue;
+        }
+        if line.starts_with("#EXT-X-SESSION-DATA") {
+            push_uri_tag(
+                line,
+                ChildKind::File,
+                None,
+                &defines,
+                base,
+                &mut lines,
+                &mut specs,
+            );
+            continue;
+        }
+        if line.starts_with("#EXT-X-PART") {
+            let mut part_offset = 0u64;
+            let range = attr_value(line, "BYTERANGE")
+                .and_then(|value| parse_byte_range(value, &mut part_offset));
+            push_uri_tag(
+                line,
+                ChildKind::Segment,
+                range,
+                &defines,
+                base,
+                &mut lines,
+                &mut specs,
+            );
+            continue;
+        }
+        if line.starts_with("#EXT-X-PRELOAD-HINT") {
+            push_uri_tag(
+                line,
+                ChildKind::Segment,
+                None,
+                &defines,
+                base,
+                &mut lines,
+                &mut specs,
+            );
+            continue;
+        }
+        if line.starts_with('#') {
+            lines.push(PlaylistLine::Text(line.to_string()));
+            continue;
+        }
+
+        let Some(uri) = substitute_defines(line, &defines) else {
+            tracing::debug!(
+                tag = "segment",
+                "proxy: dropped a playlist URI with an undefined variable"
+            );
+            continue;
+        };
+        let Some(resolved) = resolve_playlist_url(base, &uri) else {
+            tracing::debug!(tag = "segment", "proxy: dropped a malformed playlist URI");
+            continue;
+        };
+        let spec = ChildSpec {
+            upstream_url: resolved.to_string(),
+            content_type: None,
+            byte_range: pending_range.take(),
+            kind: ChildKind::Segment,
+        };
+        let index = specs.len();
+        specs.push(spec);
+        lines.push(PlaylistLine::Segment { spec: index });
+    }
+
+    Ok(ParsedPlaylist { lines, specs })
+}
+
+#[derive(Clone, Copy)]
+struct Attribute<'a> {
+    name: &'a str,
+    value: &'a str,
+    value_start: usize,
+    value_end: usize,
+}
+
+fn parse_attributes(line: &str) -> Vec<Attribute<'_>> {
+    let start = line.find(':').map(|index| index + 1).unwrap_or(0);
+    let bytes = line.as_bytes();
+    let mut attrs = Vec::new();
+    let mut index = start;
+
+    while index < line.len() {
+        while index < line.len() && (bytes[index] == b',' || bytes[index].is_ascii_whitespace()) {
+            index += 1;
+        }
+        let name_start = index;
+        while index < line.len() && bytes[index] != b'=' && bytes[index] != b',' {
+            index += 1;
+        }
+        if index >= line.len() || bytes[index] != b'=' {
+            break;
+        }
+        let name = line[name_start..index].trim();
+        index += 1;
+        if index < line.len() && bytes[index] == b'"' {
+            index += 1;
+            let value_start = index;
+            while index < line.len() && bytes[index] != b'"' {
+                index += 1;
+            }
+            let value_end = index;
+            if index < line.len() {
+                index += 1;
+            }
+            attrs.push(Attribute {
+                name,
+                value: &line[value_start..value_end],
+                value_start,
+                value_end,
+            });
+        } else {
+            let value_start = index;
+            while index < line.len() && bytes[index] != b',' {
+                index += 1;
+            }
+            let value_end = index;
+            attrs.push(Attribute {
+                name,
+                value: line[value_start..value_end].trim(),
+                value_start,
+                value_end,
+            });
+        }
+    }
+
+    attrs
+}
+
+fn find_attr<'a>(line: &'a str, key: &str) -> Option<Attribute<'a>> {
+    parse_attributes(line)
+        .into_iter()
+        .find(|attr| attr.name.eq_ignore_ascii_case(key))
+}
+
+fn attr_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
+    find_attr(line, key).map(|attr| attr.value)
+}
+
+fn has_attr(line: &str, key: &str) -> bool {
+    find_attr(line, key).is_some()
+}
+
+fn tag_name(line: &str) -> &str {
+    line.split([':', ',']).next().unwrap_or("tag")
+}
+
+fn push_uri_tag(
+    line: &str,
+    kind: ChildKind,
+    byte_range: Option<String>,
+    defines: &HashMap<String, String>,
+    base: &Url,
+    lines: &mut Vec<PlaylistLine>,
+    specs: &mut Vec<ChildSpec>,
+) {
+    let Some(attr) = find_attr(line, "URI") else {
+        lines.push(PlaylistLine::Text(line.to_string()));
+        return;
+    };
+    let Some(uri) = substitute_defines(attr.value, defines) else {
+        tracing::debug!(tag = %tag_name(line), "proxy: dropped a playlist URI with an undefined variable");
+        return;
+    };
+    let Some(resolved) = resolve_playlist_url(base, &uri) else {
+        tracing::debug!(tag = %tag_name(line), "proxy: dropped a malformed playlist URI");
+        return;
+    };
+    let spec = ChildSpec {
+        upstream_url: resolved.to_string(),
+        content_type: kind.default_content_type().map(str::to_string),
+        byte_range,
+        kind,
+    };
+    let index = specs.len();
+    specs.push(spec);
+    lines.push(PlaylistLine::UriTag {
+        text: line.to_string(),
+        uri_start: attr.value_start,
+        uri_end: attr.value_end,
+        spec: index,
+    });
+}
+
+fn substitute_defines(value: &str, defines: &HashMap<String, String>) -> Option<String> {
+    if !value.contains("{$") {
+        return Some(value.to_string());
+    }
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(start) = rest.find("{$") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        let end = after.find('}')?;
+        let name = &after[..end];
+        out.push_str(defines.get(name)?);
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+    Some(out)
+}
+
+fn resolve_playlist_url(base: &Url, raw: &str) -> Option<Url> {
+    let url = base.join(raw.trim()).ok()?;
+    if url.scheme() != "http" && url.scheme() != "https" {
+        return None;
+    }
+    url.host_str()?;
+    if !url.username().is_empty() || url.password().is_some() {
+        return None;
+    }
+    Some(url)
+}
+
+fn parse_byte_range(value: &str, next_offset: &mut u64) -> Option<String> {
+    let value = value.trim();
+    let (length, offset) = match value.split_once('@') {
+        Some((length, offset)) => (length, Some(offset)),
+        None => (value, None),
+    };
+    let length: u64 = length.trim().parse().ok()?;
+    if length == 0 {
+        return None;
+    }
+    let start = match offset {
+        Some(offset) => offset.trim().parse().ok()?,
+        None => *next_offset,
+    };
+    let end = start.checked_add(length)?.saturating_sub(1);
+    *next_offset = end.saturating_add(1);
+    Some(format!("{start}-{end}"))
+}
+
+fn render_playlist(entry: &ProxyEntry, parsed: &ParsedPlaylist, child_ids: &[String]) -> String {
+    let mut out = String::new();
+    for line in &parsed.lines {
+        match line {
+            PlaylistLine::Text(text) => {
+                out.push_str(text);
+                out.push('\n');
+            }
+            PlaylistLine::UriTag {
+                text,
+                uri_start,
+                uri_end,
+                spec,
+            } => {
+                if let Some(child_id) = child_ids.get(*spec) {
+                    out.push_str(&text[..*uri_start]);
+                    out.push_str(&child_path(entry, child_id));
+                    out.push_str(&text[*uri_end..]);
+                } else {
+                    out.push_str(text);
+                }
+                out.push('\n');
+            }
+            PlaylistLine::Segment { spec } => {
+                if let Some(child_id) = child_ids.get(*spec) {
+                    out.push_str(&child_path(entry, child_id));
+                }
+                out.push('\n');
+            }
+        }
+    }
+    out
+}
+
+fn child_path(entry: &ProxyEntry, child_id: &str) -> String {
+    format!(
+        "/s/{}/seg/{}?token={}",
+        entry.opaque_id, child_id, entry.token
+    )
 }
 
 fn sanitize_headers(
@@ -839,7 +1701,11 @@ fn parse_range(value: &str) -> Option<ByteRange> {
 }
 
 fn random_hex() -> Result<String, String> {
-    let mut bytes = [0u8; 16];
+    random_hex_n(16)
+}
+
+fn random_hex_n(len: usize) -> Result<String, String> {
+    let mut bytes = vec![0u8; len];
     getrandom::fill(&mut bytes).map_err(|err| format!("random source failed: {err}"))?;
     Ok(hex::encode(bytes))
 }
@@ -995,6 +1861,241 @@ mod tests {
             base: format!("http://127.0.0.1:{port}"),
             seen,
             body,
+            _handle: handle,
+        }
+    }
+
+    type SeenLog = Arc<StdMutex<Vec<(String, HeaderMap)>>>;
+
+    struct HlsFixture {
+        base: String,
+        seen: SeenLog,
+        _handle: tokio::task::JoinHandle<()>,
+    }
+
+    impl HlsFixture {
+        fn seen_for(&self, needle: &str) -> Option<HeaderMap> {
+            self.seen
+                .lock()
+                .unwrap()
+                .iter()
+                .rev()
+                .find(|(uri, _)| uri.contains(needle))
+                .map(|(_, headers)| headers.clone())
+        }
+    }
+
+    async fn record_hls(State(seen): State<SeenLog>, request: Request, next: Next) -> Response {
+        seen.lock()
+            .unwrap()
+            .push((request.uri().to_string(), request.headers().clone()));
+        next.run(request).await
+    }
+
+    fn ranged_response(
+        headers: &HeaderMap,
+        body: &[u8],
+        content_type: &'static str,
+    ) -> (StatusCode, HeaderMap, Vec<u8>) {
+        let mut out = HeaderMap::new();
+        out.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+        let range = headers
+            .get(header::RANGE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(parse_range);
+        let Some(range) = range else {
+            out.insert(
+                header::CONTENT_LENGTH,
+                HeaderValue::from_str(&body.len().to_string()).unwrap(),
+            );
+            out.insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+            return (StatusCode::OK, out, body.to_vec());
+        };
+
+        let total = body.len() as u64;
+        if total == 0 || range.start >= total {
+            return (StatusCode::RANGE_NOT_SATISFIABLE, out, Vec::new());
+        }
+        let start = range.start;
+        let end = range
+            .end
+            .unwrap_or(total.saturating_sub(1))
+            .min(total.saturating_sub(1));
+        out.insert(
+            header::CONTENT_RANGE,
+            HeaderValue::from_str(&format!("bytes {start}-{end}/{total}")).unwrap(),
+        );
+        out.insert(
+            header::CONTENT_LENGTH,
+            HeaderValue::from_str(&(end - start + 1).to_string()).unwrap(),
+        );
+        out.insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+        (
+            StatusCode::PARTIAL_CONTENT,
+            out,
+            body[start as usize..=end as usize].to_vec(),
+        )
+    }
+
+    async fn hls_fixture() -> HlsFixture {
+        const MEDIA_PLAYLIST: &str = "#EXTM3U\n\
+#EXT-X-VERSION:7\n\
+#EXT-X-TARGETDURATION:4\n\
+#EXT-X-MEDIA-SEQUENCE:1\n\
+#EXT-X-DEFINE:NAME=\"dir\",VALUE=\"seg\"\n\
+#EXT-X-KEY:METHOD=AES-128,URI=\"key.bin?auth=1\",IV=0x0123456789abcdef0123456789abcdef\n\
+#EXT-X-MAP:URI=\"init.mp4\",BYTERANGE=\"720@0\"\n\
+#EXT-X-BYTERANGE:1000@0\n\
+seg1.ts\n\
+#EXT-X-BYTERANGE:500@1000\n\
+{$dir}/seg2.ts?token=abc\n\
+#EXT-X-ENDLIST\n";
+        const MALFORMED_PLAYLIST: &str = "#EXTM3U\n\
+#EXT-X-TARGETDURATION:4\n\
+http://[::bad\n\
+seg1.ts\n\
+#EXT-X-ENDLIST\n";
+        const BODY_ONLY_PLAYLIST: &str = "#EXTM3U\n\
+#EXT-X-TARGETDURATION:4\n\
+seg1.ts\n\
+#EXT-X-ENDLIST\n";
+        const MASTER_PLAYLIST: &str = "#EXTM3U\n\
+#EXT-X-STREAM-INF:BANDWIDTH=1280000\n\
+low.m3u8\n";
+        const BIG_KEY_PLAYLIST: &str = "#EXTM3U\n\
+#EXT-X-TARGETDURATION:4\n\
+#EXT-X-KEY:METHOD=AES-128,URI=\"bigkey.bin\"\n\
+#EXT-X-BYTERANGE:16@0\n\
+seg1.ts\n\
+#EXT-X-ENDLIST\n";
+        const BIG_SUBTITLE_PLAYLIST: &str = "#EXTM3U\n\
+#EXT-X-TARGETDURATION:4\n\
+#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subs\",NAME=\"English\",URI=\"bigsubs.vtt\"\n\
+#EXT-X-BYTERANGE:16@0\n\
+seg1.ts\n\
+#EXT-X-ENDLIST\n";
+
+        let seen: SeenLog = Arc::new(StdMutex::new(Vec::new()));
+
+        let playlist = |body: &'static str| {
+            move || async move {
+                (
+                    [(
+                        header::CONTENT_TYPE,
+                        "application/vnd.apple.mpegurl".to_string(),
+                    )],
+                    body,
+                )
+            }
+        };
+        let body_only = || async {
+            (
+                [(header::CONTENT_TYPE, "text/plain".to_string())],
+                BODY_ONLY_PLAYLIST,
+            )
+        };
+        let large_playlist = {
+            let mut body = b"#EXTM3U\n#EXT-X-ENDLIST\n".to_vec();
+            body.resize(MAX_PLAYLIST_BYTES + 1, b'#');
+            move || {
+                let body = body.clone();
+                async move {
+                    (
+                        [(
+                            header::CONTENT_TYPE,
+                            "application/vnd.apple.mpegurl".to_string(),
+                        )],
+                        body,
+                    )
+                }
+            }
+        };
+        let key = || async {
+            (
+                [(header::CONTENT_TYPE, "application/octet-stream".to_string())],
+                vec![0x42u8; 16],
+            )
+        };
+        let big_key = || async {
+            (
+                [(header::CONTENT_TYPE, "application/octet-stream".to_string())],
+                vec![0x42u8; MAX_KEY_BYTES + 1],
+            )
+        };
+        let big_subtitle = || async {
+            (
+                [(header::CONTENT_TYPE, "text/vtt".to_string())],
+                vec![b'a'; MAX_SUBTITLE_BYTES + 1],
+            )
+        };
+
+        let seg1_body = Arc::new(
+            (0..2000)
+                .map(|index| (index % 251) as u8)
+                .collect::<Vec<u8>>(),
+        );
+        let seg1 = {
+            let body = seg1_body.clone();
+            move |headers: HeaderMap| {
+                let body = body.clone();
+                async move { ranged_response(&headers, body.as_slice(), "video/mp2t") }
+            }
+        };
+        let seg2_body = Arc::new(
+            (0..2000)
+                .map(|index| (index % 239) as u8)
+                .collect::<Vec<u8>>(),
+        );
+        let seg2 = {
+            let body = seg2_body.clone();
+            move |headers: HeaderMap| {
+                let body = body.clone();
+                async move { ranged_response(&headers, body.as_slice(), "video/mp2t") }
+            }
+        };
+        let init_body = Arc::new(
+            (0..720)
+                .map(|index| (index % 251) as u8)
+                .collect::<Vec<u8>>(),
+        );
+        let init = {
+            let body = init_body.clone();
+            move |headers: HeaderMap| {
+                let body = body.clone();
+                async move { ranged_response(&headers, body.as_slice(), "video/mp4") }
+            }
+        };
+
+        let router = Router::new()
+            .route("/hls/media.m3u8", test_get(playlist(MEDIA_PLAYLIST)))
+            .route(
+                "/hls/malformed.m3u8",
+                test_get(playlist(MALFORMED_PLAYLIST)),
+            )
+            .route("/hls/body-only.m3u8", test_get(body_only))
+            .route("/hls/master.m3u8", test_get(playlist(MASTER_PLAYLIST)))
+            .route("/hls/large.m3u8", test_get(large_playlist))
+            .route("/hls/bigkey.m3u8", test_get(playlist(BIG_KEY_PLAYLIST)))
+            .route(
+                "/hls/bigsubs.m3u8",
+                test_get(playlist(BIG_SUBTITLE_PLAYLIST)),
+            )
+            .route("/hls/key.bin", test_get(key))
+            .route("/hls/bigkey.bin", test_get(big_key))
+            .route("/hls/bigsubs.vtt", test_get(big_subtitle))
+            .route("/hls/seg1.ts", test_get(seg1.clone()).head(seg1))
+            .route("/hls/seg/seg2.ts", test_get(seg2.clone()).head(seg2))
+            .route("/hls/init.mp4", test_get(init.clone()).head(init))
+            .layer(middleware::from_fn_with_state(seen.clone(), record_hls));
+
+        let listener = TestListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        HlsFixture {
+            base: format!("http://127.0.0.1:{port}"),
+            seen,
             _handle: handle,
         }
     }
@@ -1354,6 +2455,588 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rewrites_a_media_playlist_with_relative_children() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/media.m3u8", fixture.base),
+                "hls",
+                Some(headers()),
+            )
+            .await
+            .unwrap();
+
+        let response = reqwest::Client::new()
+            .get(hls_proxy_url(&base, &registered))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).unwrap(),
+            PLAYLIST_CONTENT_TYPE
+        );
+        assert_eq!(
+            response.headers().get(header::CACHE_CONTROL).unwrap(),
+            "no-store"
+        );
+
+        let text = response.text().await.unwrap();
+        assert!(text.starts_with("#EXTM3U"));
+        assert!(!text.contains(&fixture.base), "{text}");
+        assert!(!text.contains("https://"), "{text}");
+        assert!(!text.contains("key.bin"), "{text}");
+        assert!(!text.contains("init.mp4"), "{text}");
+        assert!(text.contains("#EXT-X-BYTERANGE:1000@0"), "{text}");
+        assert!(text.contains("#EXT-X-BYTERANGE:500@1000"), "{text}");
+
+        let key_line = text
+            .lines()
+            .find(|line| line.starts_with("#EXT-X-KEY"))
+            .unwrap();
+        assert!(key_line.contains("/s/"), "{key_line}");
+        assert!(
+            key_line.contains("IV=0x0123456789abcdef0123456789abcdef"),
+            "{key_line}"
+        );
+
+        let map_line = text
+            .lines()
+            .find(|line| line.starts_with("#EXT-X-MAP"))
+            .unwrap();
+        assert!(map_line.contains("/s/"), "{map_line}");
+        assert_eq!(seg_paths(&text).len(), 2);
+    }
+
+    #[tokio::test]
+    async fn hls_children_forward_headers_range_and_query() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/media.m3u8", fixture.base),
+                "hls",
+                Some(headers()),
+            )
+            .await
+            .unwrap();
+        let client = reqwest::Client::new();
+
+        let manifest = client
+            .get(hls_proxy_url(&base, &registered))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        let segments = seg_paths(&manifest);
+        assert_eq!(segments.len(), 2);
+
+        let response = client
+            .get(format!("{base}{}", segments[0]))
+            .header(header::RANGE, "bytes=10-19")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(response.bytes().await.unwrap().len(), 10);
+        let seen = fixture.seen_for("/hls/seg1.ts").unwrap();
+        assert_eq!(seen.get("referer").unwrap(), "https://source.example/");
+        assert_eq!(seen.get("cookie").unwrap(), "sid=abc");
+        assert_eq!(seen.get(header::RANGE).unwrap(), "bytes=10-19");
+
+        let response = client
+            .get(format!("{base}{}", segments[1]))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(
+            response.headers().get(header::CONTENT_RANGE).unwrap(),
+            "bytes 1000-1499/2000"
+        );
+        let seen = fixture.seen_for("/hls/seg/seg2.ts?token=abc").unwrap();
+        assert_eq!(seen.get(header::RANGE).unwrap(), "bytes=1000-1499");
+
+        let key_line = manifest
+            .lines()
+            .find(|line| line.starts_with("#EXT-X-KEY"))
+            .unwrap();
+        let key_path = child_path_from_line(key_line).unwrap();
+        let response = client
+            .get(format!("{base}{key_path}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.bytes().await.unwrap().as_ref(), &[0x42u8; 16]);
+        let seen = fixture.seen_for("/hls/key.bin?auth=1").unwrap();
+        assert_eq!(seen.get("cookie").unwrap(), "sid=abc");
+
+        let map_line = manifest
+            .lines()
+            .find(|line| line.starts_with("#EXT-X-MAP"))
+            .unwrap();
+        let map_path = child_path_from_line(map_line).unwrap();
+        let response = client
+            .get(format!("{base}{map_path}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(
+            response.headers().get(header::CONTENT_RANGE).unwrap(),
+            "bytes 0-719/720"
+        );
+        let seen = fixture.seen_for("/hls/init.mp4").unwrap();
+        assert_eq!(seen.get(header::RANGE).unwrap(), "bytes=0-719");
+    }
+
+    #[tokio::test]
+    async fn hls_child_ids_are_reused_across_refreshes() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/media.m3u8", fixture.base),
+                "hls",
+                Some(headers()),
+            )
+            .await
+            .unwrap();
+        let client = reqwest::Client::new();
+
+        let first = client
+            .get(hls_proxy_url(&base, &registered))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        let second = client
+            .get(hls_proxy_url(&base, &registered))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        assert_eq!(seg_paths(&first), seg_paths(&second));
+
+        let children = store
+            .inner
+            .lock()
+            .unwrap()
+            .entries
+            .get(&registered.opaque_id)
+            .unwrap()
+            .children
+            .len();
+        assert_eq!(children, 4);
+    }
+
+    #[tokio::test]
+    async fn hls_malformed_uri_is_dropped() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/malformed.m3u8", fixture.base),
+                "hls",
+                None,
+            )
+            .await
+            .unwrap();
+        let client = reqwest::Client::new();
+
+        let response = client
+            .get(hls_proxy_url(&base, &registered))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let text = response.text().await.unwrap();
+        assert!(!text.contains("::bad"), "{text}");
+        let segments = seg_paths(&text);
+        assert_eq!(segments.len(), 1);
+
+        let response = client
+            .get(format!("{base}{}", segments[0]))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn hls_master_playlist_is_rejected() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/master.m3u8", fixture.base),
+                "hls",
+                None,
+            )
+            .await
+            .unwrap();
+
+        let response = reqwest::Client::new()
+            .get(hls_proxy_url(&base, &registered))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(
+            response.text().await.unwrap(),
+            "master-playlist-unsupported"
+        );
+    }
+
+    #[tokio::test]
+    async fn hls_playlist_without_content_type_is_accepted() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/body-only.m3u8", fixture.base),
+                "hls",
+                None,
+            )
+            .await
+            .unwrap();
+
+        let response = reqwest::Client::new()
+            .get(hls_proxy_url(&base, &registered))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.text().await.unwrap().contains("/seg/"));
+    }
+
+    #[tokio::test]
+    async fn hls_playlist_over_two_megabytes_is_rejected() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/large.m3u8", fixture.base),
+                "hls",
+                None,
+            )
+            .await
+            .unwrap();
+
+        let response = reqwest::Client::new()
+            .get(hls_proxy_url(&base, &registered))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        assert_eq!(response.text().await.unwrap(), "playlist-too-large");
+    }
+
+    #[tokio::test]
+    async fn hls_key_and_subtitle_caps_are_enforced() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let client = reqwest::Client::new();
+
+        let big_key = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/bigkey.m3u8", fixture.base),
+                "hls",
+                None,
+            )
+            .await
+            .unwrap();
+        let manifest = client
+            .get(hls_proxy_url(&base, &big_key))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        let key_line = manifest
+            .lines()
+            .find(|line| line.starts_with("#EXT-X-KEY"))
+            .unwrap();
+        let key_path = child_path_from_line(key_line).unwrap();
+        let response = client
+            .get(format!("{base}{key_path}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        assert_eq!(response.text().await.unwrap(), "key-too-large");
+
+        let big_subtitle = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/bigsubs.m3u8", fixture.base),
+                "hls",
+                None,
+            )
+            .await
+            .unwrap();
+        let manifest = client
+            .get(hls_proxy_url(&base, &big_subtitle))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        let media_line = manifest
+            .lines()
+            .find(|line| line.starts_with("#EXT-X-MEDIA"))
+            .unwrap();
+        assert!(media_line.contains("/s/"), "{media_line}");
+        let subtitle_path = child_path_from_line(media_line).unwrap();
+        let response = client
+            .get(format!("{base}{subtitle_path}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        assert_eq!(response.text().await.unwrap(), "subtitle-too-large");
+    }
+
+    #[tokio::test]
+    async fn hls_routes_keep_tokens_and_cors() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/media.m3u8", fixture.base),
+                "hls",
+                None,
+            )
+            .await
+            .unwrap();
+        let client = reqwest::Client::new();
+
+        let bad = client
+            .get(format!(
+                "{base}/s/{}/manifest.m3u8?token=00000000000000000000000000000000",
+                registered.opaque_id
+            ))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(bad.status(), StatusCode::FORBIDDEN);
+
+        let bad_child = client
+            .get(format!(
+                "{base}/s/{}/seg/ffffffffffffffff?token=00000000000000000000000000000000",
+                registered.opaque_id
+            ))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(bad_child.status(), StatusCode::FORBIDDEN);
+
+        let unknown_child = client
+            .get(format!(
+                "{base}/s/{}/seg/ffffffffffffffff?token={}",
+                registered.opaque_id,
+                token_of(&registered)
+            ))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(unknown_child.status(), StatusCode::NOT_FOUND);
+
+        let options = client
+            .request(reqwest::Method::OPTIONS, hls_proxy_url(&base, &registered))
+            .header(header::ORIGIN, "http://tauri.localhost")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(options.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            options
+                .headers()
+                .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .unwrap(),
+            "*"
+        );
+        assert_eq!(
+            options
+                .headers()
+                .get(header::ACCESS_CONTROL_ALLOW_HEADERS)
+                .unwrap(),
+            "Range"
+        );
+
+        let manifest = client
+            .get(hls_proxy_url(&base, &registered))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(manifest.status(), StatusCode::OK);
+        assert_eq!(
+            manifest
+                .headers()
+                .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .unwrap(),
+            "*"
+        );
+    }
+
+    #[tokio::test]
+    async fn child_registry_reuses_ids_and_caps_children() {
+        let store = ProxyStore::for_tests(39321);
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                "http://127.0.0.1:9/media.m3u8",
+                "hls",
+                None,
+            )
+            .await
+            .unwrap();
+
+        let specs = (0..10)
+            .map(|index| ChildSpec {
+                upstream_url: format!("http://127.0.0.1:9/seg/{index}.ts"),
+                content_type: None,
+                byte_range: None,
+                kind: ChildKind::Segment,
+            })
+            .collect::<Vec<_>>();
+        let first = store
+            .reconcile_children(&registered.opaque_id, &specs)
+            .unwrap();
+        let second = store
+            .reconcile_children(&registered.opaque_id, &specs)
+            .unwrap();
+        assert_eq!(first, second);
+        assert_eq!(
+            store
+                .inner
+                .lock()
+                .unwrap()
+                .entries
+                .get(&registered.opaque_id)
+                .unwrap()
+                .children
+                .len(),
+            10
+        );
+
+        let duplicate = ChildSpec {
+            upstream_url: "http://127.0.0.1:9/seg/dup.ts".to_string(),
+            content_type: None,
+            byte_range: None,
+            kind: ChildKind::Segment,
+        };
+        let ids = store
+            .reconcile_children(&registered.opaque_id, &[duplicate.clone(), duplicate])
+            .unwrap();
+        assert_eq!(ids[0], ids[1]);
+
+        let many = (0..MAX_CHILDREN + 40)
+            .map(|index| ChildSpec {
+                upstream_url: format!("http://127.0.0.1:9/many/{index}.ts"),
+                content_type: None,
+                byte_range: None,
+                kind: ChildKind::Segment,
+            })
+            .collect::<Vec<_>>();
+        let ids = store
+            .reconcile_children(&registered.opaque_id, &many)
+            .unwrap();
+        assert_eq!(ids.len(), MAX_CHILDREN + 40);
+        assert_eq!(
+            store
+                .inner
+                .lock()
+                .unwrap()
+                .entries
+                .get(&registered.opaque_id)
+                .unwrap()
+                .children
+                .len(),
+            MAX_CHILDREN
+        );
+    }
+
+    #[test]
+    fn resolves_relative_playlist_urls_and_hides_the_origin() {
+        let base = Url::parse("https://cdn.example/hls/media.m3u8").unwrap();
+        let text = "#EXTM3U\n\
+#EXT-X-DEFINE:NAME=\"dir\",VALUE=\"seg\"\n\
+#EXT-X-SESSION-KEY:METHOD=AES-128,URI=\"key.bin\",IV=0xABCD\n\
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"a\",NAME=\"en\",URI=\"audio.m3u8\"\n\
+{$dir}/1.ts?token=abc\n";
+        let parsed = parse_media_playlist(&base, text).unwrap();
+        assert_eq!(parsed.specs.len(), 3);
+        assert_eq!(
+            parsed.specs[0].upstream_url,
+            "https://cdn.example/hls/key.bin"
+        );
+        assert_eq!(
+            parsed.specs[1].upstream_url,
+            "https://cdn.example/hls/audio.m3u8"
+        );
+        assert_eq!(
+            parsed.specs[2].upstream_url,
+            "https://cdn.example/hls/seg/1.ts?token=abc"
+        );
+
+        let entry = test_entry();
+        let child_ids = vec![
+            "key".to_string(),
+            "audio".to_string(),
+            "segment".to_string(),
+        ];
+        let rendered = render_playlist(&entry, &parsed, &child_ids);
+        assert!(!rendered.contains("https://cdn.example"), "{rendered}");
+        assert!(rendered.contains("IV=0xABCD"), "{rendered}");
+        assert!(
+            rendered.contains("/s/opaque/seg/key?token=token"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("/s/opaque/seg/segment?token=token"),
+            "{rendered}"
+        );
+        assert_eq!(rendered.matches("/s/opaque/seg/").count(), 3);
+    }
+
+    fn test_entry() -> ProxyEntry {
+        let now = Instant::now();
+        ProxyEntry {
+            opaque_id: "opaque".to_string(),
+            token: "token".to_string(),
+            extension_id: "app.kaminari.test".to_string(),
+            upstream_url: "https://cdn.example/hls/media.m3u8".to_string(),
+            kind: "hls".to_string(),
+            headers: Vec::new(),
+            allowed: None,
+            allow_private: true,
+            created_at: now,
+            last_used: now,
+            children: HashMap::new(),
+        }
+    }
+
+    #[tokio::test]
     async fn blocks_private_and_metadata_upstreams_at_register() {
         let store = ProxyStore::with_state(39321, true, false);
         let rules = vec![
@@ -1488,6 +3171,28 @@ mod tests {
             .nth(1)
             .unwrap_or_default()
             .to_string()
+    }
+
+    fn hls_proxy_url(base: &str, registered: &ProxyUrl) -> String {
+        format!(
+            "{base}/s/{}/manifest.m3u8?token={}",
+            registered.opaque_id,
+            token_of(registered)
+        )
+    }
+
+    fn child_path_from_line(line: &str) -> Option<String> {
+        let start = line.find("/s/")?;
+        let rest = &line[start..];
+        let end = rest.find(['"', ' ', ',']).unwrap_or(rest.len());
+        Some(rest[..end].to_string())
+    }
+
+    fn seg_paths(text: &str) -> Vec<String> {
+        text.lines()
+            .filter(|line| !line.starts_with('#'))
+            .filter_map(|line| child_path_from_line(line.trim()))
+            .collect()
     }
 
     fn proxy_url(base: &str, registered: &ProxyUrl) -> String {

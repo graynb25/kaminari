@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isHlsStream,
   isMp4Stream,
   playbackUrl,
   PROXY_FLAG_KEY,
@@ -29,15 +30,28 @@ describe("shouldProxy", () => {
     expect(playbackUrl(stream())).toBe("https://cdn.example/show/ep1.mp4");
   });
 
-  it("keeps HLS direct even when headers are present", () => {
+  it("proxies HLS streams with headers", () => {
     const hls = stream({
       url: "https://cdn.example/show/master.m3u8",
       type: "hls",
       headers: { Referer: "https://source.example/" },
     });
+    expect(isHlsStream(hls)).toBe(true);
     expect(isMp4Stream(hls)).toBe(false);
+    expect(shouldProxy(hls)).toBe(true);
+  });
+
+  it("leaves headerless HLS on the direct path", () => {
+    const hls = stream({ url: "https://cdn.example/show/index.m3u8", type: "hls" });
     expect(shouldProxy(hls)).toBe(false);
     expect(playbackUrl(hls)).toBe(hls.url);
+  });
+
+  it("detects HLS from the URL when the type is missing", () => {
+    expect(isHlsStream(stream({ url: "https://cdn.example/show/index.m3u8?token=1", type: "" }))).toBe(
+      true,
+    );
+    expect(isHlsStream(stream({ url: "https://cdn.example/show/ep1.mp4", type: "" }))).toBe(false);
   });
 
   it("prefers the proxied URL when one is set", () => {
@@ -49,6 +63,15 @@ describe("shouldProxy", () => {
     expect(shouldProxy(proxied)).toBe(true);
     expect(playbackUrl(proxied)).toBe(proxied.proxiedUrl);
     expect(playbackUrl(stream())).toBe("https://cdn.example/show/ep1.mp4");
+
+    const proxiedHls = stream({
+      url: "https://cdn.example/show/index.m3u8",
+      type: "hls",
+      headers: { Referer: "https://source.example/" },
+      proxiedUrl: "http://127.0.0.1:39321/s/abc/manifest.m3u8?token=def",
+      proxyId: "abc",
+    });
+    expect(playbackUrl(proxiedHls)).toBe(proxiedHls.proxiedUrl);
   });
 });
 
