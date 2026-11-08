@@ -10,3 +10,4 @@ Every visible change gets a line here. Keep lines short and specific.
 - AniList: live trending, search and detail commands with a token bucket and typed errors
 - UI: real poster grid, hero backdrop, loading skeletons, error and empty states, frameless title bar with window controls
 - Library: SQLite backed add and remove, your own shelf, hover action on posters
+- Detail: banner, poster, genres, synopsis, episode grid, details sidebar, back path
