@@ -3,7 +3,8 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::anilist::AniListClient;
+use crate::anilist::{AniListClient, Media};
+use crate::error::AppError;
 use crate::ext_host;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -18,17 +19,18 @@ pub struct HostLimits {
 #[serde(rename_all = "camelCase")]
 pub struct BootSnapshot {
     pub title: String,
-    pub shelves: Vec<(String, Vec<String>)>,
     pub anilist_endpoint: String,
     pub limits: HostLimits,
 }
 
+fn ipc_error(error: AppError) -> String {
+    error.to_string()
+}
+
 #[tauri::command]
 pub async fn boot_snapshot(state: State<'_, AniListClient>) -> Result<BootSnapshot, String> {
-    // P0: return shape Svelte expects. Real AniList fetch lands here next.
     Ok(BootSnapshot {
         title: "Kaminari (雷)".to_string(),
-        shelves: vec![("Trending".to_string(), Vec::new())],
         anilist_endpoint: state.endpoint().to_string(),
         limits: HostLimits {
             ext_timeout_secs: ext_host::TIMEOUT_SECS,
@@ -36,6 +38,35 @@ pub async fn boot_snapshot(state: State<'_, AniListClient>) -> Result<BootSnapsh
             ext_memory_bytes: ext_host::MEMORY_BYTES,
         },
     })
+}
+
+#[tauri::command]
+pub async fn anilist_trending(
+    state: State<'_, AniListClient>,
+    page: Option<u32>,
+) -> Result<Vec<Media>, String> {
+    state.trending(page.unwrap_or(1)).await.map_err(ipc_error)
+}
+
+#[tauri::command]
+pub async fn anilist_search(
+    state: State<'_, AniListClient>,
+    query: String,
+    page: Option<u32>,
+) -> Result<Vec<Media>, String> {
+    let trimmed = query.trim();
+    if trimmed.len() < 2 {
+        return Ok(Vec::new());
+    }
+    state
+        .search(trimmed, page.unwrap_or(1))
+        .await
+        .map_err(ipc_error)
+}
+
+#[tauri::command]
+pub async fn anilist_detail(state: State<'_, AniListClient>, id: i64) -> Result<Media, String> {
+    state.detail(id).await.map_err(ipc_error)
 }
 
 #[tauri::command]

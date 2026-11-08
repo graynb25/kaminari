@@ -30,7 +30,7 @@ If you already know React, the Rust side does not care. The contract stays the s
 
 ## Status
 
-Design phase. Docs in `docs/` are the source of truth. Code comes after that.
+Scaffold in place. The Tauri shell, SQLite migrations, and the first live AniList queries run. Docs in `docs/` are the source of truth for what comes next.
 
 Windows is the first target. macOS and Linux come later.
 

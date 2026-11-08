@@ -33,6 +33,9 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::boot_snapshot,
+            commands::anilist_trending,
+            commands::anilist_search,
+            commands::anilist_detail,
             commands::source_validate_id
         ])
         .run(tauri::generate_context!())

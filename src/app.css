@@ -55,6 +55,25 @@ html, body, #app {
   transform: scale(1.06);
 }
 
+/* Window controls. Tauri frameless window needs its own buttons. */
+.window-control {
+  width: 46px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: var(--paper-300);
+  border-radius: 0;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+.window-control:hover {
+  background: var(--void-700);
+  color: var(--paper-50);
+}
+.window-control-close:hover {
+  background: #e81123;
+  color: #ffffff;
+}
+
 /* Scrollbar: styled, keyboard friendly */
 ::-webkit-scrollbar {
   width: 10px;
