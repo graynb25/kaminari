@@ -59,7 +59,12 @@ fn main() {
             commands::js_extension_resolve,
             commands::player_play,
             commands::player_stop,
-            commands::player_status
+            commands::player_status,
+            commands::source_library_list,
+            commands::source_library_add,
+            commands::source_library_remove,
+            commands::source_progress_get,
+            commands::source_progress_set
         ])
         .run(tauri::generate_context!())
         .expect("error starting Kaminari");

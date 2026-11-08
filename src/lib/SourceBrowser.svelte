@@ -6,16 +6,34 @@
     jsExtensionResolve,
     jsExtensionTest,
     playerPlay,
+    sourceLibraryAdd,
+    sourceLibraryRemove,
+    sourceProgressGet,
+    sourceProgressSet,
   } from "./api";
-  import type { JsEpisode, JsExtension, JsSearchItem, JsShowDetail, JsStream } from "./types";
+  import type {
+    JsEpisode,
+    JsSearchItem,
+    JsShowDetail,
+    JsStream,
+    SourceExtensionRef,
+    SourceLibraryItem,
+    SourceProgress,
+  } from "./types";
   import PlayerView from "./PlayerView.svelte";
 
   let {
     extension,
+    initialShow = null,
+    sourceLibrary = [],
+    onLibraryChanged,
     onClose,
     notify,
   }: {
-    extension: JsExtension;
+    extension: SourceExtensionRef;
+    initialShow?: JsSearchItem | null;
+    sourceLibrary?: SourceLibraryItem[];
+    onLibraryChanged?: () => void;
     onClose: () => void;
     notify: (text: string, tone?: "info" | "success" | "error") => void;
   } = $props();
@@ -31,11 +49,27 @@
   let streams = $state<Record<string, JsStream[]>>({});
   let resolving = $state<string | null>(null);
   let streamError = $state<string | null>(null);
-  let activePlayback = $state<{ stream: JsStream; episode: JsEpisode } | null>(null);
+  let activePlayback = $state<{ stream: JsStream; episode: JsEpisode; startSec: number } | null>(null);
+  let progress = $state<SourceProgress[]>([]);
   let searchInput: HTMLInputElement | null = $state(null);
 
+  const inSourceLibrary = $derived(
+    selected
+      ? sourceLibrary.some(
+          (item) =>
+            item.extensionId === extension.id && item.showId === selected?.id,
+        )
+      : false,
+  );
+
   onMount(() => {
-    void runSearch();
+    void (async () => {
+      if (initialShow) {
+        await openShow(initialShow);
+      } else {
+        await runSearch();
+      }
+    })();
     searchInput?.focus();
   });
 
@@ -95,6 +129,76 @@
     } finally {
       showLoading = false;
     }
+    try {
+      progress = await sourceProgressGet(extension.id, item.id);
+    } catch {
+      progress = [];
+    }
+  }
+
+  function progressFor(episodeId: string): SourceProgress | undefined {
+    return progress.find((row) => row.episodeId === episodeId);
+  }
+
+  function resumeFor(episodeId: string): number {
+    const row = progressFor(episodeId);
+    if (!row || row.watched || row.positionSec <= 0) return 0;
+    if (row.durationSec > 0 && row.positionSec / row.durationSec >= 0.95) return 0;
+    return row.positionSec;
+  }
+
+  async function toggleSourceLibrary() {
+    if (!selected) return;
+    try {
+      if (inSourceLibrary) {
+        await sourceLibraryRemove(extension.id, selected.id);
+        notify(`Removed ${selected.title} from the source library.`, "success");
+      } else {
+        await sourceLibraryAdd({
+          extensionId: extension.id,
+          showId: selected.id,
+          title: selected.title,
+          cover: selected.cover ?? null,
+          year: selected.year ?? null,
+          status: selected.status ?? null,
+        });
+        notify(`Saved ${selected.title} to the source library.`, "success");
+      }
+      onLibraryChanged?.();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`Source library change failed: ${message}`, "error");
+    }
+  }
+
+  async function saveProgress(position: number, duration: number, watched: boolean) {
+    if (!selected || !activePlayback) return;
+    const episode = activePlayback.episode;
+    try {
+      await sourceProgressSet({
+        extensionId: extension.id,
+        showId: selected.id,
+        episodeId: episode.id,
+        episodeNumber: episode.number,
+        episodeTitle: episode.title ?? null,
+        positionSec: position,
+        durationSec: duration,
+        watched,
+      });
+    } catch {
+      // Progress is best effort. Playback stays up.
+    }
+  }
+
+  async function closePlayer() {
+    activePlayback = null;
+    if (!selected) return;
+    try {
+      progress = await sourceProgressGet(extension.id, selected.id);
+    } catch {
+      // Keep the old progress on a read failure.
+    }
+    onLibraryChanged?.();
   }
 
   async function resolve(episode: JsEpisode) {
@@ -123,7 +227,7 @@
   }
 
   async function playStream(stream: JsStream, episode: JsEpisode) {
-    activePlayback = { stream, episode };
+    activePlayback = { stream, episode, startSec: resumeFor(episode.id) };
   }
 
   async function openExternal(stream: JsStream, episode: JsEpisode) {
@@ -154,6 +258,16 @@
     const minutes = Math.floor(seconds / 60);
     const rest = seconds % 60;
     return `${minutes}:${String(rest).padStart(2, "0")}`;
+  }
+
+  function formatTime(value: number): string {
+    if (!Number.isFinite(value) || value < 0) return "0:00";
+    const hours = Math.floor(value / 3600);
+    const minutes = Math.floor((value % 3600) / 60);
+    const seconds = Math.floor(value % 60);
+    return hours > 0
+      ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+      : `${minutes}:${String(seconds).padStart(2, "0")}`;
   }
 
   function clean(text?: string | null): string {
@@ -213,9 +327,20 @@
   <main class="flex-1 overflow-y-auto">
     {#if selected}
       <div class="max-w-[1200px] mx-auto p-6 md:p-8">
-        <button class="btn-ghost px-3 py-1.5 text-xs mb-4" onclick={backToResults}>
-          ← Back to results
-        </button>
+        <div class="flex items-center gap-2 mb-4">
+          <button class="btn-ghost px-3 py-1.5 text-xs" onclick={backToResults}>
+            ← Back to results
+          </button>
+          <button
+            class={inSourceLibrary ? "btn-ghost" : "btn-primary"}
+            class:px-3={true}
+            class:py-1.5={true}
+            class:text-xs={true}
+            onclick={() => void toggleSourceLibrary()}
+          >
+            {inSourceLibrary ? "✓ In Library" : "+ Library"}
+          </button>
+        </div>
 
         {#if showError}
           <div
@@ -275,6 +400,7 @@
         {:else}
           <div class="space-y-2">
             {#each episodes as episode (episode.id)}
+              {@const saved = progressFor(episode.id)}
               <div
                 class="rounded-xl overflow-hidden"
                 style="background: var(--void-900); border: 1px solid var(--line);"
@@ -293,6 +419,23 @@
                     <p class="text-[11px]" style="color: var(--paper-500);">
                       {duration(episode.durationSec)}
                     </p>
+                    {#if saved}
+                      <div class="h-0.5 rounded-full mt-1 overflow-hidden" style="background: var(--void-700);" aria-hidden="true">
+                        <div
+                          class="h-full"
+                          style="width: {saved.durationSec > 0
+                            ? Math.min(100, (saved.positionSec / saved.durationSec) * 100)
+                            : 0}%; background: var(--volt-400);"
+                        ></div>
+                      </div>
+                      <p class="text-[10px] mt-0.5" style="color: var(--paper-500);">
+                        {saved.watched
+                          ? "Watched"
+                          : saved.positionSec > 0
+                            ? `Resume ${formatTime(saved.positionSec)}`
+                            : ""}
+                      </p>
+                    {/if}
                   </div>
                   <button
                     class="btn-primary px-3 py-1.5 text-xs shrink-0"
@@ -324,7 +467,7 @@
                           class="btn-primary px-2 py-0.5 text-[10px] shrink-0"
                           onclick={() => void playStream(stream, episode)}
                         >
-                          Play
+                          {resumeFor(episode.id) > 0 ? "Resume" : "Play"}
                         </button>
                         <button
                           class="btn-ghost px-2 py-0.5 text-[10px] shrink-0"
@@ -422,7 +565,10 @@
     subtitle="Episode {activePlayback.episode.number}{activePlayback.episode.title
       ? ` · ${activePlayback.episode.title}`
       : ''}"
-    onClose={() => (activePlayback = null)}
+    startSec={activePlayback.startSec}
+    onProgress={(position, duration, watched) =>
+      void saveProgress(position, duration, watched)}
+    onClose={() => void closePlayer()}
     onOpenExternal={() =>
       void openExternal(activePlayback!.stream, activePlayback!.episode)}
     {notify}

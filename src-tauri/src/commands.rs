@@ -6,7 +6,10 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::anilist::{AniListClient, Media, ShelfKind};
-use crate::db::{ContinueItem, Db, HistoryItem, InstalledSource, JsExtensionRow, LibraryItem};
+use crate::db::{
+    ContinueItem, Db, HistoryItem, InstalledSource, JsExtensionRow, LibraryItem, SourceLibraryItem,
+    SourceProgress,
+};
 use crate::error::AppError;
 use crate::ext_host::{self, ExtPackage, ExtStorage};
 use crate::player::{self, PlaybackInfo, PlaybackRequest, PlayerState, PlayerStatus};
@@ -283,4 +286,80 @@ pub fn player_stop(state: State<'_, PlayerState>) {
 #[tauri::command]
 pub fn player_status() -> PlayerStatus {
     player::status()
+}
+
+#[tauri::command]
+pub fn source_library_list(state: State<'_, Db>) -> Result<Vec<SourceLibraryItem>, String> {
+    state.source_library_list().map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn source_library_add(
+    state: State<'_, Db>,
+    extension_id: String,
+    show_id: String,
+    title: String,
+    cover: Option<String>,
+    year: Option<i32>,
+    status: Option<String>,
+) -> Result<(), String> {
+    state
+        .source_library_add(
+            &extension_id,
+            &show_id,
+            &title,
+            cover.as_deref(),
+            year,
+            status.as_deref(),
+        )
+        .map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn source_library_remove(
+    state: State<'_, Db>,
+    extension_id: String,
+    show_id: String,
+) -> Result<(), String> {
+    state
+        .source_library_remove(&extension_id, &show_id)
+        .map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn source_progress_get(
+    state: State<'_, Db>,
+    extension_id: String,
+    show_id: String,
+) -> Result<Vec<SourceProgress>, String> {
+    state
+        .source_progress_get(&extension_id, &show_id)
+        .map_err(ipc_error)
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn source_progress_set(
+    state: State<'_, Db>,
+    extension_id: String,
+    show_id: String,
+    episode_id: String,
+    episode_number: i64,
+    episode_title: Option<String>,
+    position_sec: f64,
+    duration_sec: f64,
+    watched: bool,
+) -> Result<(), String> {
+    state
+        .source_progress_set(
+            &extension_id,
+            &show_id,
+            &episode_id,
+            episode_number,
+            episode_title.as_deref(),
+            position_sec,
+            duration_sec,
+            watched,
+        )
+        .map_err(ipc_error)
 }

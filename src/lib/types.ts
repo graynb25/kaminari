@@ -163,6 +163,36 @@ export type PlayerStatus = {
   version?: string | null;
 };
 
+export type SourceExtensionRef = {
+  id: string;
+  name: string;
+};
+
+export type SourceLibraryItem = {
+  extensionId: string;
+  extensionName: string;
+  showId: string;
+  title: string;
+  cover?: string | null;
+  year?: number | null;
+  status?: string | null;
+  addedAt: number;
+  watchedCount: number;
+  lastEpisode?: number | null;
+  lastPosition?: number | null;
+  lastDuration?: number | null;
+};
+
+export type SourceProgress = {
+  episodeId: string;
+  episodeNumber: number;
+  episodeTitle?: string | null;
+  positionSec: number;
+  durationSec: number;
+  watched: boolean;
+  updatedAt: number;
+};
+
 export type HistoryItem = {
   media: Media;
   episode: number;

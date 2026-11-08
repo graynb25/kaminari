@@ -26,6 +26,7 @@
     listLibrary,
     removeFromLibrary,
     setLibraryStatus,
+    sourceLibraryList,
     shelf,
     watchedList,
     watchedMarkAll,
@@ -33,7 +34,12 @@
     type ShelfKind,
   } from "./lib/api";
   import { displayTitle, isRateLimitMessage } from "./lib/format";
-  import type { Boot, ContinueItem, HistoryItem, JsExtension, LibraryItem, Media, RailState, Toast, ToastTone, View } from "./lib/types";
+  import type { Boot, ContinueItem, HistoryItem, JsSearchItem, LibraryItem, Media, RailState, SourceExtensionRef, SourceLibraryItem, Toast, ToastTone, View } from "./lib/types";
+
+  type SourceBrowserState = {
+    extension: SourceExtensionRef;
+    initialShow?: JsSearchItem;
+  };
 
   let title = $state("Kaminari");
   let boot = $state<Boot | null>(null);
@@ -53,7 +59,8 @@
   let watchedDetail = $state<number[]>([]);
   let continueItems = $state<ContinueItem[]>([]);
   let historyItems = $state<HistoryItem[]>([]);
-  let sourceBrowser = $state<JsExtension | null>(null);
+  let sourceLibraryItems = $state<SourceLibraryItem[]>([]);
+  let sourceBrowser = $state<SourceBrowserState | null>(null);
   let paletteOpen = $state(false);
   let shortcutsOpen = $state(false);
   let toasts = $state<Toast[]>([]);
@@ -110,6 +117,14 @@
       historyItems = await historyList(100);
     } catch {
       historyItems = [];
+    }
+  }
+
+  async function refreshSourceLibrary() {
+    try {
+      sourceLibraryItems = await sourceLibraryList();
+    } catch {
+      sourceLibraryItems = [];
     }
   }
 
@@ -253,6 +268,7 @@
       await refreshLibrary();
       await refreshContinue();
       await refreshHistory();
+      await refreshSourceLibrary();
       await loadBrowse();
     })();
   });
@@ -526,7 +542,19 @@
         {:else}
           <LibraryView
             items={library}
+            sourceItems={sourceLibraryItems}
             onOpen={(item) => void openDetail(item)}
+            onOpenSource={(item) => {
+              sourceBrowser = {
+                extension: { id: item.extensionId, name: item.extensionName },
+                initialShow: {
+                  id: item.showId,
+                  title: item.title,
+                  cover: item.cover ?? null,
+                  year: item.year ?? null,
+                },
+              };
+            }}
             onToggleLibrary={toggleLibrary}
             onPlay={openPlay}
             onBrowse={() => goView("browse")}
@@ -540,7 +568,14 @@
           onBrowse={() => goView("browse")}
         />
       {:else if view === "sources"}
-        <SourcesView boot={boot} notify={notify} onBrowse={(extension) => (sourceBrowser = extension)} />
+        <SourcesView
+          boot={boot}
+          notify={notify}
+          onBrowse={(extension) =>
+            (sourceBrowser = {
+              extension: { id: extension.id, name: extension.name },
+            })}
+        />
       {:else}
         <SettingsView boot={boot} />
       {/if}
@@ -560,7 +595,10 @@
 
 {#if sourceBrowser}
   <SourceBrowser
-    extension={sourceBrowser}
+    extension={sourceBrowser.extension}
+    initialShow={sourceBrowser.initialShow}
+    sourceLibrary={sourceLibraryItems}
+    onLibraryChanged={() => void refreshSourceLibrary()}
     onClose={() => (sourceBrowser = null)}
     notify={notify}
   />

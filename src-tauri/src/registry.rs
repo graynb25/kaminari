@@ -67,7 +67,7 @@ pub async fn fetch_index(url: &str) -> AppResult<Vec<LegacyExtension>> {
         .get(url)
         .header(
             "User-Agent",
-            "Kaminari/0.6.0 (+https://github.com/graynb25/kaminari)",
+            "Kaminari/0.7.0 (+https://github.com/graynb25/kaminari)",
         )
         .send()
         .await

@@ -4,6 +4,14 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.7.0 - 2026-11-08
+
+- Source library: add a JavaScript source show from the source browser, see it under Library, resume it later
+- Playback progress: the in-app player saves position every 5 seconds and on pause, close and end; resume starts at the saved position; 90 percent marks the episode watched
+- Source progress: per episode bars and Resume or Watched labels in the source detail view
+- Database: `source_library` and `source_progress` tables
+- Version: bump to 0.7.0
+
 ## 0.6.0 - 2026-11-08
 
 - Player: in-app video surface with custom controls, keyboard shortcuts, speed, volume, fullscreen, subtitles and autoplay

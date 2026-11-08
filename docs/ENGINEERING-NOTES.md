@@ -76,6 +76,16 @@ What we measured. On 2026-11-08 the sample opened an archive.org title, returned
 
 What we did not do. Playback. The resolve panel shows and copies URLs; libmpv is the next milestone.
 
+## 2026-11-08 Source library and resume progress
+
+Context. The player could play one episode, but it forgot everything when the window closed. Source shows had no library of their own.
+
+What we shipped. `source_library` and `source_progress` tables, a source library card in the Library view, an Add or Remove Library button in the source detail, and a player progress callback. The player writes position every 5 seconds and on pause, close and end. A saved position below 95 percent offers Resume. Reaching 90 percent marks the episode watched and updates the card. Source detail rows show a progress bar and Resume or Watched.
+
+What we measured. The seeded source library card showed `Popeye with Betty Boop`, `Episode 1`, `2:00 / 7:36`, and a Resume button. The sample's H.264 episode plays in the in-app player with the CSP fix from the previous note.
+
+What we did not do. Source history and Continue Watching for source shows. The Library section covers resume for now.
+
 ## 2026-11-08 In-app player
 
 Context. The external mpv handoff opened a separate window. That is not the design. Play should stay inside Kaminari.

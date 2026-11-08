@@ -2,18 +2,22 @@
   import EmptyState from "./EmptyState.svelte";
   import PosterCard from "./PosterCard.svelte";
   import { displayTitle } from "./format";
-  import type { LibraryItem, Media } from "./types";
+  import type { LibraryItem, Media, SourceLibraryItem } from "./types";
 
   let {
     items,
+    sourceItems,
     onOpen,
+    onOpenSource,
     onToggleLibrary,
     onPlay,
     onBrowse,
     onSetStatus,
   }: {
     items: LibraryItem[];
+    sourceItems: SourceLibraryItem[];
     onOpen: (item: Media) => void;
+    onOpenSource: (item: SourceLibraryItem) => void;
     onToggleLibrary: (item: Media) => void;
     onPlay: (item: Media) => void;
     onBrowse: () => void;
@@ -36,33 +40,43 @@
   function label(status: string): string {
     return status.charAt(0).toUpperCase() + status.slice(1);
   }
+
+  function formatTime(value?: number | null): string {
+    if (!value || value <= 0) return "0:00";
+    const minutes = Math.floor(value / 60);
+    const seconds = Math.floor(value % 60);
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
 </script>
 
 <div class="p-6 md:p-8 max-w-[1440px] mx-auto">
   <div class="flex flex-wrap items-baseline gap-3 mb-5">
     <h1 class="text-[28px] font-bold" style="font-family: var(--font-display);">Your library</h1>
-    <span class="text-sm" style="color: var(--paper-500);">{items.length} {items.length === 1 ? "title" : "titles"}</span>
-    <div class="ml-auto flex items-center gap-2">
-      <input
-        bind:value={query}
-        placeholder="Filter by title"
-        class="h-8 w-56 rounded-lg px-3 text-sm outline-none"
-        style="background: var(--void-800); border: 1px solid var(--line); color: var(--paper-50);"
-        aria-label="Filter library by title"
-      />
-    </div>
+    <span class="text-sm" style="color: var(--paper-500);">{items.length + sourceItems.length} {items.length + sourceItems.length === 1 ? "title" : "titles"}</span>
+    {#if items.length > 0}
+      <div class="ml-auto flex items-center gap-2">
+        <input
+          bind:value={query}
+          placeholder="Filter by title"
+          class="h-8 w-56 rounded-lg px-3 text-sm outline-none"
+          style="background: var(--void-800); border: 1px solid var(--line); color: var(--paper-50);"
+          aria-label="Filter library by title"
+        />
+      </div>
+    {/if}
   </div>
 
-  {#if items.length === 0}
+  {#if items.length === 0 && sourceItems.length === 0}
     <EmptyState
       icon="▤"
       title="Your library is empty"
-      body="Add a title from Browse and it will live here, with progress and history beside it."
+      body="Add a title from Browse or a source, and it will live here with progress and history."
       actionLabel="Browse trending"
       onAction={onBrowse}
     />
   {:else}
-    <div class="flex flex-wrap gap-1.5 mb-6" role="group" aria-label="Filter by status">
+    {#if items.length > 0}
+      <div class="flex flex-wrap gap-1.5 mb-6" role="group" aria-label="Filter by status">
       {#each statuses as status}
         {@const count = status === "all" ? items.length : items.filter((entry) => entry.status === status).length}
         <button
@@ -129,6 +143,76 @@
           </div>
         {/each}
       </div>
+    {/if}
+  {/if}
+
+    {#if sourceItems.length > 0}
+      <section class={items.length > 0 ? "mt-10" : ""} aria-label="Source library">
+        <div class="flex items-baseline gap-3 mb-4">
+          <h2 class="text-xl font-semibold" style="font-family: var(--font-display);">
+            Source library
+          </h2>
+          <span class="text-sm" style="color: var(--paper-500);">{sourceItems.length}</span>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          {#each sourceItems as item (item.extensionId + "|" + item.showId)}
+            <article
+              class="rounded-2xl overflow-hidden"
+              style="background: var(--void-900); border: 1px solid var(--line);"
+            >
+              <div class="aspect-[2/3]" style="background: var(--void-700);">
+                {#if item.cover}
+                  <img
+                    src={item.cover}
+                    alt=""
+                    loading="lazy"
+                    class="w-full h-full object-cover"
+                  />
+                {/if}
+              </div>
+              <div class="p-2.5">
+                <p class="text-sm font-semibold line-clamp-2">{item.title}</p>
+                <p class="text-[11px] mt-0.5 truncate" style="color: var(--paper-500);">
+                  {item.extensionName}
+                </p>
+                {#if item.lastEpisode != null}
+                  <p class="text-[11px] mt-1" style="color: var(--paper-300);">
+                    Episode {item.lastEpisode}
+                    {#if item.watchedCount > 0} · {item.watchedCount} watched{/if}
+                  </p>
+                  {#if item.lastDuration && item.lastPosition && item.lastPosition < item.lastDuration * 0.95}
+                    <div
+                      class="h-0.5 rounded-full mt-1.5 overflow-hidden"
+                      style="background: var(--void-700);"
+                      aria-hidden="true"
+                    >
+                      <div
+                        class="h-full"
+                        style="width: {Math.min(100, (item.lastPosition / item.lastDuration) * 100)}%; background: var(--volt-400);"
+                      ></div>
+                    </div>
+                    <p class="text-[10px] mt-1" style="color: var(--paper-500);">
+                      {formatTime(item.lastPosition)} / {formatTime(item.lastDuration)}
+                    </p>
+                  {/if}
+                {:else}
+                  <p class="text-[11px] mt-1" style="color: var(--paper-500);">Not started</p>
+                {/if}
+                <button
+                  class="btn-primary w-full mt-2 py-1.5 text-xs"
+                  onclick={() => onOpenSource(item)}
+                >
+                  {item.lastPosition && item.lastDuration && item.lastPosition / item.lastDuration >= 0.95
+                    ? "Rewatch"
+                    : item.lastPosition
+                      ? "Resume"
+                      : "Open"}
+                </button>
+              </div>
+            </article>
+          {/each}
+        </div>
+      </section>
     {/if}
   {/if}
 </div>

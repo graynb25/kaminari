@@ -18,6 +18,8 @@ import type {
   PlaybackInfo,
   PlaybackRequest,
   PlayerStatus,
+  SourceLibraryItem,
+  SourceProgress,
 } from "./types";
 
 export function bootSnapshot(): Promise<Boot> {
@@ -144,4 +146,50 @@ export function playerStop(): Promise<void> {
 
 export function playerStatus(): Promise<PlayerStatus> {
   return invoke<PlayerStatus>("player_status");
+}
+
+export function sourceLibraryList(): Promise<SourceLibraryItem[]> {
+  return invoke<SourceLibraryItem[]>("source_library_list");
+}
+
+export function sourceLibraryAdd(item: {
+  extensionId: string;
+  showId: string;
+  title: string;
+  cover?: string | null;
+  year?: number | null;
+  status?: string | null;
+}): Promise<void> {
+  return invoke<void>("source_library_add", {
+    extensionId: item.extensionId,
+    showId: item.showId,
+    title: item.title,
+    cover: item.cover,
+    year: item.year,
+    status: item.status,
+  });
+}
+
+export function sourceLibraryRemove(extensionId: string, showId: string): Promise<void> {
+  return invoke<void>("source_library_remove", { extensionId, showId });
+}
+
+export function sourceProgressGet(
+  extensionId: string,
+  showId: string,
+): Promise<SourceProgress[]> {
+  return invoke<SourceProgress[]>("source_progress_get", { extensionId, showId });
+}
+
+export function sourceProgressSet(input: {
+  extensionId: string;
+  showId: string;
+  episodeId: string;
+  episodeNumber: number;
+  episodeTitle?: string | null;
+  positionSec: number;
+  durationSec: number;
+  watched: boolean;
+}): Promise<void> {
+  return invoke<void>("source_progress_set", input);
 }

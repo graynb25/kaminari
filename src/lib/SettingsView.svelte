@@ -26,7 +26,7 @@
       title: "App",
       icon: `<svg ${iconProps}><circle cx="12" cy="12" r="8.5" /><path d="M12 8h.01M12 11.5V16" /></svg>`,
       rows: [
-        { label: "Version", value: "0.6.0" },
+        { label: "Version", value: "0.7.0" },
         {
           label: "Stack",
           value: "Tauri 2, Svelte 5 Runes, QuickJS host, in-app player, mpv fallback",

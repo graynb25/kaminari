@@ -11,6 +11,7 @@
     onClose,
     onOpenExternal,
     notify,
+    onProgress,
   }: {
     stream: JsStream;
     title: string;
@@ -19,6 +20,7 @@
     onClose: () => void;
     onOpenExternal: () => void;
     notify: (text: string, tone?: "info" | "success" | "error") => void;
+    onProgress?: (position: number, duration: number, watched: boolean) => void;
   } = $props();
 
   let shell: HTMLDivElement | null = $state(null);
@@ -35,6 +37,7 @@
   let controlsVisible = $state(true);
   let fullscreen = $state(false);
   let hideTimer: number | null = null;
+  let lastReport = 0;
 
   const subtitles = $derived(stream.subtitles ?? []);
   const hasHeaders = $derived(Object.keys(stream.headers ?? {}).length > 0);
@@ -46,6 +49,7 @@
 
     const onTime = () => {
       currentTime = element.currentTime;
+      reportProgress(false);
     };
     const onDuration = () => {
       duration = Number.isFinite(element.duration) ? element.duration : 0;
@@ -60,6 +64,7 @@
     const onPause = () => {
       playing = false;
       showControls();
+      reportProgress(true);
     };
     const onWaiting = () => {
       buffering = true;
@@ -71,6 +76,7 @@
     const onEnded = () => {
       playing = false;
       showControls();
+      reportProgress(true, true);
     };
     const onError = () => {
       buffering = false;
@@ -98,7 +104,7 @@
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        closePlayer();
       } else if (event.key === " " || event.key.toLowerCase() === "k") {
         event.preventDefault();
         togglePlay();
@@ -132,6 +138,7 @@
       element.removeEventListener("error", onError);
       element.removeEventListener("volumechange", onVolume);
       window.removeEventListener("keydown", onKey);
+      reportProgress(true);
       if (hideTimer !== null) window.clearTimeout(hideTimer);
       hls?.destroy();
       hls = null;
@@ -140,6 +147,22 @@
       element.load();
     };
   });
+
+  function reportProgress(force: boolean, ended = false) {
+    if (!video || !onProgress) return;
+    const now = Date.now();
+    if (!force && now - lastReport < 5000) return;
+    lastReport = now;
+    const total = Number.isFinite(video.duration) ? video.duration : 0;
+    const position = ended ? total : video.currentTime;
+    const watched = ended || (total > 0 && position / total >= 0.9);
+    onProgress(position, total, watched);
+  }
+
+  function closePlayer() {
+    reportProgress(true);
+    onClose();
+  }
 
   async function setup() {
     if (!video) return;
@@ -287,7 +310,7 @@
     class="absolute inset-x-0 top-0 p-4 flex items-start gap-3 transition-opacity duration-200"
     style="background: linear-gradient(0deg, transparent, rgb(0 0 0 / 0.72)); opacity: {controlsVisible ? 1 : 0}; pointer-events: {controlsVisible ? 'auto' : 'none'};"
   >
-    <button class="btn-ghost px-3 py-1.5 text-xs" onclick={onClose} aria-label="Close player">
+    <button class="btn-ghost px-3 py-1.5 text-xs" onclick={closePlayer} aria-label="Close player">
       ← Back
     </button>
     <div class="min-w-0">

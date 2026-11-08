@@ -74,6 +74,35 @@ pub struct StoredJsExtension {
     pub code: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceLibraryItem {
+    pub extension_id: String,
+    pub extension_name: String,
+    pub show_id: String,
+    pub title: String,
+    pub cover: Option<String>,
+    pub year: Option<i32>,
+    pub status: Option<String>,
+    pub added_at: i64,
+    pub watched_count: i64,
+    pub last_episode: Option<i64>,
+    pub last_position: Option<f64>,
+    pub last_duration: Option<f64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceProgress {
+    pub episode_id: String,
+    pub episode_number: i64,
+    pub episode_title: Option<String>,
+    pub position_sec: f64,
+    pub duration_sec: f64,
+    pub watched: bool,
+    pub updated_at: i64,
+}
+
 impl Db {
     pub fn new(path: &str) -> AppResult<Self> {
         let conn = Connection::open(path)?;
@@ -83,6 +112,7 @@ impl Db {
         conn.execute_batch(include_str!("../migrations/0001_init.sql"))?;
         conn.execute_batch(include_str!("../migrations/0002_watched.sql"))?;
         conn.execute_batch(include_str!("../migrations/0003_js_extensions.sql"))?;
+        conn.execute_batch(include_str!("../migrations/0004_source_library.sql"))?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
@@ -423,6 +453,154 @@ impl Db {
         Ok(())
     }
 
+    pub fn source_library_add(
+        &self,
+        extension_id: &str,
+        show_id: &str,
+        title: &str,
+        cover: Option<&str>,
+        year: Option<i32>,
+        status: Option<&str>,
+    ) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        conn.execute(
+            "INSERT INTO source_library(
+                extension_id, show_id, title, cover, year, status, added_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, unixepoch(), unixepoch())
+             ON CONFLICT(extension_id, show_id) DO UPDATE SET
+                title = excluded.title,
+                cover = excluded.cover,
+                year = excluded.year,
+                status = excluded.status,
+                updated_at = unixepoch()",
+            params![extension_id, show_id, title, cover, year, status],
+        )?;
+        Ok(())
+    }
+
+    pub fn source_library_list(&self) -> AppResult<Vec<SourceLibraryItem>> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let mut statement = conn.prepare(
+            "SELECT sl.extension_id,
+                    COALESCE(je.name, sl.extension_id),
+                    sl.show_id, sl.title, sl.cover, sl.year, sl.status, sl.added_at,
+                    (SELECT COUNT(*) FROM source_progress sp
+                     WHERE sp.extension_id = sl.extension_id AND sp.show_id = sl.show_id AND sp.watched = 1),
+                    (SELECT episode_number FROM source_progress sp
+                     WHERE sp.extension_id = sl.extension_id AND sp.show_id = sl.show_id
+                     ORDER BY sp.updated_at DESC LIMIT 1),
+                    (SELECT position_sec FROM source_progress sp
+                     WHERE sp.extension_id = sl.extension_id AND sp.show_id = sl.show_id
+                     ORDER BY sp.updated_at DESC LIMIT 1),
+                    (SELECT duration_sec FROM source_progress sp
+                     WHERE sp.extension_id = sl.extension_id AND sp.show_id = sl.show_id
+                     ORDER BY sp.updated_at DESC LIMIT 1)
+             FROM source_library sl
+             LEFT JOIN js_extensions je ON je.id = sl.extension_id
+             ORDER BY sl.updated_at DESC",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(SourceLibraryItem {
+                extension_id: row.get(0)?,
+                extension_name: row.get(1)?,
+                show_id: row.get(2)?,
+                title: row.get(3)?,
+                cover: row.get(4)?,
+                year: row.get(5)?,
+                status: row.get(6)?,
+                added_at: row.get(7)?,
+                watched_count: row.get(8)?,
+                last_episode: row.get(9)?,
+                last_position: row.get(10)?,
+                last_duration: row.get(11)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn source_library_remove(&self, extension_id: &str, show_id: &str) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        conn.execute(
+            "DELETE FROM source_library WHERE extension_id = ?1 AND show_id = ?2",
+            params![extension_id, show_id],
+        )?;
+        conn.execute(
+            "DELETE FROM source_progress WHERE extension_id = ?1 AND show_id = ?2",
+            params![extension_id, show_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn source_progress_get(
+        &self,
+        extension_id: &str,
+        show_id: &str,
+    ) -> AppResult<Vec<SourceProgress>> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let mut statement = conn.prepare(
+            "SELECT episode_id, episode_number, episode_title, position_sec, duration_sec, watched, updated_at
+             FROM source_progress
+             WHERE extension_id = ?1 AND show_id = ?2
+             ORDER BY episode_number",
+        )?;
+        let rows = statement.query_map(params![extension_id, show_id], |row| {
+            Ok(SourceProgress {
+                episode_id: row.get(0)?,
+                episode_number: row.get(1)?,
+                episode_title: row.get(2)?,
+                position_sec: row.get(3)?,
+                duration_sec: row.get(4)?,
+                watched: row.get::<_, i64>(5)? != 0,
+                updated_at: row.get(6)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn source_progress_set(
+        &self,
+        extension_id: &str,
+        show_id: &str,
+        episode_id: &str,
+        episode_number: i64,
+        episode_title: Option<&str>,
+        position_sec: f64,
+        duration_sec: f64,
+        watched: bool,
+    ) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        conn.execute(
+            "INSERT INTO source_progress(
+                extension_id, show_id, episode_id, episode_number, episode_title,
+                position_sec, duration_sec, watched, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, unixepoch())
+             ON CONFLICT(extension_id, show_id, episode_id) DO UPDATE SET
+                episode_number = excluded.episode_number,
+                episode_title = excluded.episode_title,
+                position_sec = excluded.position_sec,
+                duration_sec = excluded.duration_sec,
+                watched = excluded.watched,
+                updated_at = unixepoch()",
+            params![
+                extension_id,
+                show_id,
+                episode_id,
+                episode_number,
+                episode_title,
+                position_sec,
+                duration_sec,
+                i64::from(watched),
+            ],
+        )?;
+        conn.execute(
+            "UPDATE source_library SET updated_at = unixepoch()
+             WHERE extension_id = ?1 AND show_id = ?2",
+            params![extension_id, show_id],
+        )?;
+        Ok(())
+    }
+
     pub fn list_sources(&self) -> AppResult<Vec<InstalledSource>> {
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         let mut statement = conn.prepare(
@@ -753,6 +931,69 @@ mod tests {
         db.remove_js_extension(&package.manifest.id).unwrap();
         assert!(db.list_js_extensions().unwrap().is_empty());
         assert_eq!(ExtStorage::get(&db, &package.manifest.id, "token"), None);
+    }
+
+    #[test]
+    fn source_library_and_progress() {
+        let db = Db::new(":memory:").unwrap();
+        let package = crate::ext_host::sample_package().unwrap();
+        db.install_js_extension(&package.manifest, &package.code, "builtin")
+            .unwrap();
+
+        db.source_library_add(
+            &package.manifest.id,
+            "show-1",
+            "Popeye",
+            Some("https://example.com/cover.jpg"),
+            Some(1933),
+            Some("finished"),
+        )
+        .unwrap();
+        let items = db.source_library_list().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].extension_name, "Public Domain Animation");
+        assert_eq!(items[0].watched_count, 0);
+
+        db.source_progress_set(
+            &package.manifest.id,
+            "show-1",
+            "ep-1",
+            1,
+            Some("Episode 1"),
+            120.0,
+            600.0,
+            false,
+        )
+        .unwrap();
+        let progress = db
+            .source_progress_get(&package.manifest.id, "show-1")
+            .unwrap();
+        assert_eq!(progress.len(), 1);
+        assert_eq!(progress[0].position_sec, 120.0);
+        let items = db.source_library_list().unwrap();
+        assert_eq!(items[0].last_episode, Some(1));
+        assert_eq!(items[0].last_position, Some(120.0));
+
+        db.source_progress_set(
+            &package.manifest.id,
+            "show-1",
+            "ep-1",
+            1,
+            Some("Episode 1"),
+            600.0,
+            600.0,
+            true,
+        )
+        .unwrap();
+        assert_eq!(db.source_library_list().unwrap()[0].watched_count, 1);
+
+        db.source_library_remove(&package.manifest.id, "show-1")
+            .unwrap();
+        assert!(db.source_library_list().unwrap().is_empty());
+        assert!(db
+            .source_progress_get(&package.manifest.id, "show-1")
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
