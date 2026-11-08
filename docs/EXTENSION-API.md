@@ -1,6 +1,6 @@
 # Extension API
 
-Status: draft v0.1. AniList ships built in. This contract freezes the extension shape early so authors can build while the registry work lands in P1. Breaking changes bump `apiVersion`.
+Status: draft v0.1. AniList ships built in. The native JavaScript host is planned in `docs/PLAN-JS-EXTENSIONS.md`, and the first host runs synchronous methods. Promise support is a later version; until then the host returns `ASYNC_UNSUPPORTED`. Breaking changes bump `apiVersion`.
 
 ## Package
 
@@ -33,10 +33,10 @@ export interface AnimeProvider {
   readonly id: string;
   readonly name: string;
   readonly version: string;
-  search(q: SearchQuery): Promise<ShowSummary[]>;
-  getShow(id: string): Promise<ShowDetail>;
-  getEpisodes(showId: string): Promise<Episode[]>;
-  resolveEpisode(ep: EpisodeRef): Promise<Stream[]>;
+  search(q: SearchQuery): ShowSummary[];
+  getShow(id: string): ShowDetail;
+  getEpisodes(showId: string): Episode[];
+  resolveEpisode(ep: EpisodeRef): Stream[];
 }
 export interface SearchQuery { text: string; page: number; }
 export interface ShowSummary {
@@ -62,9 +62,9 @@ export interface Stream {
 }
 ```
 
-All methods are async. Throw a typed error with code and message. Host validates results at the boundary and drops bad rows with a log, never a crash.
+All methods are synchronous in v0.1. Throw a typed error with code and message. Host validates results at the boundary and drops bad rows with a log, never a crash.
 
-Bridge globals, frozen: `net.fetch(url, opts)` with timeouts and header presets. `html.query(doc, selector)` for simple parsing. `crypto.sha256(text)` plus hmac and random. `storage.get` and `storage.set` namespaced per extension. `logger.info`, `warn`, `error`. No filesystem. No child process. No env.
+Bridge globals, frozen: `net.fetch(url, opts)` with timeouts and header presets. `html.query(doc, selector)` for simple parsing. `crypto.sha256(text)` plus hmac and random. `storage.get` and `storage.set` namespaced per extension. `logger.info`, `warn`, `error`. No filesystem. No child process. No env. All bridge calls are synchronous in v0.1.
 
 ## Error model
 
@@ -140,19 +140,25 @@ kaminari keys gen
 
 ## Example
 
+The package assigns one global. Bridge calls are synchronous in v0.1.
+
 ```ts
-export const id = "com.example.anime";
-export async function search(q: SearchQuery) {
-  const res = await net.fetch(`https://example.com/search?q=${encodeURIComponent(q.text)}`);
-  const html = await res.text();
-  return html.query(html, ".card").map((el) => ({
-    id: el.attr("data-id") as string, // keep string, may exceed 2^53
-    title: el.query("h3").text(),
-  }));
-}
-export async function resolveEpisode(ep: EpisodeRef) {
-  return [{ kind: "hls", url: `https://example.com/stream/${ep.id}.m3u8`, quality: "auto" }];
-}
+globalThis.kaminari = {
+  search(q) {
+    const res = net.fetch(`https://example.com/search?q=${encodeURIComponent(q.text)}`);
+    const cards = html.select(res.body, ".card");
+    return {
+      items: cards.map((el) => ({
+        id: el.attrs["data-id"], // keep string, may exceed 2^53
+        title: el.text,
+      })),
+      hasNext: false,
+    };
+  },
+  resolveEpisode(ep) {
+    return [{ url: `https://example.com/stream/${ep.id}.m3u8`, type: "hls", quality: "auto" }];
+  },
+};
 ```
 
 Non goals for v0.1: background downloads inside JS, torrent transports, DRM Widevine, raw iframes in WebView. Embed flows go through `embedProxy` in Rust so the WebView never hosts third party script.

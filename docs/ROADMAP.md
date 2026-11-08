@@ -10,9 +10,9 @@ Acceptance: on a clean Windows 11 VM with WebView2 present, a tester can search 
 
 ## P1: Extensions
 
-QuickJS host with 5 second timeout and 64MB cap. `.kext` loader with Ed25519 verify. Registry JSON client with pinned key. Source manager UI with per source logs. Hot reload for authors. One crash greys out one source only.
+QuickJS host with 5 second timeout (10 for resolve) and 64MB cap. `.kext` loader, built-in public domain sample, Sources test panel, source browse and detail view. See `docs/PLAN-JS-EXTENSIONS.md` for the full contract. Signed registry and dev tooling follow once the host is reliable.
 
-Acceptance: three sample extensions install from a registry URL, search and episodes work, a looping fixture times out with `EXT_TIMEOUT` and an alloc fixture hits `EXT_OOM`, a tampered package refuses with `EXT_UNTRUSTED`, signed and sideloaded badges show, permission widen asks again. Legacy Aniyomi index imports: `pkg` to id, `apk` to artifact, `sources[]` to rows with string ids preserved. See `docs/EXTENSION-API.md` for the map.
+Acceptance: the built-in sample installs, searches archive.org, lists episodes, resolves a stream, and the timeout, memory, host denial and storage tests pass without network access. Legacy Aniyomi metadata import stays as it is: `pkg` to id, `apk` to artifact, `sources[]` to rows with string ids preserved. See `docs/EXTENSION-API.md` for the map.
 
 ## P2: Wow polish
 

@@ -57,6 +57,7 @@ Builds land in GitHub Releases. No telemetry, no ads, no account needed to brows
 - `docs/ARCHITECTURE.md`: how the pieces fit
 - `docs/DESIGN-SPEC.md`: tokens, components, motion
 - `docs/EXTENSION-API.md`: public contract for extension authors, plus Aniyomi registry mapping
+- `docs/PLAN-JS-EXTENSIONS.md`: native host decisions, API, milestones and tests
 - `docs/ENGINEERING-NOTES.md`: measured numbers and decisions that reversed
 - `docs/ROADMAP.md`: what comes next and what done means
 
