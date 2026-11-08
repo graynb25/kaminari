@@ -66,6 +66,14 @@ What we measured. On 2026-11-08 the sample was installed and searched through th
 
 What we did not do. `getShow`, `getEpisodes` and `resolveEpisode` are implemented in the sample but not wired to a browse UI yet. Async methods return `ASYNC_UNSUPPORTED`. Packages are unsigned and stay local. No registry.
 
+## 2026-11-08 Suwayomi and anime server review
+
+Context. Papyrus runs Suwayomi as its manga source engine. The user asked whether Suwayomi can run Aniyomi/yuzono anime extensions and, if not, whether an anime equivalent exists for Kaminari.
+
+What we verified. Papyrus pins Suwayomi 2.4.2366, bundles a Temurin JRE and a 174.5MB server JAR, binds it to loopback behind `UI_LOGIN`, speaks GraphQL through one gateway, and exposes only an allowlisted image proxy to the web UI. Its installer is 257MB. Suwayomi itself is a Mihon/Tachiyomi manga server: its changelog removed anime support in v0.6.0 on 2021-12-29, and the request to bring it back (issue #387) has stayed open since 2022. Aniyomi extensions use a different source API and a video model, so this is not a store URL or manifest flag. No mature Suwayomi-equivalent for Aniyomi exists on 2026-11-08. `miwayomi` is the closest turnkey candidate, but it is a v0.2.9 alpha from August 2026 with about 30 stars, no API auth, and arbitrary APK code in one JVM. `M-Extension-Server` is a runtime component, not a server. Seanime is mature but uses GPL-3.0 JavaScript/TypeScript providers, not Aniyomi APKs.
+
+Decision. Kaminari stays native-first. `.kext` through QuickJS remains the only bundled provider model. The next playback work is a loopback stream proxy with header, cookie and HLS manifest handling, then embedded libmpv for HEVC, ASS and HDR. A user-installed anime server adapter can be explored later behind an experimental flag, with the server bound to loopback, a per-launch token, a narrow proxy and no raw admin API in the WebView. Do not bundle an APK runtime or a source list. If a server is ever bundled, the terms and privacy docs must change because the no-APK posture would no longer hold.
+
 ## 2026-11-08 Version file and generated licenses
 
 Context. The version was typed into ten places: `package.json`, `Cargo.toml`, `tauri.conf.json`, the nav, Settings, the footer, two HTTP user agents and a player test. Every bump risked a mismatch. The user asked for one version file. The user also pointed at Papyrus, which has a generated licenses page, and asked for the same for Kaminari.

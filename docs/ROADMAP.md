@@ -12,7 +12,9 @@ Acceptance: on a clean Windows 11 VM with WebView2 present, a tester can search 
 
 QuickJS host with 5 second timeout (10 for resolve) and 64MB cap. `.kext` loader, built-in public domain sample, Sources test panel, source browse and detail view. See `docs/PLAN-JS-EXTENSIONS.md` for the full contract. Signed registry and dev tooling follow once the host is reliable.
 
-Status: host core, Sources test panel, source browse and detail, the in-app player, the source library with resume progress, source Continue Watching and merged history are done. Search, detail, episodes, resolve, playback and resume run live against archive.org. External mpv is the fallback. Embedded libmpv is next.
+Status: host core, Sources test panel, source browse and detail, the in-app player, the source library with resume progress, source Continue Watching and merged history are done. Search, detail, episodes, resolve, playback and resume run live against archive.org. External mpv is the fallback.
+
+Decision: Suwayomi is manga-only and cannot run Aniyomi/yuzono anime extensions. Native `.kext` through QuickJS remains the only bundled provider model. Next is a loopback stream proxy for headers, cookies and HLS manifests, then embedded libmpv for HEVC, ASS and HDR. A user-installed anime server adapter can follow behind an experimental flag. No APK runtime or source list is bundled.
 
 Acceptance: the built-in sample installs, searches archive.org, lists episodes, resolves a stream, and the timeout, memory, host denial and storage tests pass without network access. Legacy Aniyomi metadata import stays as it is: `pkg` to id, `apk` to artifact, `sources[]` to rows with string ids preserved. See `docs/EXTENSION-API.md` for the map.
 

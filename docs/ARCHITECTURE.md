@@ -22,6 +22,8 @@ Why libmpv and not VLC or web video: gpu-next path, real ASS subs, clean HLS and
 
 Why QuickJS through rquickjs and not a Node sidecar: in process, small, sync timeout plus memory cap per runtime, easy kill on 5s timeout, no child IPC flakiness. Node would add process per extension plus JSON RPC plus supply chain weight. Limit is no async IO inside JS except through bridged `net.fetch`.
 
+Source backends: native `.kext` through QuickJS is the bundled path. A 2026-11-08 review found Suwayomi is a manga server and cannot run Aniyomi/yuzono anime extensions; anime support was removed in its v0.6.0 release in 2021, and the request to restore it has stayed open. No mature equivalent exists. The app stays native-first and adds a loopback stream proxy plus embedded libmpv before considering any server. An optional user-installed anime server adapter can be explored later behind a flag, with the server on loopback, a per-launch token and a narrow proxy. No APK runtime is bundled.
+
 ## IPC contract
 
 Commands use snake case in Rust, camel case in TS through serde rename. Prefix events with `kaminari/v1/`. Payloads derive Serialize and Deserialize. Schemas check in CI. No `any` crosses the bridge.

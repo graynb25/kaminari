@@ -4,6 +4,8 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+- Docs: Suwayomi/anime server review, native-first source decision, loopback stream proxy and embedded libmpv next
+
 ## 0.11.2 - 2026-11-08
 
 - Licenses: render the dialog at app root so it stays centered and fully visible on small windows
