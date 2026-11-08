@@ -4,6 +4,12 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.10.2 - 2026-11-08
+
+- Cards: titles without an AniList score show NR instead of an empty score slot
+- Cards: NR carries a tooltip and keeps the same badge position as a score
+- Version: bump to 0.10.2
+
 ## 0.10.1 - 2026-11-08
 
 - Icon: new squircle tile with a beveled volt bolt, deep indigo gradient, soft glow and rim light

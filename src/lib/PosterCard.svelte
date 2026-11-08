@@ -87,6 +87,8 @@
           <Icon name="star" size={9} />
           {scoreOutOfTen(item.averageScore)}
         </span>
+      {:else}
+        <span class="poster-score is-unrated" title="AniList has no score yet">NR</span>
       {/if}
       {#if progress && progress.total > 0}
         <span class="poster-progress" aria-hidden="true">

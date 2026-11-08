@@ -66,6 +66,16 @@ What we measured. On 2026-11-08 the sample was installed and searched through th
 
 What we did not do. `getShow`, `getEpisodes` and `resolveEpisode` are implemented in the sample but not wired to a browse UI yet. Async methods return `ASYNC_UNSUPPORTED`. Packages are unsigned and stay local. No registry.
 
+## 2026-11-08 Missing AniList score
+
+Context. The user pointed at SPY×FAMILY Season 4 in Top 10 and asked why it had no rating.
+
+What we measured. A live AniList query for id 219714 on 2026-11-08 returned `averageScore: null`, `meanScore: null`, `status: NOT_YET_RELEASED`, `startDate.year: 2027`, `episodes: null`. The missing badge was correct data. The UI had simply hidden the slot when the score was null.
+
+What we shipped. Poster cards now show `NR` in the same top-right slot, with the tooltip `AniList has no score yet`. The detail card already showed `n/a`. The hero still omits the score chip because a `Not rated` pill would crowd the meta row.
+
+What we did not do. No fabricated score and no popularity fallback. Those would misrepresent AniList.
+
 ## 2026-11-08 Icon refresh and episode actions
 
 Context. The first icon was a flat lavender bolt on black. It read as a placeholder. The user asked for a professional icon. Source episode rows also said Resolve, which is host language, not a viewer action.

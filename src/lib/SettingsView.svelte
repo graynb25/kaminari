@@ -40,7 +40,7 @@
       title: "App",
       icon: "monitor",
       rows: [
-        { label: "Version", value: "0.10.1" },
+        { label: "Version", value: "0.10.2" },
         {
           label: "Stack",
           value: "Tauri 2, Svelte 5 Runes, QuickJS host, in-app player, mpv fallback",
@@ -149,7 +149,7 @@
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
     <div class="stat-card">
       <p class="stat-label">Version</p>
-      <p class="stat-value">0.10.1</p>
+      <p class="stat-value">0.10.2</p>
     </div>
     <div class="stat-card">
       <p class="stat-label">Player</p>

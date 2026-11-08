@@ -1409,6 +1409,11 @@ button:disabled {
   -webkit-backdrop-filter: blur(10px);
 }
 
+.poster-score.is-unrated {
+  color: var(--paper-300);
+  letter-spacing: 0.06em;
+}
+
 .poster-progress {
   position: absolute;
   left: 0;
