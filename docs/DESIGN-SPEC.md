@@ -76,7 +76,7 @@ Current build: Play opens a note until sources land. Episodes are a numbered gri
 
 Watched episodes live in SQLite. Continue Watching joins series in the library with status watching, ordered by the newest progress. It shows the last watched episode and watched count. Library cards show watched over total plus a thin volt bar. A series with zero watched episodes is not in Continue Watching.
 
-Native source runs join the same shelf from their own table. One card per show, always the episode with the newest progress. The card shows a 16:9 cover, the extension name, position over duration and a volt progress strip. The shelf only shows the start callout when the library and both continue lists are empty.
+Native source runs join the same shelf from their own table. One card per show, always the episode with the newest progress. The card shows a 16:9 cover, the extension name, position over duration and a volt progress strip. The shelf only shows the start callout when the library and both continue lists are empty. Clicking a source card resolves that episode and opens the player at the saved position. The source library Resume button does the same. History source rows only open the show, because a log row is not a resume action.
 
 ### Sources
 

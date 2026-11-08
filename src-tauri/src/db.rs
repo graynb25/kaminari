@@ -86,6 +86,7 @@ pub struct SourceLibraryItem {
     pub status: Option<String>,
     pub added_at: i64,
     pub watched_count: i64,
+    pub last_episode_id: Option<String>,
     pub last_episode: Option<i64>,
     pub last_position: Option<f64>,
     pub last_duration: Option<f64>,
@@ -516,15 +517,18 @@ impl Db {
                     sl.show_id, sl.title, sl.cover, sl.year, sl.status, sl.added_at,
                     (SELECT COUNT(*) FROM source_progress sp
                      WHERE sp.extension_id = sl.extension_id AND sp.show_id = sl.show_id AND sp.watched = 1),
+                    (SELECT episode_id FROM source_progress sp
+                     WHERE sp.extension_id = sl.extension_id AND sp.show_id = sl.show_id
+                     ORDER BY sp.updated_at DESC, sp.episode_number DESC LIMIT 1),
                     (SELECT episode_number FROM source_progress sp
                      WHERE sp.extension_id = sl.extension_id AND sp.show_id = sl.show_id
-                     ORDER BY sp.updated_at DESC LIMIT 1),
+                     ORDER BY sp.updated_at DESC, sp.episode_number DESC LIMIT 1),
                     (SELECT position_sec FROM source_progress sp
                      WHERE sp.extension_id = sl.extension_id AND sp.show_id = sl.show_id
-                     ORDER BY sp.updated_at DESC LIMIT 1),
+                     ORDER BY sp.updated_at DESC, sp.episode_number DESC LIMIT 1),
                     (SELECT duration_sec FROM source_progress sp
                      WHERE sp.extension_id = sl.extension_id AND sp.show_id = sl.show_id
-                     ORDER BY sp.updated_at DESC LIMIT 1)
+                     ORDER BY sp.updated_at DESC, sp.episode_number DESC LIMIT 1)
              FROM source_library sl
              LEFT JOIN js_extensions je ON je.id = sl.extension_id
              ORDER BY sl.updated_at DESC",
@@ -540,9 +544,10 @@ impl Db {
                 status: row.get(6)?,
                 added_at: row.get(7)?,
                 watched_count: row.get(8)?,
-                last_episode: row.get(9)?,
-                last_position: row.get(10)?,
-                last_duration: row.get(11)?,
+                last_episode_id: row.get(9)?,
+                last_episode: row.get(10)?,
+                last_position: row.get(11)?,
+                last_duration: row.get(12)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -1071,6 +1076,7 @@ mod tests {
         assert_eq!(progress[0].position_sec, 120.0);
         let items = db.source_library_list().unwrap();
         assert_eq!(items[0].last_episode, Some(1));
+        assert_eq!(items[0].last_episode_id.as_deref(), Some("ep-1"));
         assert_eq!(items[0].last_position, Some(120.0));
 
         let continue_items = db.source_continue(10).unwrap();
@@ -1097,6 +1103,9 @@ mod tests {
         assert_eq!(continue_items[0].episode_number, 2);
         assert_eq!(continue_items[0].position_sec, 30.0);
         assert_eq!(db.source_history(10).unwrap().len(), 2);
+        let items = db.source_library_list().unwrap();
+        assert_eq!(items[0].last_episode, Some(2));
+        assert_eq!(items[0].last_episode_id.as_deref(), Some("ep-2"));
 
         db.source_progress_set(
             &package.manifest.id,

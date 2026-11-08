@@ -66,6 +66,16 @@ What we measured. On 2026-11-08 the sample was installed and searched through th
 
 What we did not do. `getShow`, `getEpisodes` and `resolveEpisode` are implemented in the sample but not wired to a browse UI yet. Async methods return `ASYNC_UNSUPPORTED`. Packages are unsigned and stay local. No registry.
 
+## 2026-11-08 Source resume handoff
+
+Context. Continue Watching cards said Resume but only opened the source detail. The user had to find the same episode and click Resolve, then Resume, before a frame played.
+
+What we shipped. A source continue card passes its episode id into the source browser. After detail, episodes and progress load, the browser resolves that one episode and starts the first stream at the saved position. A source library Resume button does the same through `last_episode_id`, which `source_library_list` now returns. History rows still open the show without autoplay.
+
+What we measured. Clicking the seeded Continue card at 120 seconds opened the player on episode 1. The video element reported `currentTime` 144.8 after 24 seconds of playback, and the card refreshed to 2:45 when the player closed. The source detail showed `Resume 2:46`. Both the player and the source browser closed on their own Escape presses.
+
+What we did not do. Auto-resume from History, or from a source library card that has no saved progress. Those open the show and wait for a click.
+
 ## 2026-11-08 Source continue and merged history
 
 Context. The source library could resume an episode, but the home shelf and the history page only knew about AniList. A user who only watched source shows saw an empty home and an empty history.

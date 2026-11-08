@@ -178,6 +178,7 @@ export type SourceLibraryItem = {
   status?: string | null;
   addedAt: number;
   watchedCount: number;
+  lastEpisodeId?: string | null;
   lastEpisode?: number | null;
   lastPosition?: number | null;
   lastDuration?: number | null;

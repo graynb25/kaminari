@@ -27,6 +27,7 @@
   let {
     extension,
     initialShow = null,
+    initialEpisodeId = null,
     sourceLibrary = [],
     onLibraryChanged,
     onClose,
@@ -34,6 +35,7 @@
   }: {
     extension: SourceExtensionRef;
     initialShow?: JsSearchItem | null;
+    initialEpisodeId?: string | null;
     sourceLibrary?: SourceLibraryItem[];
     onLibraryChanged?: () => void;
     onClose: () => void;
@@ -57,6 +59,7 @@
   let dialog: HTMLDivElement | null = $state(null);
   let closeButton: HTMLButtonElement | null = $state(null);
   let previousFocus: HTMLElement | null = null;
+  let autoPlayed = false;
 
   const inSourceLibrary = $derived(
     selected
@@ -166,6 +169,17 @@
     } catch {
       progress = [];
     }
+
+    // A Continue card carries the episode id, so opening it should finish the
+    // job: resolve that episode and resume at the saved position.
+    if (initialEpisodeId && !autoPlayed && initialShow?.id === item.id) {
+      autoPlayed = true;
+      const episode = episodes.find((row) => row.id === initialEpisodeId);
+      if (episode) {
+        const list = await resolve(episode);
+        if (list.length > 0) await playStream(list[0], episode);
+      }
+    }
   }
 
   function progressFor(episodeId: string): SourceProgress | undefined {
@@ -233,7 +247,7 @@
     onLibraryChanged?.();
   }
 
-  async function resolve(episode: JsEpisode) {
+  async function resolve(episode: JsEpisode): Promise<JsStream[]> {
     resolving = episode.id;
     streamError = null;
     try {
@@ -242,8 +256,10 @@
       if (!list || list.length === 0) {
         streamError = "The source returned no streams for this episode.";
       }
+      return list ?? [];
     } catch (e) {
       streamError = e instanceof Error ? e.message : String(e);
+      return [];
     } finally {
       resolving = null;
     }

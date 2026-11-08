@@ -60,6 +60,7 @@
   type SourceBrowserState = {
     extension: SourceExtensionRef;
     initialShow?: JsSearchItem;
+    resumeEpisodeId?: string;
   };
 
   type ContinueRow =
@@ -284,6 +285,7 @@
     title: string;
     cover?: string | null;
     year?: number | null;
+    resumeEpisodeId?: string;
   }) {
     sourceBrowser = {
       extension: { id: item.extensionId, name: item.extensionName },
@@ -293,7 +295,31 @@
         cover: item.cover ?? null,
         year: item.year ?? null,
       },
+      resumeEpisodeId: item.resumeEpisodeId,
     };
+  }
+
+  function openSourceContinue(item: SourceContinueItem) {
+    openSourceShow({
+      extensionId: item.extensionId,
+      extensionName: item.extensionName,
+      showId: item.showId,
+      title: item.title,
+      cover: item.cover,
+      resumeEpisodeId: item.episodeId,
+    });
+  }
+
+  function resumeSource(item: SourceLibraryItem) {
+    openSourceShow({
+      extensionId: item.extensionId,
+      extensionName: item.extensionName,
+      showId: item.showId,
+      title: item.title,
+      cover: item.cover,
+      year: item.year,
+      resumeEpisodeId: item.lastEpisodeId ?? undefined,
+    });
   }
 
   function openExtension(extension: { id: string; name: string }) {
@@ -615,7 +641,7 @@
                             {#if row.kind === "anilist"}
                               <ContinueCard item={row.item} onOpen={(item) => void openDetail(item)} />
                             {:else}
-                              <SourceContinueCard item={row.item} onOpen={openSourceShow} />
+                              <SourceContinueCard item={row.item} onOpen={openSourceContinue} />
                             {/if}
                           </div>
                         {/each}
@@ -714,6 +740,7 @@
                 onRetry={() => void refreshLibrary()}
                 onOpen={(item) => void openDetail(item)}
                 onOpenSource={openSourceShow}
+                onResumeSource={resumeSource}
                 onToggleLibrary={toggleLibrary}
                 onPlay={openPlay}
                 onBrowse={() => goView("browse")}
@@ -765,6 +792,7 @@
   <SourceBrowser
     extension={sourceBrowser.extension}
     initialShow={sourceBrowser.initialShow}
+    initialEpisodeId={sourceBrowser.resumeEpisodeId}
     sourceLibrary={sourceLibraryItems}
     onLibraryChanged={() => void refreshSourceActivity()}
     onClose={() => (sourceBrowser = null)}

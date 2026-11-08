@@ -28,7 +28,7 @@
       title: "App",
       icon: "monitor",
       rows: [
-        { label: "Version", value: "0.9.0" },
+        { label: "Version", value: "0.9.1" },
         {
           label: "Stack",
           value: "Tauri 2, Svelte 5 Runes, QuickJS host, in-app player, mpv fallback",

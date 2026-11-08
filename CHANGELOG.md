@@ -4,6 +4,13 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.9.1 - 2026-11-08
+
+- Continue Watching: clicking a source card now resolves that episode and resumes at the saved position
+- Library: a source Resume button now starts playback instead of only opening the show
+- Source library: cards carry the last episode id so resume can skip the detail step
+- Version: bump to 0.9.1
+
 ## 0.9.0 - 2026-11-08
 
 - Continue Watching: source runs join the shelf with cover, extension, resume position and a progress strip

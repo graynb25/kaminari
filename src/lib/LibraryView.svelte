@@ -12,6 +12,7 @@
     onRetry,
     onOpen,
     onOpenSource,
+    onResumeSource,
     onToggleLibrary,
     onPlay,
     onBrowse,
@@ -25,6 +26,7 @@
     onRetry?: () => void;
     onOpen: (item: Media) => void;
     onOpenSource: (item: SourceLibraryItem) => void;
+    onResumeSource: (item: SourceLibraryItem) => void;
     onToggleLibrary: (item: Media) => void;
     onPlay: (item: Media) => void;
     onBrowse: () => void;
@@ -331,7 +333,7 @@
                     <p class="text-[11px]" style="color: var(--paper-450);">Not started</p>
                   {/if}
                 </div>
-                <button class="btn-primary px-3 py-1.5 text-[11px] shrink-0" onclick={() => onOpenSource(item)}>
+                <button class="btn-primary px-3 py-1.5 text-[11px] shrink-0" onclick={() => (item.lastEpisodeId ? onResumeSource(item) : onOpenSource(item))}>
                   {item.lastPosition && item.lastDuration && item.lastPosition / item.lastDuration >= 0.95
                     ? "Rewatch"
                     : item.lastPosition
