@@ -66,6 +66,14 @@ What we measured. On 2026-11-08 the sample was installed and searched through th
 
 What we did not do. `getShow`, `getEpisodes` and `resolveEpisode` are implemented in the sample but not wired to a browse UI yet. Async methods return `ASYNC_UNSUPPORTED`. Packages are unsigned and stay local. No registry.
 
+## 2026-11-08 Miru/Hayase and Mangayomi review
+
+Context. A search result called Miru the closest PC-native Aniyomi/Suwayomi and Mangayomi a desktop client with an extension manager. We checked both against the native-first decision.
+
+What we verified. Miru rebranded as Hayase. It is an Electron P2P torrent client with a Svelte interface and WebTorrent, not a server, and it has no general local API. Its extensions are ESM classes for torrent, NZB, subtitle and web seed results, run in a Web Worker, and mostly return magnets, so reuse would also require a BitTorrent engine. The app is BUSL-1.1 with a change date of 2029-04-01, so it cannot be bundled before then. Mangayomi is a Flutter client, Apache-2.0, v0.9.95 on 2026-11-01, with Dart extensions through d4rt, JavaScript extensions through QuickJS, and Mihon/Aniyomi APKs through the M-Extension-Server bridge. It has no headless mode and no general HTTP API; its only local server is the Go torrent byte server. Its JavaScript anime extensions are the useful find: they already run in QuickJS, and they return direct URLs with headers and subtitles. They still need async evaluation, an `MProvider`/`Client`/`Document` bridge, video extractors, result mapping, and a host policy because they declare no host allowlist and are unsigned. Community anime repositories exist, for example `Mallyd11/mangayomi-anime-extensions` and `m2k3a/mangayomi-extensions`, both Apache-2.0.
+
+Decision. Neither project is a Suwayomi analogue and neither changes the native-first foundation. If an optional provider experiment is funded, the order is now: a Mangayomi JavaScript compatibility adapter behind a flag, then `miwayomi` for Aniyomi APKs, then Seanime as a separate app. Hayase stays a separate torrent app and is not a dependency. The adapter is estimated at 6 to 10 weeks for a useful prototype and needs a trust prompt because the format has no signatures. The acceptance test is three extensions covering an API source, an HTML scrape and an HLS extractor; if fewer than two work, stop.
+
 ## 2026-11-08 Suwayomi and anime server review
 
 Context. Papyrus runs Suwayomi as its manga source engine. The user asked whether Suwayomi can run Aniyomi/yuzono anime extensions and, if not, whether an anime equivalent exists for Kaminari.

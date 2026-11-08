@@ -4,6 +4,9 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+- Docs: Miru/Hayase and Mangayomi review, Mangayomi JS is the first optional adapter candidate, neither is a server
+- Docs: Papyrus styling review distilled into `docs/PLAN-UI-POLISH.md`, refinement not a port
+
 ## 0.11.3 - 2026-11-08
 
 - Source episodes: 96 by 56 thumbnail with an EP number badge, using the show banner or cover when the source has no episode image

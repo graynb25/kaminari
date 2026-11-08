@@ -14,7 +14,7 @@ QuickJS host with 5 second timeout (10 for resolve) and 64MB cap. `.kext` loader
 
 Status: host core, Sources test panel, source browse and detail, the in-app player, the source library with resume progress, source Continue Watching and merged history are done. Search, detail, episodes, resolve, playback and resume run live against archive.org. External mpv is the fallback.
 
-Decision: Suwayomi is manga-only and cannot run Aniyomi/yuzono anime extensions. Native `.kext` through QuickJS remains the only bundled provider model. Next is a loopback stream proxy for headers, cookies and HLS manifests, then embedded libmpv for HEVC, ASS and HDR. A user-installed anime server adapter can follow behind an experimental flag. No APK runtime or source list is bundled.
+Decision: Suwayomi is manga-only and cannot run Aniyomi/yuzono anime extensions. Native `.kext` through QuickJS remains the only bundled provider model. Next is a loopback stream proxy for headers, cookies and HLS manifests, then embedded libmpv for HEVC, ASS and HDR. A user-installed anime server adapter can follow behind an experimental flag. No APK runtime or source list is bundled. A 2026-11-08 review found Miru is now Hayase, a BUSL-1.1 torrent client with no API, and Mangayomi is an Apache-2.0 Flutter client with no API. Neither is a server. Mangayomi's QuickJS anime extension format is the first optional adapter candidate, ahead of `miwayomi`, but it is unsigned and would need a trust prompt.
 
 Acceptance: the built-in sample installs, searches archive.org, lists episodes, resolves a stream, and the timeout, memory, host denial and storage tests pass without network access. Legacy Aniyomi metadata import stays as it is: `pkg` to id, `apk` to artifact, `sources[]` to rows with string ids preserved. See `docs/EXTENSION-API.md` for the map.
 
@@ -22,7 +22,7 @@ Acceptance: the built-in sample installs, searches archive.org, lists episodes, 
 
 Hero carousel with drift and crossfade, shelf physics and glow pass, skeleton shimmer, tray menu, accent picker hooks, empty and error copy pass, virtualized grid at 500 items. README screenshots switch from placeholders to real build shots. Keyboard path works without a mouse from library to player and back.
 
-Status: the light theme landed in 0.10.0 with System, Dark and Light modes. Accent picker hooks and the README screenshot swap are still open.
+Status: the light theme landed in 0.10.0 with System, Dark and Light modes. Accent picker hooks and the README screenshot swap are still open. A 2026-11-08 Papyrus styling review is distilled in `docs/PLAN-UI-POLISH.md`: token discipline, artwork lifecycle, page header and modal atoms, feedback parity, density. It recommends refinement, not a redesign.
 
 Acceptance: grid holds 60fps on integrated graphics, no dropped streak over 3 frames in the perf harness. Reduced motion build is fully static. Palette to playback GIF in README shows the real app. Bundle still under budget. No `any` crosses IPC.
 
