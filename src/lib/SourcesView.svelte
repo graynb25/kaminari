@@ -1,6 +1,7 @@
 ﻿<script lang="ts">
   import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
+  import PageHeader from "./PageHeader.svelte";
   import {
     jsExtensionInstallPath,
     jsExtensionInstallSample,
@@ -247,23 +248,17 @@
 </script>
 
 <div class="p-6 md:p-8 max-w-[1440px] mx-auto">
-  <header class="flex flex-wrap items-start gap-4 mb-6">
-    <div class="min-w-0">
-      <p class="eyebrow">Extensions</p>
-      <h1 class="page-title mt-1">Sources</h1>
-      <p class="page-sub mt-1 max-w-3xl">
-        Kaminari runs its own JavaScript packages in a QuickJS host. The Aniyomi registry below is
-        metadata only, because those packages are Android APKs. Neither path bundles a source.
-      </p>
-    </div>
-    <div class="ml-auto flex flex-wrap items-center gap-2">
-      <span class="status-pill">
-        <span class="status-dot" aria-hidden="true"></span>
-        QuickJS host
-      </span>
-      <span class="status-pill">{mem}</span>
-    </div>
-  </header>
+  <PageHeader
+    eyebrow="Extensions"
+    title="Sources"
+    subtitle="Kaminari runs its own JavaScript packages in a QuickJS host. The Aniyomi registry below is metadata only, because those packages are Android APKs. Neither path bundles a source."
+  >
+    <span class="status-pill">
+      <span class="status-dot" aria-hidden="true"></span>
+      QuickJS host
+    </span>
+    <span class="status-pill">{mem}</span>
+  </PageHeader>
 
   <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
     <div class="stat-card">

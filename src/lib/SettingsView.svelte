@@ -1,6 +1,7 @@
 ﻿<script lang="ts">
   import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
+  import PageHeader from "./PageHeader.svelte";
   import { playerStatus } from "./api";
   import {
     getThemeMode,
@@ -103,21 +104,18 @@
 </script>
 
 <div class="p-6 md:p-8 max-w-[1440px] mx-auto">
-  <div class="flex flex-wrap items-start gap-4 mb-6">
-    <div>
-      <p class="eyebrow">System</p>
-      <h1 class="page-title mt-1">Settings</h1>
-      <p class="page-sub mt-1 max-w-2xl">
-        Controls appear as they ship. Nothing on this page pretends to work before then.
-      </p>
-    </div>
+  <PageHeader
+    eyebrow="System"
+    title="Settings"
+    subtitle="Controls appear as they ship. Nothing on this page pretends to work before then."
+  >
     {#if onOpenShortcuts}
-      <button class="btn-ghost ml-auto px-3.5 py-2 text-xs" onclick={onOpenShortcuts}>
+      <button class="btn-ghost px-3.5 py-2 text-xs" onclick={onOpenShortcuts}>
         <Icon name="keyboard" size={14} />
         Keyboard shortcuts
       </button>
     {/if}
-  </div>
+  </PageHeader>
 
   <section class="surface appearance-panel p-5 mb-4" aria-labelledby="appearance-title">
     <div class="flex flex-wrap items-start gap-4">

@@ -485,6 +485,49 @@ button:disabled {
   color: var(--paper-500);
 }
 
+/* Page header atom. One per page: eyebrow, title, subtitle, actions, soft glow. */
+.page-head {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Closest side keeps the wash inside its own box at any width, so the glow
+   never reaches the container edge and never scrolls the page sideways. */
+.page-head-glow {
+  position: absolute;
+  inset: -1.5rem 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(closest-side at 34% 50%, var(--accent-wash), transparent 70%);
+}
+
+.page-head-text {
+  min-width: 0;
+}
+
+.page-head .page-title,
+.page-head .page-sub {
+  margin-top: 0.25rem;
+}
+
+/* A subtitle reads as a block instead of stretching across the 1440px container. */
+.page-head .page-sub {
+  max-width: 48rem;
+}
+
+.page-head-actions {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 /* Buttons */
 .btn-primary,
 .btn-ghost,

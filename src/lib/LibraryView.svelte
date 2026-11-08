@@ -1,6 +1,7 @@
 ﻿<script lang="ts">
   import EmptyState from "./EmptyState.svelte";
   import Icon from "./Icon.svelte";
+  import PageHeader from "./PageHeader.svelte";
   import PosterCard from "./PosterCard.svelte";
   import { displayTitle } from "./format";
   import type { LibraryItem, Media, SourceLibraryItem } from "./types";
@@ -95,35 +96,28 @@
 </script>
 
 <div class="p-6 md:p-8 max-w-[1440px] mx-auto">
-  <div class="flex flex-wrap items-start gap-4 mb-6">
-    <div class="min-w-0">
-      <p class="eyebrow">Collection</p>
-      <h1 class="page-title mt-1">Your library</h1>
-      <p class="page-sub mt-1">{summary}</p>
-    </div>
-    <div class="ml-auto flex items-center gap-2">
-      {#if items.length > 0}
-        <label class="relative block">
-          <span class="sr-only">Filter library by title</span>
-          <span class="absolute left-3 top-1/2 -translate-y-1/2" style="color: var(--paper-450);">
-            <Icon name="search" size={14} />
-          </span>
-          <input
-            bind:value={query}
-            placeholder="Filter by title"
-            class="h-9 w-56 rounded-xl pl-9 pr-3 text-sm outline-none"
-            style="background: var(--control-bg); border: 1px solid var(--line); color: var(--text-1);"
-            aria-label="Filter library by title"
-          />
-        </label>
-      {:else}
-        <button class="btn-ghost px-3.5 py-2 text-xs" onclick={onOpenSearch}>
+  <PageHeader eyebrow="Collection" title="Your library" subtitle={summary}>
+    {#if items.length > 0}
+      <label class="relative block">
+        <span class="sr-only">Filter library by title</span>
+        <span class="absolute left-3 top-1/2 -translate-y-1/2" style="color: var(--paper-450);">
           <Icon name="search" size={14} />
-          Search titles
-        </button>
-      {/if}
-    </div>
-  </div>
+        </span>
+        <input
+          bind:value={query}
+          placeholder="Filter by title"
+          class="h-9 w-56 rounded-xl pl-9 pr-3 text-sm outline-none"
+          style="background: var(--control-bg); border: 1px solid var(--line); color: var(--text-1);"
+          aria-label="Filter library by title"
+        />
+      </label>
+    {:else}
+      <button class="btn-ghost px-3.5 py-2 text-xs" onclick={onOpenSearch}>
+        <Icon name="search" size={14} />
+        Search titles
+      </button>
+    {/if}
+  </PageHeader>
 
   {#if error && totalTitles > 0}
     <div class="surface px-4 py-3 mb-4 flex flex-col sm:flex-row sm:items-center gap-2 text-sm" role="alert" style="color: var(--paper-300);">

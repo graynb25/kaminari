@@ -1,6 +1,7 @@
 ﻿<script lang="ts">
   import EmptyState from "./EmptyState.svelte";
   import Icon from "./Icon.svelte";
+  import PageHeader from "./PageHeader.svelte";
   import Skeleton from "./Skeleton.svelte";
   import { coverOf, displayTitle, timeAgo } from "./format";
   import type { HistoryItem, Media, SourceHistoryItem } from "./types";
@@ -83,14 +84,13 @@
 </script>
 
 <div class="p-6 md:p-8 max-w-[1440px] mx-auto">
-  <div class="flex flex-wrap items-start gap-4 mb-6">
-    <div>
-      <p class="eyebrow">Activity</p>
-      <h1 class="page-title mt-1">History</h1>
-      <p class="page-sub mt-1">AniList watched events and source progress, newest first, stored on this machine.</p>
-    </div>
+  <PageHeader
+    eyebrow="Activity"
+    title="History"
+    subtitle="AniList watched events and source progress, newest first, stored on this machine."
+  >
     {#if merged.length > 0}
-      <div class="ml-auto grid grid-cols-3 gap-3">
+      <div class="grid grid-cols-3 gap-3">
         <div class="stat-card">
           <p class="stat-label">Events</p>
           <p class="stat-value">{merged.length}</p>
@@ -105,7 +105,7 @@
         </div>
       </div>
     {/if}
-  </div>
+  </PageHeader>
 
   {#if loading && merged.length === 0}
     <Skeleton kind="list" />

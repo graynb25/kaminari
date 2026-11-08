@@ -4,6 +4,8 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+- UI: shared page header atom for library, history, sources and settings, with a soft accent glow
+
 ## 0.11.4 - 2026-11-08
 
 - UI: theme-aware accent and status surfaces replace the hard-coded colors that drifted in Daylight
