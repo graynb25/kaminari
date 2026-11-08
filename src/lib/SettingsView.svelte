@@ -2,14 +2,15 @@
   import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
   import PageHeader from "./PageHeader.svelte";
-  import { playerStatus } from "./api";
+  import { playerStatus, proxyStatus } from "./api";
+  import { proxyFlagEnabled, setProxyFlag } from "./streamProxy";
   import {
     getThemeMode,
     setThemeMode,
     THEME_MODES,
     type ThemeMode,
   } from "./theme";
-  import type { Boot, PlayerStatus } from "./types";
+  import type { Boot, PlayerStatus, ProxyStatus } from "./types";
 
   let {
     boot,
@@ -23,10 +24,17 @@
 
   let player = $state<PlayerStatus | null>(null);
   let themeMode = $state<ThemeMode>(getThemeMode());
+  let proxy = $state<ProxyStatus | null>(null);
+  let proxyOn = $state(proxyFlagEnabled());
 
   function pickMode(next: ThemeMode) {
     themeMode = next;
     setThemeMode(next);
+  }
+
+  function toggleProxy() {
+    proxyOn = !proxyOn;
+    setProxyFlag(proxyOn);
   }
 
   onMount(() => {
@@ -35,6 +43,14 @@
         player = await playerStatus();
       } catch {
         player = null;
+      }
+    })();
+    void (async () => {
+      try {
+        proxy = await proxyStatus();
+      } catch {
+        // No loopback listener in this build. The row shows Unavailable.
+        proxy = { port: 0, entries: 0, enabled: false };
       }
     })();
   });
@@ -53,6 +69,12 @@
         },
         { label: "Player", value: "" },
       ],
+    },
+    {
+      title: "Playback",
+      icon: "play",
+      // The proxy toggle and its status render from state, not text rows.
+      rows: [],
     },
     {
       title: "Data",
@@ -80,6 +102,8 @@
         ? player.version ?? "mpv found"
         : "Not found",
   );
+
+  const proxyReady = $derived(proxy !== null && proxy.enabled);
 
   const memoryLabel = $derived(
     boot ? `${Math.round(boot.limits.extMemoryBytes / 1024 / 1024)}MB per runtime` : "Loading",
@@ -182,17 +206,62 @@
           </span>
           <h2 class="text-[15px] font-semibold">{section.title}</h2>
         </div>
-        <dl>
-          {#each section.rows as row, position}
-            <div
-              class="flex flex-col sm:flex-row sm:items-baseline gap-1 py-2.5"
-              style={position > 0 ? "border-top: 1px solid var(--line);" : ""}
-            >
-              <dt class="text-sm sm:w-40 shrink-0" style="color: var(--paper-450);">{row.label}</dt>
-              <dd class="text-sm break-all" style="color: var(--paper-50);">{rowValue(row.label, row.value)}</dd>
+        {#if section.title === "Playback"}
+          <div class="flex flex-wrap items-center justify-between gap-3 py-2.5">
+            <div class="min-w-0">
+              <p class="text-sm" style="color: var(--paper-50);">Use loopback proxy for protected streams</p>
+              <p class="text-xs mt-0.5" style="color: var(--paper-400);">
+                Adds request headers and Range handling for MP4 sources. Off by default.
+              </p>
             </div>
-          {/each}
-        </dl>
+            <button
+              class="chip text-[10px] px-2 py-1 shrink-0"
+              aria-label="Use loopback proxy for protected streams"
+              aria-pressed={proxyOn}
+              disabled={!proxyReady}
+              onclick={toggleProxy}
+              title="Use loopback proxy for protected streams"
+            >
+              <span class="status-dot {proxyOn ? '' : 'is-offline'}" style="width: 4px; height: 4px;" aria-hidden="true"></span>
+              {proxyOn ? "On" : "Off"}
+            </button>
+          </div>
+          <dl>
+            <div class="flex flex-col sm:flex-row sm:items-baseline gap-1 py-2.5" style="border-top: 1px solid var(--line);">
+              <dt class="text-sm sm:w-40 shrink-0" style="color: var(--paper-450);">Loopback proxy</dt>
+              <dd class="text-sm break-all" style="color: var(--paper-50);">
+                {#if proxy === null}
+                  Checking
+                {:else if proxy.enabled}
+                  <span class="inline-flex flex-wrap items-center gap-2">
+                    <span class="mono">127.0.0.1:{proxy.port}</span>
+                    <span class="chip chip-live text-[10px] px-2 py-0.5">
+                      <span class="status-dot" style="width: 4px; height: 4px;" aria-hidden="true"></span>
+                      Ready
+                    </span>
+                  </span>
+                {:else}
+                  Unavailable
+                  <span class="block text-xs mt-0.5" style="color: var(--paper-400);">
+                    No loopback port is available. Protected streams open in mpv.
+                  </span>
+                {/if}
+              </dd>
+            </div>
+          </dl>
+        {:else}
+          <dl>
+            {#each section.rows as row, position}
+              <div
+                class="flex flex-col sm:flex-row sm:items-baseline gap-1 py-2.5"
+                style={position > 0 ? "border-top: 1px solid var(--line);" : ""}
+              >
+                <dt class="text-sm sm:w-40 shrink-0" style="color: var(--paper-450);">{row.label}</dt>
+                <dd class="text-sm break-all" style="color: var(--paper-50);">{rowValue(row.label, row.value)}</dd>
+              </div>
+            {/each}
+          </dl>
+        {/if}
       </section>
     {/each}
   </div>

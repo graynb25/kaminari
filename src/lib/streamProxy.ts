@@ -30,7 +30,7 @@ export function playbackUrl(stream: JsStream): string {
 
 type ReadOnlyStorage = Pick<Storage, "getItem">;
 
-function browserStorage(): ReadOnlyStorage | null {
+function browserStorage(): Storage | null {
   try {
     return typeof localStorage === "undefined" ? null : localStorage;
   } catch {
@@ -45,5 +45,17 @@ export function proxyFlagEnabled(storage: ReadOnlyStorage | null = browserStorag
     return value === "true" || value === "1";
   } catch {
     return false;
+  }
+}
+
+export function setProxyFlag(
+  enabled: boolean,
+  storage: Pick<Storage, "setItem"> | null = browserStorage(),
+): void {
+  if (!storage) return;
+  try {
+    storage.setItem(PROXY_FLAG_KEY, enabled ? "true" : "false");
+  } catch {
+    // Storage can be blocked. The flag holds for this session only.
   }
 }

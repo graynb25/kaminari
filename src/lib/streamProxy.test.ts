@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   isMp4Stream,
   playbackUrl,
+  PROXY_FLAG_KEY,
   proxyFlagEnabled,
+  setProxyFlag,
   shouldProxy,
 } from "./streamProxy";
 import type { JsStream } from "./types";
@@ -60,5 +62,31 @@ describe("proxyFlagEnabled", () => {
     expect(proxyFlagEnabled({ getItem: () => "true" })).toBe(true);
     expect(proxyFlagEnabled({ getItem: () => "1" })).toBe(true);
     expect(proxyFlagEnabled({ getItem: () => "false" })).toBe(false);
+  });
+});
+
+describe("setProxyFlag", () => {
+  it("writes the shared key and reads it back", () => {
+    const store: Record<string, string> = {};
+    const storage = { setItem: (key: string, value: string) => (store[key] = value) };
+
+    setProxyFlag(true, storage);
+    expect(store[PROXY_FLAG_KEY]).toBe("true");
+    expect(proxyFlagEnabled({ getItem: (key) => store[key] ?? null })).toBe(true);
+
+    setProxyFlag(false, storage);
+    expect(store[PROXY_FLAG_KEY]).toBe("false");
+    expect(proxyFlagEnabled({ getItem: (key) => store[key] ?? null })).toBe(false);
+  });
+
+  it("stays quiet when storage is blocked", () => {
+    expect(() => setProxyFlag(true, null)).not.toThrow();
+    expect(() =>
+      setProxyFlag(true, {
+        setItem: () => {
+          throw new Error("blocked");
+        },
+      }),
+    ).not.toThrow();
   });
 });
