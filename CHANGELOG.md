@@ -4,6 +4,8 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+- Legal: draft Terms of Service and Privacy Policy in `docs/TERMS.md` and `docs/PRIVACY.md`, linked from the README
+
 ## 0.10.2 - 2026-11-08
 
 - Cards: titles without an AniList score show NR instead of an empty score slot

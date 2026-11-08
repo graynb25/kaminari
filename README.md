@@ -60,6 +60,14 @@ Builds land in GitHub Releases. No telemetry, no ads, no account needed to brows
 - `docs/PLAN-JS-EXTENSIONS.md`: native host decisions, API, milestones and tests
 - `docs/ENGINEERING-NOTES.md`: measured numbers and decisions that reversed
 - `docs/ROADMAP.md`: what comes next and what done means
+- `docs/TERMS.md`: terms of service for distributed builds
+- `docs/PRIVACY.md`: local-first privacy policy
+
+## Legal
+
+Kaminari ships no content, no source list, and no APKs. It is a general-purpose player and extension host. You are responsible for the extensions you install and the content you access. Read the [Terms of Service](docs/TERMS.md) and the [Privacy Policy](docs/PRIVACY.md).
+
+This project is not legal advice. If you distribute builds publicly, have a qualified lawyer review the terms for your jurisdiction.
 
 ## Contributing
 

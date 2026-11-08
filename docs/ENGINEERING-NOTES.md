@@ -66,6 +66,16 @@ What we measured. On 2026-11-08 the sample was installed and searched through th
 
 What we did not do. `getShow`, `getEpisodes` and `resolveEpisode` are implemented in the sample but not wired to a browse UI yet. Async methods return `ASYNC_UNSUPPORTED`. Packages are unsigned and stay local. No registry.
 
+## 2026-11-08 Legal drafts
+
+Context. The app is a player and extension host with no shipped content. The user asked for a Terms of Service and a Privacy Policy before distribution.
+
+What we wrote. `docs/TERMS.md` describes the app, the user's responsibility, third-party extensions, no warranty, liability limits and copyright complaints. `docs/PRIVACY.md` describes the local SQLite and WebView data, the direct AniList, registry, extension and stream requests, no telemetry, deletion paths and contact. Both link from the README.
+
+What we did not claim. We did not write that the app is "for educational purposes" or that it cannot facilitate infringement. A label is not a legal defense. The documents describe facts and prohibit unlawful use. The strongest posture remains: no content, no source list, no APK execution, sandboxed extensions, user-supplied sources.
+
+What is missing. `[[CONTACT_EMAIL]]`, `[[JURISDICTION]]` and `[[REPOSITORY_URL]]` are deliberate placeholders. Fill them before publishing, and have a qualified lawyer review the documents for the distribution jurisdiction. This is not legal advice.
+
 ## 2026-11-08 Missing AniList score
 
 Context. The user pointed at SPY×FAMILY Season 4 in Top 10 and asked why it had no rating.
