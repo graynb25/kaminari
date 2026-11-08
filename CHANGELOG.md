@@ -4,9 +4,14 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.12.0 - 2026-11-08
+
+- Player: loopback proxy for header protected MP4, enabled from Settings and off by default
+- Proxy: CORS headers for WebView fetch and HLS preflight
 - Settings: Playback card toggles the loopback proxy and shows the port or Unavailable
 - UI: shared page header atom for library, history, sources and settings, with a soft accent glow
 - UI: legal and license dialogs fade and rise with the overlay instead of popping open
+- Version: bump to 0.12.0
 
 ## 0.11.4 - 2026-11-08
 
