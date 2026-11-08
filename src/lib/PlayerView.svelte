@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { onMount } from "svelte";
   import type HlsType from "hls.js";
   import Icon from "./Icon.svelte";
@@ -520,7 +520,7 @@
   {#if error}
     <div class="absolute inset-0 grid place-items-center p-6" style="background: rgb(0 0 0 / 0.72);">
       <div class="player-glass max-w-md p-5 rounded-2xl">
-        <span class="w-10 h-10 grid place-items-center rounded-xl" style="background: rgb(251 113 133 / 0.12); color: var(--danger);">
+        <span class="w-10 h-10 grid place-items-center rounded-xl" style="background: var(--danger-wash); color: var(--danger);">
           <Icon name="alert" size={20} />
         </span>
         <h2 class="text-lg font-semibold mt-3">Playback stopped</h2>
@@ -544,7 +544,7 @@
   {:else if ended}
     <div class="absolute inset-0 grid place-items-center p-6" style="background: rgb(0 0 0 / 0.62);">
       <div class="player-glass max-w-sm w-full p-5 rounded-2xl text-center">
-        <span class="w-12 h-12 grid place-items-center rounded-full mx-auto" style="background: rgb(108 107 245 / 0.14); border: 1px solid var(--line-volt); color: var(--volt-300);">
+        <span class="w-12 h-12 grid place-items-center rounded-full mx-auto" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
           <Icon name="check" size={22} />
         </span>
         <p class="eyebrow mt-3">Ended</p>
@@ -564,13 +564,13 @@
       <div class="player-glass px-5 py-4 rounded-2xl flex flex-col items-center gap-2.5">
         <span class="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style="border-color: var(--volt-400); border-top-color: transparent;"></span>
         <span class="text-[10px] mono tracking-[0.12em]" style="color: var(--paper-300);">
-          {stream.type.toUpperCase()}{stream.quality ? ` · ${stream.quality}` : ""}
+          {stream.type.toUpperCase()}{stream.quality ? ` Â· ${stream.quality}` : ""}
         </span>
       </div>
     </div>
   {:else if !playing}
     <button class="absolute inset-0 grid place-items-center" onclick={togglePlay} aria-label="Play">
-      <span class="player-glass h-20 w-20 grid place-items-center rounded-full" style="box-shadow: 0 0 60px rgb(108 107 245 / 0.24);">
+      <span class="player-glass h-20 w-20 grid place-items-center rounded-full" style="box-shadow: 0 0 60px var(--accent-wash-strong);">
         <Icon name="play" size={30} />
       </span>
     </button>

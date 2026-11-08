@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
   import {
@@ -347,7 +347,7 @@
       </div>
     {:else if jsExtensions.length === 0}
       <div class="surface px-5 py-6 flex items-center gap-4">
-        <span class="w-10 h-10 grid place-items-center rounded-xl shrink-0" style="background: rgb(108 107 245 / 0.1); border: 1px solid var(--line-volt); color: var(--volt-300);">
+        <span class="w-10 h-10 grid place-items-center rounded-xl shrink-0" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
           <Icon name="code" size={18} />
         </span>
         <div>
@@ -426,7 +426,7 @@
                     Running a fresh QuickJS runtime.
                   </p>
                 {:else if jsTestError}
-                  <div class="rounded-lg px-3 py-2 text-xs flex items-start gap-2" style="background: rgb(251 113 133 / 0.1); border: 1px solid rgb(251 113 133 / 0.35); color: var(--text-1);" role="alert">
+                  <div class="rounded-lg px-3 py-2 text-xs flex items-start gap-2" style="background: var(--danger-wash); border: 1px solid var(--danger-line); color: var(--text-1);" role="alert">
                     <Icon name="alert" size={14} class="mt-0.5 shrink-0" />
                     {jsTestError}
                   </div>
@@ -467,7 +467,7 @@
 
   <div class="surface p-4 mb-6">
     <div class="flex items-center gap-3 mb-3">
-      <span class="w-8 h-8 grid place-items-center rounded-lg" style="background: rgb(108 107 245 / 0.12); border: 1px solid var(--line-volt); color: var(--volt-300);">
+      <span class="w-8 h-8 grid place-items-center rounded-lg" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
         <Icon name="database" size={16} />
       </span>
       <div class="min-w-0">
@@ -511,7 +511,7 @@
 
   {#if error}
     <div class="surface px-4 py-3 mb-6 flex flex-col sm:flex-row sm:items-center gap-3 text-sm" role="alert">
-      <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: rgb(251 113 133 / 0.1); color: var(--danger);">
+      <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: var(--danger-wash); color: var(--danger);">
         <Icon name="alert" size={16} />
       </span>
       <p class="flex-1" style="color: var(--paper-300);">{error}</p>
@@ -525,7 +525,7 @@
         <h2 class="shelf-title">Installed</h2>
         <span class="shelf-count">{installed.length}</span>
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {#each installed as entry (entry.id)}
           <article class="surface surface-hover p-4 flex items-start gap-3" style="opacity: {entry.enabled ? 1 : 0.62};">
             <div class="source-tile" aria-hidden="true">{initial(entry.name)}</div>
@@ -535,7 +535,7 @@
                 <span class="chip text-[10px] px-2 py-0.5" style="font-family: var(--font-mono);">v{entry.version}</span>
                 <span class="chip text-[10px] px-2 py-0.5">{entry.sourceCount} sources</span>
                 {#if entry.nsfw}
-                  <span class="chip text-[10px] px-2 py-0.5" style="color: var(--warning); border-color: rgb(251 191 36 / 0.3);">NSFW</span>
+                  <span class="chip text-[10px] px-2 py-0.5" style="color: var(--warning); border-color: var(--warning-line);">NSFW</span>
                 {/if}
                 <span class="chip text-[10px] px-2 py-0.5">Metadata</span>
               </div>
@@ -594,7 +594,7 @@
     </div>
 
     {#if loading}
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {#each Array(6) as _}
           <div class="h-[124px] rounded-2xl shimmer" aria-hidden="true"></div>
         {/each}
@@ -621,7 +621,7 @@
         <button class="btn-ghost px-3 py-1.5 text-xs shrink-0" onclick={() => (filter = "")}>Clear</button>
       </div>
     {:else}
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {#each shown as entry (entry.pkg)}
           {@const added = installedIds.has(entry.pkg)}
           {@const name = shortName(entry.name)}
@@ -647,7 +647,7 @@
               <span class="chip text-[10px] px-2 py-0.5">{entry.lang}</span>
               <span class="chip text-[10px] px-2 py-0.5">{entry.sources.length} sources</span>
               {#if entry.nsfw}
-                <span class="chip text-[10px] px-2 py-0.5" style="color: var(--warning); border-color: rgb(251 191 36 / 0.3);">NSFW</span>
+                <span class="chip text-[10px] px-2 py-0.5" style="color: var(--warning); border-color: var(--warning-line);">NSFW</span>
               {/if}
               {#if entry.torrent}
                 <span class="chip text-[10px] px-2 py-0.5">Torrent</span>

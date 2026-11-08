@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import Icon from "./Icon.svelte";
   import { coverOf, displayTitle, metaOf, scoreOutOfTen } from "./format";
   import type { Media } from "./types";
@@ -64,7 +64,7 @@
       {:else}
         <span
           class="w-full h-full grid place-items-center"
-          style="background: radial-gradient(circle at 30% 20%, rgb(139 138 255 / 0.18), transparent 60%), var(--void-800);"
+          style="background: radial-gradient(circle at 30% 20%, var(--accent-wash-strong), transparent 60%), var(--void-800);"
         >
           <span class="text-4xl font-bold" style="color: var(--paper-500); font-family: var(--font-display);">
             {title.slice(0, 1)}
@@ -73,28 +73,28 @@
       {/if}
       <span class="poster-scrim" aria-hidden="true"></span>
       {#if badge}
-        <span class="poster-badge">{badge}</span>
+        <span class="poster-badge on-art">{badge}</span>
       {:else if isAiring}
-        <span class="poster-badge is-airing">
+        <span class="poster-badge on-art is-airing">
           <span class="status-dot" style="width: 4px; height: 4px;" aria-hidden="true"></span>
           AIRING
         </span>
       {:else if isCompleted}
-        <span class="poster-badge is-completed" title="Finished airing">
+        <span class="poster-badge on-art is-completed" title="Finished airing">
           <Icon name="check" size={9} />
           COMPLETED
         </span>
       {/if}
       {#if item.averageScore}
         <span
-          class="poster-score"
+          class="poster-score on-art"
           title="AniList score {item.averageScore} out of 100"
         >
           <Icon name="star" size={9} />
           {scoreOutOfTen(item.averageScore)}
         </span>
       {:else}
-        <span class="poster-score is-unrated" title="AniList has no score yet">NR</span>
+        <span class="poster-score on-art is-unrated" title="AniList has no score yet">NR</span>
       {/if}
       {#if progress && progress.total > 0}
         <span class="poster-progress" aria-hidden="true">

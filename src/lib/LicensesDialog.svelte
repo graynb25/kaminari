@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
 
@@ -145,7 +145,6 @@
     bind:this={dialog}
     tabindex={-1}
     class="glass-strong w-full max-w-[980px] max-h-[88vh] rounded-[22px] overflow-hidden flex flex-col"
-    style="border: 1px solid var(--line-strong); box-shadow: var(--shadow-deep);"
     role="dialog"
     aria-modal="true"
     aria-label="Licenses"
@@ -155,7 +154,7 @@
       <div class="flex items-center gap-3">
         <span
           class="w-9 h-9 grid place-items-center rounded-xl shrink-0"
-          style="background: rgb(108 107 245 / 0.12); border: 1px solid var(--line-volt); color: var(--volt-300);"
+          style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);"
         >
           <Icon name="package" size={17} />
         </span>
@@ -220,7 +219,7 @@
       {:else if error && !data}
         <div class="surface p-5 max-w-xl">
           <div class="flex items-start gap-3">
-            <span class="w-9 h-9 grid place-items-center rounded-lg shrink-0" style="background: rgb(251 113 133 / 0.1); color: var(--danger);">
+            <span class="w-9 h-9 grid place-items-center rounded-lg shrink-0" style="background: var(--danger-wash); color: var(--danger);">
               <Icon name="alert" size={17} />
             </span>
             <div class="min-w-0 flex-1">
@@ -356,8 +355,8 @@
   }
 
   .license-callout.is-warning {
-    background: rgb(251 191 36 / 0.08);
-    border-color: rgb(251 191 36 / 0.28);
+    background: var(--warning-wash);
+    border-color: var(--warning-line);
   }
 
   .license-group-head {

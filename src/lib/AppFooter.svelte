@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import Icon from "./Icon.svelte";
   import LegalDialog from "./LegalDialog.svelte";
 
@@ -64,7 +64,7 @@
     place-items: center;
     flex-shrink: 0;
     border-radius: 9px;
-    background: linear-gradient(180deg, rgb(139 138 255 / 0.24), rgb(108 107 245 / 0.1));
+    background: linear-gradient(180deg, var(--accent-wash-strong), var(--accent-wash));
     border: 1px solid var(--line-volt);
     color: var(--volt-300);
   }

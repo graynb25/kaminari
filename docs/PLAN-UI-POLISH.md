@@ -1,6 +1,6 @@
 # UI polish plan
 
-Status: proposed. Derived from a full read of Papyrus (one 1,136-line Tailwind 4 stylesheet, 86 Blade views) and Kaminari (24 Svelte components, 2,219 lines of `app.css`) on 2026-11-08. The conclusion is refinement, not a port. Kaminari already carries a close descendant of the same component grammar: poster card, hero, shelf, glass, toast, stat card, empty state, legal markdown, ranges and player surfaces.
+Status: phase 1 shipped in 0.11.4. Phases 2 to 4 are open. Derived from a full read of Papyrus (one 1,136-line Tailwind 4 stylesheet, 86 Blade views) and Kaminari (24 Svelte components, 2,219 lines of `app.css`) on 2026-11-08. The conclusion is refinement, not a port. Kaminari already carries a close descendant of the same component grammar: poster card, hero, shelf, glass, toast, stat card, empty state, legal markdown, ranges and player surfaces.
 
 The rule for this pass: finish the atoms and states, do not redesign the identity. Keep Sora, Inter, JetBrains Mono, the void/volt/paper palette, the 1440px container, the 12/16/20/24 radius scale and the 72px rail.
 
@@ -31,6 +31,8 @@ The rule for this pass: finish the atoms and states, do not redesign the identit
 12. Spec drift: empty icon 62px vs 48px, dialog radius 22px, toast and status menu 14px.
 
 ## Phase 1: tokens and feedback, 1 to 2 days
+
+Shipped in 0.11.4.
 
 - Add semantic aliases for accent and status washes, then replace literals. Existing base variables `--accent-rgb`, `--accent-bright-rgb`, `--accent-shadow` and `--line-volt` already support this.
 - Add `text-wrap: pretty`, `font-optical-sizing: auto` and a `.nums` tabular utility.

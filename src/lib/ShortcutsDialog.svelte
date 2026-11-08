@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import Icon from "./Icon.svelte";
 
   let { open, onClose }: { open: boolean; onClose: () => void } = $props();
@@ -111,13 +111,12 @@
       bind:this={dialog}
       tabindex={-1}
       class="modal-in glass-strong w-full max-w-[720px] max-h-[86vh] overflow-y-auto rounded-[22px]"
-      style="border: 1px solid var(--line-strong); box-shadow: var(--shadow-deep);"
       role="dialog"
       aria-modal="true"
       aria-label="Keyboard shortcuts"
     >
       <div class="flex items-center gap-3 px-5 py-4 sticky top-0 z-10" style="border-bottom: 1px solid var(--line); background: var(--glass-strong); backdrop-filter: blur(20px);">
-        <span class="w-9 h-9 grid place-items-center rounded-xl" style="background: rgb(108 107 245 / 0.12); border: 1px solid var(--line-volt); color: var(--volt-300);">
+        <span class="w-9 h-9 grid place-items-center rounded-xl" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
           <Icon name="keyboard" size={18} />
         </span>
         <div class="min-w-0 flex-1">

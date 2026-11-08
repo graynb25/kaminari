@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { onMount } from "svelte";
   import EmptyState from "./EmptyState.svelte";
   import Icon from "./Icon.svelte";
@@ -304,7 +304,7 @@
     try {
       const info = await playerPlay({
         url: stream.url,
-        title: `${selected?.title ?? "Kaminari"} · Episode ${episode.number}`,
+        title: `${selected?.title ?? "Kaminari"} Â· Episode ${episode.number}`,
         headers: stream.headers ?? undefined,
         subtitles: stream.subtitles ?? undefined,
       });
@@ -366,14 +366,14 @@
 <div
   bind:this={dialog}
   class="fixed inset-0 z-40 flex flex-col"
-  style="background: radial-gradient(900px 500px at 20% -10%, rgb(108 107 245 / 0.1), transparent 60%), var(--void-950);"
+  style="background: radial-gradient(900px 500px at 20% -10%, var(--accent-wash), transparent 60%), var(--void-950);"
   role="dialog"
   aria-modal="true"
   aria-label="{extension.name} source browser"
   tabindex={-1}
   onkeydown={trapTab}
 >
-  <header class="h-14 shrink-0 flex items-center gap-3 px-4 glass-strong" style="border-bottom: 1px solid var(--line);">
+  <header class="source-browser-head h-14 shrink-0 flex items-center gap-3 px-4 glass-strong">
     <button bind:this={closeButton} class="btn-ghost px-2.5 py-2 text-xs" onclick={onClose} aria-label="Close source browser">
       <Icon name="close" size={15} />
     </button>
@@ -542,7 +542,7 @@
                       {/if}
                     </div>
                     <p class="text-[11px] mt-0.5" style="color: var(--paper-450); font-family: var(--font-mono);">
-                      EP {episode.number}{duration(episode.durationSec) ? ` · ${duration(episode.durationSec)}` : ""}
+                      EP {episode.number}{duration(episode.durationSec) ? ` Â· ${duration(episode.durationSec)}` : ""}
                     </p>
                     {#if saved}
                       <div class="h-0.5 rounded-full mt-1.5 overflow-hidden" style="background: var(--void-700);" aria-hidden="true">
@@ -615,7 +615,7 @@
             {/each}
           </div>
           {#if streamError}
-            <div class="mt-3 rounded-lg px-3 py-2 text-xs flex items-start gap-2" style="background: rgb(251 113 133 / 0.1); border: 1px solid rgb(251 113 133 / 0.35);" role="alert">
+            <div class="mt-3 rounded-lg px-3 py-2 text-xs flex items-start gap-2" style="background: var(--danger-wash); border: 1px solid var(--danger-line);" role="alert">
               <Icon name="alert" size={13} class="mt-0.5 shrink-0" />
               {streamError}
             </div>
@@ -679,7 +679,7 @@
                   {#if item.cover}
                     <img src={item.cover} alt="" loading="lazy" decoding="async" class="w-full h-full object-cover" />
                   {:else}
-                    <div class="w-full h-full grid place-items-center" style="background: radial-gradient(circle at 30% 20%, rgb(139 138 255 / 0.2), transparent 60%), var(--void-800);">
+                    <div class="w-full h-full grid place-items-center" style="background: radial-gradient(circle at 30% 20%, var(--accent-wash-strong), transparent 60%), var(--void-800);">
                       <span class="text-3xl font-bold" style="color: var(--paper-450); font-family: var(--font-display);">{item.title.slice(0, 1)}</span>
                     </div>
                   {/if}
@@ -694,7 +694,7 @@
                 </div>
                 <div class="poster-body">
                   <p class="poster-title">{item.title}</p>
-                  <p class="poster-meta">{item.year ?? "Source result"}{item.episodes ? ` · ${item.episodes} eps` : ""}</p>
+                  <p class="poster-meta">{item.year ?? "Source result"}{item.episodes ? ` Â· ${item.episodes} eps` : ""}</p>
                 </div>
               </button>
             {/each}
@@ -710,7 +710,7 @@
     stream={activePlayback.stream}
     title={selected?.title ?? "Source playback"}
     subtitle="Episode {activePlayback.episode.number}{activePlayback.episode.title
-      ? ` · ${activePlayback.episode.title}`
+      ? ` Â· ${activePlayback.episode.title}`
       : ''}"
     startSec={activePlayback.startSec}
     onProgress={(position, duration, watched) =>
@@ -723,6 +723,12 @@
 {/if}
 
 <style>
+  .source-browser-head {
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    box-shadow: none;
+  }
+
   .episode-thumb {
     position: relative;
     width: 96px;
@@ -749,7 +755,7 @@
     width: 100%;
     height: 100%;
     background:
-      radial-gradient(circle at 30% 20%, rgb(139 138 255 / 0.22), transparent 60%),
+      radial-gradient(circle at 30% 20%, var(--accent-wash-strong), transparent 60%),
       var(--void-800);
   }
 

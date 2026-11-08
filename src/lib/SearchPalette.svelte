@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import Icon from "./Icon.svelte";
   import { searchAniList } from "./api";
   import { coverOf, displayTitle, metaOf, scoreOutOfTen } from "./format";
@@ -275,7 +275,6 @@
       onkeydown={trapTab}
       tabindex={-1}
       class="modal-in glass-strong w-full max-w-[680px] h-fit rounded-[22px] overflow-hidden"
-      style="border: 1px solid var(--line-strong); box-shadow: var(--shadow-deep);"
       role="dialog"
       aria-modal="true"
       aria-label="Search Kaminari"
@@ -307,7 +306,7 @@
         {#if rateLimited}
           <div
             class="m-2 px-3 py-2 rounded-lg text-sm flex items-start gap-2"
-            style="background: rgb(251 191 36 / 0.1); border: 1px solid rgb(251 191 36 / 0.35); color: var(--text-1);"
+            style="background: var(--warning-wash); border: 1px solid var(--warning-line); color: var(--text-1);"
             role="status"
           >
             <Icon name="alert" size={14} class="mt-0.5 shrink-0" />
@@ -406,7 +405,7 @@
                       <span class="chip text-[9px] px-1.5 py-0.5">Source</span>
                     </span>
                     <span class="block text-xs mt-0.5 truncate" style="color: var(--paper-500);">
-                      {row.item.extensionName}{row.item.year ? ` · ${row.item.year}` : ""}
+                      {row.item.extensionName}{row.item.year ? ` Â· ${row.item.year}` : ""}
                     </span>
                   </span>
                   <Icon name="chevronRight" size={14} class="shrink-0" />
@@ -436,7 +435,7 @@
                       {/if}
                     </span>
                     <span class="block text-xs mt-0.5 truncate" style="color: var(--paper-500);">
-                      {row.kind === "lib" ? "In your library · " : "AniList · "}{metaOf(row.item)}
+                      {row.kind === "lib" ? "In your library Â· " : "AniList Â· "}{metaOf(row.item)}
                     </span>
                   </span>
                   {#if row.item.averageScore}
@@ -471,7 +470,7 @@
         class="flex flex-wrap gap-4 px-4 py-2.5 text-[10px]"
         style="border-top: 1px solid var(--line); color: var(--paper-500);"
       >
-        <span><b class="kbd mr-1">↑↓</b> move</span>
+        <span><b class="kbd mr-1">â†‘â†“</b> move</span>
         <span><b class="kbd mr-1">Enter</b> open</span>
         <span><b class="kbd mr-1">Shift</b><b class="kbd">Enter</b> play</span>
         <span><b class="kbd mr-1">Esc</b> close</span>
@@ -510,8 +509,8 @@
 
   .palette-row:hover,
   .palette-row.is-active {
-    background: rgb(139 138 255 / 0.1);
-    border-color: rgb(139 138 255 / 0.18);
+    background: var(--accent-wash);
+    border-color: var(--accent-wash-strong);
   }
 
   .palette-row.is-active {

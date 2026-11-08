@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import Icon from "./Icon.svelte";
   import { isRateLimitMessage } from "./format";
   import PosterCard from "./PosterCard.svelte";
@@ -39,7 +39,7 @@
       <Skeleton kind="row" />
     {:else if state.error}
       <div class="w-full surface px-4 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3 text-sm" role="alert">
-        <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: rgb(251 191 36 / 0.1); color: var(--warning);">
+        <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: var(--warning-wash); color: var(--warning);">
           <Icon name="alert" size={16} />
         </span>
         <p class="flex-1" style="color: var(--paper-300);">

@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
   import { playerStatus } from "./api";
@@ -122,7 +122,7 @@
   <section class="surface appearance-panel p-5 mb-4" aria-labelledby="appearance-title">
     <div class="flex flex-wrap items-start gap-4">
       <div class="flex items-center gap-2.5 min-w-0">
-        <span class="w-8 h-8 grid place-items-center rounded-lg" style="background: rgb(108 107 245 / 0.1); border: 1px solid var(--line-volt); color: var(--volt-300);">
+        <span class="w-8 h-8 grid place-items-center rounded-lg" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
           <Icon name="sun" size={16} />
         </span>
         <div class="min-w-0">
@@ -179,7 +179,7 @@
     {#each sections as section}
       <section class="surface p-5">
         <div class="flex items-center gap-2.5 mb-3">
-          <span class="w-8 h-8 grid place-items-center rounded-lg" style="background: rgb(108 107 245 / 0.1); border: 1px solid var(--line-volt); color: var(--volt-300);">
+          <span class="w-8 h-8 grid place-items-center rounded-lg" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
             <Icon name={section.icon} size={16} />
           </span>
           <h2 class="text-[15px] font-semibold">{section.title}</h2>
@@ -200,7 +200,7 @@
   </div>
 
   <div class="surface p-5 mt-4 flex flex-wrap items-center gap-4">
-    <span class="w-10 h-10 grid place-items-center rounded-xl shrink-0" style="background: rgb(108 107 245 / 0.1); border: 1px solid var(--line-volt); color: var(--volt-300);">
+    <span class="w-10 h-10 grid place-items-center rounded-xl shrink-0" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
       <Icon name="shield" size={18} />
     </span>
     <div class="min-w-0 flex-1">
@@ -217,7 +217,7 @@
   </div>
 
   <div class="surface p-5 mt-4 flex flex-wrap items-center gap-4">
-    <span class="w-10 h-10 grid place-items-center rounded-xl shrink-0" style="background: rgb(108 107 245 / 0.1); border: 1px solid var(--line-volt); color: var(--volt-300);">
+    <span class="w-10 h-10 grid place-items-center rounded-xl shrink-0" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
       <Icon name="package" size={18} />
     </span>
     <div class="min-w-0 flex-1">
@@ -269,10 +269,10 @@
   }
 
   .theme-option.is-active {
-    background: linear-gradient(180deg, rgb(139 138 255 / 0.18), rgb(139 138 255 / 0.06));
+    background: linear-gradient(180deg, var(--accent-wash-strong), var(--accent-wash-faint));
     border-color: var(--line-volt);
     color: var(--text-1);
-    box-shadow: inset 0 0 0 1px rgb(139 138 255 / 0.16);
+    box-shadow: inset 0 0 0 1px var(--accent-wash-strong);
   }
 
   .theme-option-icon {
@@ -287,7 +287,7 @@
   }
 
   .theme-option.is-active .theme-option-icon {
-    background: rgb(139 138 255 / 0.16);
+    background: var(--accent-wash-strong);
     color: var(--volt-300);
   }
 </style>

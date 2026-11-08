@@ -66,6 +66,16 @@ What we measured. On 2026-11-08 the sample was installed and searched through th
 
 What we did not do. `getShow`, `getEpisodes` and `resolveEpisode` are implemented in the sample but not wired to a browse UI yet. Async methods return `ASYNC_UNSUPPORTED`. Packages are unsigned and stay local. No registry.
 
+## 2026-11-08 UI polish phase 1
+
+Context. The Papyrus styling review found that Kaminari shares most of the component grammar but still hard-codes accent and status colors, repeats glass borders inline, and lacks press and touch feedback. Phase 1 of `docs/PLAN-UI-POLISH.md` was the low-risk pass.
+
+What we shipped. Accent aliases (`--accent-wash`, `--accent-wash-strong`, `--accent-line`, `--accent-line-strong`) and status aliases (`--success-wash`, `--warning-line` and their siblings) resolve from the active theme. Component CSS and every Svelte file now use them instead of literal violet, amber and rose RGB values. `.on-art` is the single surface for labels over artwork. `.glass` and `.glass-strong` carry border, inset highlight and shadow, and the four dialogs no longer repeat those inline. Poster cards have a 2px focus ring, a press scale and a `hover: none` fallback for quick actions. Paragraphs wrap with `pretty`, body text uses optical sizing, and `.nums` is available for tabular figures.
+
+What we measured. At 1280 the source grids report four equal columns. The poster focus ring computes to 2px solid `rgb(96 94 240)` with a 3px offset. The licenses dialog computes to a 1px `rgb(255 255 255 / 0.14)` border, the inset highlight plus deep shadow, and its 22px radius. Daylight library, browse, sources and the licenses dialog were checked at 1280, and the dark library and licenses dialog were checked at the same size.
+
+What we did not do. Cascade layers, the page header and modal atoms, artwork blur-up, callouts and settings navigation stay in phases 2 and 3. Theme atmosphere gradients keep their per-theme values on purpose.
+
 ## 2026-11-08 Miru/Hayase and Mangayomi review
 
 Context. A search result called Miru the closest PC-native Aniyomi/Suwayomi and Mangayomi a desktop client with an extension manager. We checked both against the native-first decision.

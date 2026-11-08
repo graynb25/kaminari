@@ -4,8 +4,15 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
-- Docs: Miru/Hayase and Mangayomi review, Mangayomi JS is the first optional adapter candidate, neither is a server
-- Docs: Papyrus styling review distilled into `docs/PLAN-UI-POLISH.md`, refinement not a port
+## 0.11.4 - 2026-11-08
+
+- UI: theme-aware accent and status surfaces replace the hard-coded colors that drifted in Daylight
+- UI: glass dialogs share one material with border, inset highlight and shadow
+- UI: poster cards get a 2px focus ring, press feedback, and quick actions that stay visible on touch
+- UI: source grids reach four columns at 1280 and wider
+- Type: paragraph wrapping, optical sizing and tabular numerals
+- Docs: Papyrus styling review distilled into `docs/PLAN-UI-POLISH.md`, phase 1 shipped
+- Version: bump to 0.11.4
 
 ## 0.11.3 - 2026-11-08
 

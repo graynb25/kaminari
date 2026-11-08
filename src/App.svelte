@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { onMount } from "svelte";
   import ContinueCard from "./lib/ContinueCard.svelte";
   import DetailPage from "./lib/DetailPage.svelte";
@@ -519,7 +519,7 @@
       {#if !online}
         <div
           class="px-4 py-2 text-xs flex items-center justify-center gap-2"
-          style="background: rgb(251 191 36 / 0.1); border-bottom: 1px solid rgb(251 191 36 / 0.28); color: var(--paper-100);"
+          style="background: var(--warning-wash); border-bottom: 1px solid var(--warning-line); color: var(--paper-100);"
           role="status"
         >
           <Icon name="wifiOff" size={14} />
@@ -533,7 +533,7 @@
             {#if detailError}
               <div
                 class="mx-6 md:mx-8 mt-6 px-4 py-3 rounded-xl text-sm flex flex-col sm:flex-row sm:items-center gap-2"
-                style="background: rgb(251 191 36 / 0.08); border: 1px solid rgb(251 191 36 / 0.28); color: var(--paper-300);"
+                style="background: var(--warning-wash); border: 1px solid var(--warning-line); color: var(--paper-300);"
                 role="alert"
               >
                 <Icon name="alert" size={15} />
@@ -600,7 +600,7 @@
               <div class="px-6 md:px-8 py-6 space-y-8 max-w-[1440px] mx-auto">
                 {#if library.length === 0 && continueRows.length === 0}
                   <div class="start-callout">
-                    <span class="w-11 h-11 grid place-items-center rounded-xl shrink-0" style="background: rgb(108 107 245 / 0.14); border: 1px solid var(--line-volt); color: var(--volt-300);">
+                    <span class="w-11 h-11 grid place-items-center rounded-xl shrink-0" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
                       <Icon name="sparkles" size={20} />
                     </span>
                     <div class="min-w-0 flex-1">
@@ -625,7 +625,7 @@
                     >
                       {#if continueError}
                         <div class="w-full surface px-4 py-4 flex items-center gap-3 text-sm" style="color: var(--paper-300);" role="alert">
-                          <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: rgb(251 113 133 / 0.1); color: var(--danger);">
+                          <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: var(--danger-wash); color: var(--danger);">
                             <Icon name="alert" size={16} />
                           </span>
                           <span class="flex-1">Progress did not load: {continueError}</span>
@@ -633,7 +633,7 @@
                         </div>
                       {:else if continueRows.length === 0}
                         <div class="w-full surface px-4 py-4 flex items-center gap-3 text-sm" style="color: var(--paper-300);">
-                          <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: rgb(108 107 245 / 0.1); color: var(--volt-300);">
+                          <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: var(--accent-wash); color: var(--volt-300);">
                             <Icon name="playCircle" size={16} />
                           </span>
                           <span class="flex-1">Nothing in progress yet. Start a source episode and this row fills itself.</span>

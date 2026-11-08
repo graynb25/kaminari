@@ -20,19 +20,19 @@
     {#if art}
       <img src={art} alt="" loading="lazy" decoding="async" />
     {:else}
-      <div class="w-full h-full" style="background: radial-gradient(circle at 30% 20%, rgb(139 138 255 / 0.2), transparent 60%), var(--void-800);"></div>
+      <div class="w-full h-full" style="background: radial-gradient(circle at 30% 20%, var(--accent-wash-strong), transparent 60%), var(--void-800);"></div>
     {/if}
     <span class="library-source-scrim" aria-hidden="true"></span>
 
-    <span class="absolute top-2.5 left-2.5 inline-flex items-center gap-1.5 h-6 px-2 rounded-full text-[10px] font-semibold" style="background: rgb(8 8 15 / 0.72); border: 1px solid var(--line-strong); color: var(--volt-200); font-family: var(--font-mono); backdrop-filter: blur(10px);">
+    <span class="absolute top-2.5 left-2.5 inline-flex items-center gap-1.5 h-6 px-2 rounded-full text-[10px] font-semibold on-art is-accent mono">
       <span class="status-dot" style="width: 4px; height: 4px;" aria-hidden="true"></span>
       EP {item.episode}
     </span>
-    <span class="absolute top-2.5 right-2.5 inline-flex items-center h-6 px-2 rounded-full text-[9px] font-semibold tracking-wider" style="background: rgb(8 8 15 / 0.62); border: 1px solid var(--line); color: var(--paper-300); backdrop-filter: blur(10px);">
+    <span class="absolute top-2.5 right-2.5 inline-flex items-center h-6 px-2 rounded-full text-[9px] font-semibold tracking-wider on-art is-muted">
       RESUME
     </span>
 
-    <span class="absolute right-3 bottom-3 h-9 w-9 grid place-items-center rounded-full" style="background: linear-gradient(180deg, var(--volt-400), var(--volt-500)); color: #fff; box-shadow: 0 6px 20px rgb(108 107 245 / 0.4);" aria-hidden="true">
+    <span class="absolute right-3 bottom-3 h-9 w-9 grid place-items-center rounded-full" style="background: linear-gradient(180deg, var(--volt-400), var(--volt-500)); color: #fff; box-shadow: 0 6px 20px var(--accent-shadow-strong);" aria-hidden="true">
       <Icon name="play" size={14} />
     </span>
     <div class="absolute left-3 right-14 bottom-3">

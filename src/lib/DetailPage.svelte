@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import Icon from "./Icon.svelte";
   import { coverOf, cleanHtml, displayTitle, metaOf, scoreLabel, scoreOutOfTen } from "./format";
   import type { Media } from "./types";
@@ -82,7 +82,7 @@
     {:else if art}
       <img src={art} alt="" class="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-50" />
     {:else}
-      <div class="absolute inset-0" style="background: radial-gradient(circle at 30% 10%, rgb(108 107 245 / 0.18), transparent 60%), var(--void-800);"></div>
+      <div class="absolute inset-0" style="background: radial-gradient(circle at 30% 10%, var(--accent-wash-strong), transparent 60%), var(--void-800);"></div>
     {/if}
     <div
       class="detail-hero-scrim absolute inset-0"
@@ -117,7 +117,7 @@
       </div>
 
       <div class="pb-1 min-w-0 flex-1">
-        <p class="eyebrow">{media.format ?? "Title"} {media.status ? `· ${media.status.split("_").join(" ").toLowerCase()}` : ""}</p>
+        <p class="eyebrow">{media.format ?? "Title"} {media.status ? `Â· ${media.status.split("_").join(" ").toLowerCase()}` : ""}</p>
         <h1
           class="mt-1 leading-[1.02] line-clamp-2"
           style="font-family: var(--font-display); font-size: clamp(32px, 4vw, 54px); font-weight: 750; letter-spacing: -0.035em;"
@@ -210,7 +210,7 @@
     {#if playNote}
       <div
         class="mt-6 max-w-2xl p-4 rounded-xl text-sm leading-relaxed flex items-start gap-3"
-        style="background: rgb(108 107 245 / 0.08); border: 1px solid var(--line-volt); color: var(--paper-300);"
+        style="background: var(--accent-wash-faint); border: 1px solid var(--line-volt); color: var(--paper-300);"
         role="status"
       >
         <Icon name="info" size={16} class="mt-0.5 shrink-0" />
@@ -386,7 +386,7 @@
 
   .status-menu[open] summary {
     border-color: var(--line-volt);
-    background: rgb(108 107 245 / 0.12);
+    background: var(--accent-wash);
   }
 
   .status-menu .menu {
@@ -437,7 +437,7 @@
   }
 
   .menu-item.is-active {
-    background: rgb(108 107 245 / 0.14);
+    background: var(--accent-wash);
     color: var(--volt-200);
   }
 
@@ -446,7 +446,7 @@
   }
 
   .menu-item.is-danger:hover {
-    background: rgb(251 113 133 / 0.1);
+    background: var(--danger-wash);
     color: var(--danger);
   }
 

@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import EmptyState from "./EmptyState.svelte";
   import Icon from "./Icon.svelte";
   import PosterCard from "./PosterCard.svelte";
@@ -138,7 +138,7 @@
   {#if error && totalTitles === 0}
     <div class="surface p-5 max-w-xl">
       <div class="flex items-start gap-3">
-        <span class="w-9 h-9 grid place-items-center rounded-lg shrink-0" style="background: rgb(251 113 133 / 0.1); color: var(--danger);">
+        <span class="w-9 h-9 grid place-items-center rounded-lg shrink-0" style="background: var(--danger-wash); color: var(--danger);">
           <Icon name="alert" size={17} />
         </span>
         <div class="min-w-0 flex-1">
@@ -253,7 +253,7 @@
       {/if}
     {:else}
       <div class="start-callout mb-6">
-        <span class="w-10 h-10 grid place-items-center rounded-xl shrink-0" style="background: rgb(108 107 245 / 0.14); border: 1px solid var(--line-volt); color: var(--volt-300);">
+        <span class="w-10 h-10 grid place-items-center rounded-xl shrink-0" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
           <Icon name="sparkles" size={18} />
         </span>
         <div class="min-w-0 flex-1">
@@ -292,24 +292,24 @@
                 {#if item.cover}
                   <img src={item.cover} alt="" loading="lazy" decoding="async" />
                 {:else}
-                  <div class="w-full h-full" style="background: radial-gradient(circle at 30% 20%, rgb(139 138 255 / 0.2), transparent 60%), var(--void-800);"></div>
+                  <div class="w-full h-full" style="background: radial-gradient(circle at 30% 20%, var(--accent-wash-strong), transparent 60%), var(--void-800);"></div>
                 {/if}
                 <span class="library-source-scrim" aria-hidden="true"></span>
-                <span class="absolute top-2.5 left-2.5 inline-flex items-center h-6 px-2 rounded-full text-[9px] font-semibold tracking-wider" style="background: rgb(8 8 15 / 0.66); border: 1px solid var(--line); color: var(--paper-300); backdrop-filter: blur(10px);">
+                <span class="absolute top-2.5 left-2.5 inline-flex items-center h-6 px-2 rounded-full text-[9px] font-semibold tracking-wider on-art is-muted">
                   {item.extensionName}
                 </span>
                 {#if item.lastEpisode != null}
-                  <span class="absolute top-2.5 right-2.5 inline-flex items-center h-6 px-2 rounded-full text-[10px] font-semibold" style="background: rgb(8 8 15 / 0.66); border: 1px solid var(--line); color: var(--volt-200); font-family: var(--font-mono); backdrop-filter: blur(10px);">
+                  <span class="absolute top-2.5 right-2.5 inline-flex items-center h-6 px-2 rounded-full text-[10px] font-semibold on-art is-accent mono">
                     EP {item.lastEpisode}
                   </span>
                 {/if}
-                <span class="absolute right-3 bottom-3 h-9 w-9 grid place-items-center rounded-full" style="background: linear-gradient(180deg, var(--volt-400), var(--volt-500)); color: #fff; box-shadow: 0 6px 20px rgb(108 107 245 / 0.4);" aria-hidden="true">
+                <span class="absolute right-3 bottom-3 h-9 w-9 grid place-items-center rounded-full" style="background: linear-gradient(180deg, var(--volt-400), var(--volt-500)); color: #fff; box-shadow: 0 6px 20px var(--accent-shadow-strong);" aria-hidden="true">
                   <Icon name="play" size={14} />
                 </span>
                 <span class="absolute left-3 right-14 bottom-3 block">
                   <span class="block text-sm font-semibold leading-snug line-clamp-1">{item.title}</span>
                   <span class="block text-[10px] mt-0.5" style="color: var(--paper-300); font-family: var(--font-mono);">
-                    {item.watchedCount} watched{item.year ? ` · ${item.year}` : ""}
+                    {item.watchedCount} watched{item.year ? ` Â· ${item.year}` : ""}
                   </span>
                 </span>
                 {#if item.lastDuration && item.lastPosition && item.lastPosition < item.lastDuration * 0.95}
@@ -325,7 +325,7 @@
                       Episode {item.lastEpisode}
                       {#if item.lastDuration && item.lastPosition}
                         <span style="color: var(--paper-450); font-family: var(--font-mono);">
-                          · {formatTime(item.lastPosition)} / {formatTime(item.lastDuration)}
+                          Â· {formatTime(item.lastPosition)} / {formatTime(item.lastDuration)}
                         </span>
                       {/if}
                     </p>

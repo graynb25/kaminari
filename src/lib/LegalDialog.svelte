@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
   import terms from "../../docs/TERMS.md?raw";
@@ -167,7 +167,6 @@
     bind:this={dialog}
     tabindex={-1}
     class="legal-panel glass-strong w-full max-w-[860px] max-h-[86vh] rounded-[22px] overflow-hidden flex flex-col"
-    style="border: 1px solid var(--line-strong); box-shadow: var(--shadow-deep);"
     role="dialog"
     aria-modal="true"
     aria-label="Legal documents"
@@ -179,7 +178,7 @@
     >
       <span
         class="w-9 h-9 grid place-items-center rounded-xl shrink-0"
-        style="background: rgb(108 107 245 / 0.12); border: 1px solid var(--line-volt); color: var(--volt-300);"
+        style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);"
       >
         <Icon name="shield" size={17} />
       </span>

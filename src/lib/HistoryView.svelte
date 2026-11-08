@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import EmptyState from "./EmptyState.svelte";
   import Icon from "./Icon.svelte";
   import Skeleton from "./Skeleton.svelte";
@@ -112,7 +112,7 @@
   {:else if error && merged.length === 0}
     <div class="surface p-5 max-w-xl">
       <div class="flex items-start gap-3">
-        <span class="w-9 h-9 grid place-items-center rounded-lg shrink-0" style="background: rgb(251 113 133 / 0.1); color: var(--danger);">
+        <span class="w-9 h-9 grid place-items-center rounded-lg shrink-0" style="background: var(--danger-wash); color: var(--danger);">
           <Icon name="alert" size={17} />
         </span>
         <div class="min-w-0 flex-1">
@@ -191,7 +191,7 @@
                     <p class="text-sm font-semibold truncate">{row.item.title}</p>
                     <p class="text-xs mt-0.5 truncate" style="color: var(--paper-450);">
                       Episode {row.item.episodeNumber}
-                      {#if row.item.episodeTitle} · {row.item.episodeTitle}{/if}
+                      {#if row.item.episodeTitle} Â· {row.item.episodeTitle}{/if}
                       <span style="color: var(--paper-500);"> / {row.item.extensionName}</span>
                     </p>
                   </div>
