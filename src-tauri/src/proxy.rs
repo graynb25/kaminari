@@ -8,8 +8,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::body::Body;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
@@ -170,8 +171,12 @@ impl ProxyStore {
 
     pub fn router(&self) -> Router {
         Router::new()
-            .route("/healthz", get(healthz))
-            .route("/s/{id}/file", get(file_handler).head(file_handler))
+            .route("/healthz", get(healthz).options(healthz_options))
+            .route(
+                "/s/{id}/file",
+                get(file_handler).head(file_handler).options(file_options),
+            )
+            .layer(middleware::from_fn(cors))
             .with_state(self.clone())
     }
 
@@ -393,6 +398,32 @@ impl ProxyStore {
     }
 }
 
+async fn cors(request: Request, next: Next) -> Response {
+    let options = request.method() == Method::OPTIONS;
+    let mut response = next.run(request).await;
+    let status = response.status();
+    let headers = response.headers_mut();
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        HeaderValue::from_static("*"),
+    );
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_HEADERS,
+        HeaderValue::from_static("Range"),
+    );
+    headers.insert(
+        header::ACCESS_CONTROL_EXPOSE_HEADERS,
+        HeaderValue::from_static("Content-Range, Content-Length, Accept-Ranges"),
+    );
+    if options && status == StatusCode::NO_CONTENT {
+        headers.insert(
+            header::ACCESS_CONTROL_MAX_AGE,
+            HeaderValue::from_static("600"),
+        );
+    }
+    response
+}
+
 async fn healthz(State(store): State<ProxyStore>) -> Response {
     let status = store.status();
     axum::Json(serde_json::json!({
@@ -400,6 +431,27 @@ async fn healthz(State(store): State<ProxyStore>) -> Response {
         "port": status.port,
     }))
     .into_response()
+}
+
+async fn healthz_options() -> StatusCode {
+    StatusCode::NO_CONTENT
+}
+
+async fn file_options(
+    State(store): State<ProxyStore>,
+    Path(id): Path<String>,
+    Query(query): Query<TokenQuery>,
+) -> Response {
+    let token = query.token.unwrap_or_default();
+    match store.lookup(&id, &token) {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(LookupError::NotFound) => short(StatusCode::NOT_FOUND, "not-found"),
+        Err(LookupError::Forbidden) => {
+            tracing::warn!(id = %id_prefix(&id), "proxy: rejected a bad token");
+            short(StatusCode::FORBIDDEN, "forbidden")
+        }
+        Err(LookupError::Expired) => short(StatusCode::GONE, "expired"),
+    }
 }
 
 async fn file_handler(
@@ -1012,6 +1064,108 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(expired.status(), StatusCode::GONE);
+    }
+
+    #[tokio::test]
+    async fn healthz_carries_cors_headers() {
+        let (_store, base, _handle) = proxy().await;
+        let response = reqwest::Client::new()
+            .get(format!("{base}/healthz"))
+            .header(header::ORIGIN, "http://tauri.localhost")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .unwrap(),
+            "*"
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::ACCESS_CONTROL_ALLOW_HEADERS)
+                .unwrap(),
+            "Range"
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::ACCESS_CONTROL_EXPOSE_HEADERS)
+                .unwrap(),
+            "Content-Range, Content-Length, Accept-Ranges"
+        );
+    }
+
+    #[tokio::test]
+    async fn options_returns_204_and_validates_the_token() {
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture("app.kaminari.test", "http://127.0.0.1:9/video.mp4", None)
+            .await
+            .unwrap();
+        let client = reqwest::Client::new();
+
+        let response = client
+            .request(reqwest::Method::OPTIONS, proxy_url(&base, &registered))
+            .header(header::ORIGIN, "http://tauri.localhost")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .unwrap(),
+            "*"
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::ACCESS_CONTROL_ALLOW_HEADERS)
+                .unwrap(),
+            "Range"
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::ACCESS_CONTROL_MAX_AGE)
+                .unwrap(),
+            "600"
+        );
+
+        let bad = client
+            .request(
+                reqwest::Method::OPTIONS,
+                format!(
+                    "{base}/s/{}/file?token=00000000000000000000000000000000",
+                    registered.opaque_id
+                ),
+            )
+            .header(header::ORIGIN, "http://tauri.localhost")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(bad.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            bad.headers()
+                .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .unwrap(),
+            "*"
+        );
+
+        let unknown = client
+            .request(
+                reqwest::Method::OPTIONS,
+                format!("{base}/s/ffffffffffffffffffffffffffffffff/file?token=x"),
+            )
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
