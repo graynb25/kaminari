@@ -1,0 +1,13 @@
+{
+  "id": "com.example.anilist",
+  "name": "AniList (Built in)",
+  "version": "0.1.0",
+  "apiVersion": "0.1",
+  "entry": "index.js",
+  "lang": "en",
+  "baseUrl": "https://graphql.anilist.co",
+  "minHost": "0.1.0",
+  "nsfw": false,
+  "icon": "icon.png",
+  "permissions": { "hosts": ["https://graphql.anilist.co/*"], "storageKb": 512 }
+}

@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/* Tokens from docs/DESIGN-SPEC.md. Add a token here before any one off value. */
+
+:root {
+  --void-950: #08080f;
+  --void-900: #0e0e1a;
+  --void-800: #171726;
+  --void-700: #23233a;
+  --volt-300: #b7b5ff;
+  --volt-400: #8b8aff;
+  --volt-500: #6c6bf5;
+  --paper-50: #f4f3ff;
+  --paper-300: #b8b7cc;
+  --paper-500: #7a7893;
+  --line: rgb(255 255 255 / 0.08);
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+  --shadow-card: 0 8px 24px rgb(0 0 0 / 0.45);
+  --shadow-pop: 0 16px 48px rgb(0 0 0 / 0.55);
+  --shadow-glow: 0 0 0 1px var(--volt-400), 0 8px 32px rgb(108 107 245 / 0.35);
+}
+
+html, body, #app {
+  height: 100%;
+  background: var(--void-950);
+  color: var(--paper-50);
+  font-family: Inter, Segoe UI, system-ui, sans-serif;
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+:focus-visible {
+  outline: 2px solid var(--volt-400);
+  outline-offset: 2px;
+}
+
+.poster-card {
+  transition: transform 160ms ease-out, box-shadow 160ms ease-out;
+  transform: translateZ(0);
+}
+.poster-card:hover {
+  transform: translateY(-4px) scale(1.03);
+  box-shadow: var(--shadow-glow);
+}
+.poster-card img {
+  transition: transform 320ms ease-out;
+}
+.poster-card:hover img {
+  transform: scale(1.06);
+}
+
+/* Scrollbar: styled, keyboard friendly */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--void-700);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition-duration: 1ms !important;
+  }
+}

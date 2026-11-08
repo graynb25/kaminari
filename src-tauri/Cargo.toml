@@ -1,0 +1,27 @@
+[package]
+name = "kaminari"
+version = "0.1.0"
+description = "Desktop anime app for PC. Tauri 2 plus Rust plus Svelte."
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-libmpv = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots", "json", "stream", "gzip"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+keyring = "3"
+rquickjs = "0.8"
+thiserror = "2"
+anyhow = "1"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

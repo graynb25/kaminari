@@ -1,0 +1,28 @@
+# Deps and build output
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+
+# Local data and logs
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+kaminari-data/
+.kaminari/
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+
+# Env
+.env
+.env.local
+
+# Release artifacts
+*.exe
+*.msi
+*.AppImage
+*.dmg
+*.zip
