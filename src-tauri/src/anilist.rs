@@ -5,6 +5,7 @@ use std::time::Duration;
 use tokio::sync::Semaphore;
 
 pub struct AniListClient {
+    #[allow(dead_code)] // Shared client used by the P0 queries once they land.
     http: reqwest::Client,
     bucket: Semaphore,
 }
@@ -20,6 +21,7 @@ impl AniListClient {
         }
     }
 
+    #[allow(dead_code)] // Called by the P0 search path once queries land.
     pub async fn acquire(&self) {
         let permit = self.bucket.acquire().await;
         drop(permit);

@@ -5,3 +5,5 @@ Every visible change gets a line here. Keep lines short and specific.
 ## Unreleased
 
 - Project scaffold: README, AGENTS, CONTRIBUTING, LICENSE, SECURITY, and docs stubs for Kaminari
+- CI: run Rust gates inside `src-tauri`, pin pnpm 10 with a committed lockfile, add Tauri build script and app icons
+- App: wire SQLite migrations on first run, validate source ids, expose host limits in the boot snapshot

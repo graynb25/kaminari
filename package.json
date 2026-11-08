@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.34.9",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -10,7 +11,9 @@
     "test": "vitest run",
     "tauri": "tauri"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0"
+  },
   "devDependencies": {
     "typescript": "^5.7.2",
     "vite": "^6.0.3",

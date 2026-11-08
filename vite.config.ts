@@ -15,7 +15,7 @@ export default defineConfig(async () => ({
     watch: { ignored: ["**/src-tauri/**"] }
   },
   build: {
-    target: process.env.TAURI_ENV_PLATFORM ? "chrome105" : "baseline-widely-available",
+    target: "es2020",
     minify: !process.env.TAURI_ENV_DEBUG ? "esbuild" : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG
   }

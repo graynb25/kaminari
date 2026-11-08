@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[allow(dead_code)] // Net, Blocked, RateLimited and PlayerMissing land as the P0 client and player wire in.
 pub enum AppError {
     #[error("database error: {0}")]
     Db(String),
@@ -12,6 +13,12 @@ pub enum AppError {
     RateLimited(u32),
     #[error("player missing: {0}")]
     PlayerMissing(String),
+}
+
+impl From<rusqlite::Error> for AppError {
+    fn from(value: rusqlite::Error) -> Self {
+        AppError::Db(value.to_string())
+    }
 }
 
 pub type AppResult<T> = Result<T, AppError>;
