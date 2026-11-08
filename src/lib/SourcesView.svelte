@@ -320,7 +320,7 @@
             bind:value={jsPath}
             placeholder="Path to a .kext package"
             class="w-full h-9 rounded-xl pl-9 pr-3 text-sm outline-none"
-            style="background: var(--void-950 / 0.4); border: 1px solid var(--line); color: var(--paper-50); font-family: var(--font-mono);"
+            style="background: var(--input-bg); border: 1px solid var(--line); color: var(--text-1); font-family: var(--font-mono);"
             aria-label="Path to a .kext package"
             spellcheck="false"
           />
@@ -409,7 +409,7 @@
                   bind:value={jsTestQuery}
                   placeholder="Try Popeye or Betty Boop"
                   class="w-full h-8 rounded-lg pl-8 pr-3 text-sm outline-none"
-                  style="background: var(--void-950 / 0.4); border: 1px solid var(--line); color: var(--paper-50);"
+                  style="background: var(--input-bg); border: 1px solid var(--line); color: var(--text-1);"
                   aria-label="Test search on {extension.name}"
                 />
               </label>
@@ -419,21 +419,21 @@
             </form>
 
             {#if jsTestId === extension.id}
-              <div class="mt-3 rounded-xl p-3" style="background: rgb(5 5 11 / 0.4); border: 1px solid var(--line);" aria-live="polite">
+              <div class="mt-3 rounded-xl p-3" style="background: var(--well-bg); border: 1px solid var(--line);" aria-live="polite">
                 {#if jsTestLoading}
                   <p class="text-xs flex items-center gap-2" style="color: var(--paper-450);">
                     <span class="w-3 h-3 rounded-full border-2 border-t-transparent animate-spin" style="border-color: var(--volt-400); border-top-color: transparent;"></span>
                     Running a fresh QuickJS runtime.
                   </p>
                 {:else if jsTestError}
-                  <div class="rounded-lg px-3 py-2 text-xs flex items-start gap-2" style="background: rgb(251 113 133 / 0.1); border: 1px solid rgb(251 113 133 / 0.35); color: var(--paper-50);" role="alert">
+                  <div class="rounded-lg px-3 py-2 text-xs flex items-start gap-2" style="background: rgb(251 113 133 / 0.1); border: 1px solid rgb(251 113 133 / 0.35); color: var(--text-1);" role="alert">
                     <Icon name="alert" size={14} class="mt-0.5 shrink-0" />
                     {jsTestError}
                   </div>
                 {:else}
                   <div class="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
                     {#each jsTestItems as item (item.id)}
-                      <div class="flex items-center gap-2 px-2 py-1.5 rounded-lg" style="background: rgb(23 23 38 / 0.72); border: 1px solid var(--line);">
+                      <div class="flex items-center gap-2 px-2 py-1.5 rounded-lg" style="background: var(--control-bg); border: 1px solid var(--line);">
                         <div class="w-7 h-10 shrink-0 rounded overflow-hidden" style="background: var(--void-700);">
                           {#if item.cover}
                             <img src={item.cover} alt="" loading="lazy" decoding="async" class="w-full h-full object-cover" />
@@ -450,7 +450,7 @@
                     <summary class="text-[11px] cursor-pointer" style="color: var(--paper-450);">Raw JSON</summary>
                     <pre
                       class="mt-1 p-2 rounded-lg text-[10px] overflow-auto max-h-48"
-                      style="background: var(--void-950); border: 1px solid var(--line); color: var(--paper-300); font-family: var(--font-mono);">{JSON.stringify(
+                      style="background: var(--well-bg); border: 1px solid var(--line); color: var(--text-2); font-family: var(--font-mono);">{JSON.stringify(
                         jsTestItems,
                         null,
                         2,
@@ -493,7 +493,7 @@
         <input
           bind:value={url}
           class="w-full h-9 rounded-xl pl-9 pr-3 text-sm outline-none"
-          style="background: var(--void-950 / 0.4); border: 1px solid var(--line); color: var(--paper-50); font-family: var(--font-mono);"
+          style="background: var(--input-bg); border: 1px solid var(--line); color: var(--text-1); font-family: var(--font-mono);"
           aria-label="Registry URL"
           spellcheck="false"
         />
@@ -585,7 +585,7 @@
             oninput={onFilterInput}
             placeholder="Filter packages"
             class="h-8 w-52 rounded-lg pl-8 pr-3 text-sm outline-none"
-            style="background: rgb(23 23 38 / 0.72); border: 1px solid var(--line); color: var(--paper-50);"
+            style="background: var(--control-bg); border: 1px solid var(--line); color: var(--text-1);"
             aria-label="Filter packages"
           />
         </label>

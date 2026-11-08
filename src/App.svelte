@@ -811,7 +811,7 @@
     padding: 8px 14px;
     border-radius: 10px;
     background: var(--volt-500);
-    color: var(--paper-50);
+    color: #ffffff;
     font-size: 13px;
     font-weight: 600;
     transition: top 150ms var(--ease-out);

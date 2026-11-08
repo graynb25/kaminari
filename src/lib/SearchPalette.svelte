@@ -307,7 +307,7 @@
         {#if rateLimited}
           <div
             class="m-2 px-3 py-2 rounded-lg text-sm flex items-start gap-2"
-            style="background: rgb(251 191 36 / 0.1); border: 1px solid rgb(251 191 36 / 0.35); color: var(--paper-50);"
+            style="background: rgb(251 191 36 / 0.1); border: 1px solid rgb(251 191 36 / 0.35); color: var(--text-1);"
             role="status"
           >
             <Icon name="alert" size={14} class="mt-0.5 shrink-0" />
@@ -316,7 +316,7 @@
         {:else if error}
           <div
             class="m-2 px-3 py-2 rounded-lg text-sm flex items-start gap-2"
-            style="background: var(--void-800); border: 1px solid var(--line); color: var(--paper-300);"
+            style="background: var(--void-800); border: 1px solid var(--line); color: var(--text-2);"
             role="alert"
           >
             <Icon name="xCircle" size={14} class="mt-0.5 shrink-0" />
@@ -525,9 +525,9 @@
     place-items: center;
     flex-shrink: 0;
     border-radius: 8px;
-    background: rgb(255 255 255 / 0.05);
+    background: var(--tint-1);
     border: 1px solid var(--line);
-    color: var(--paper-300);
+    color: var(--text-3);
   }
 
   .palette-cover {
@@ -540,7 +540,7 @@
     border-radius: 6px;
     background: var(--void-700);
     border: 1px solid var(--line);
-    color: var(--paper-500);
+    color: var(--text-4);
   }
 
   .palette-cover img {

@@ -18,7 +18,9 @@ Acceptance: the built-in sample installs, searches archive.org, lists episodes, 
 
 ## P2: Wow polish
 
-Hero carousel with drift and crossfade, shelf physics and glow pass, skeleton shimmer, tray menu, accent picker hooks, light theme check, empty and error copy pass, virtualized grid at 500 items. README screenshots switch from placeholders to real build shots. Keyboard path works without a mouse from library to player and back.
+Hero carousel with drift and crossfade, shelf physics and glow pass, skeleton shimmer, tray menu, accent picker hooks, empty and error copy pass, virtualized grid at 500 items. README screenshots switch from placeholders to real build shots. Keyboard path works without a mouse from library to player and back.
+
+Status: the light theme landed in 0.10.0 with System, Dark and Light modes. Accent picker hooks and the README screenshot swap are still open.
 
 Acceptance: grid holds 60fps on integrated graphics, no dropped streak over 3 frames in the perf harness. Reduced motion build is fully static. Palette to playback GIF in README shows the real app. Bundle still under budget. No `any` crosses IPC.
 

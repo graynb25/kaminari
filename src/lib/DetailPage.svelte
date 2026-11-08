@@ -85,8 +85,7 @@
       <div class="absolute inset-0" style="background: radial-gradient(circle at 30% 10%, rgb(108 107 245 / 0.18), transparent 60%), var(--void-800);"></div>
     {/if}
     <div
-      class="absolute inset-0"
-      style="background: linear-gradient(90deg, var(--void-950) 2%, rgb(8 8 15 / 0.72) 46%, rgb(8 8 15 / 0.12) 82%, transparent 100%), linear-gradient(0deg, var(--void-950) 0%, rgb(8 8 15 / 0.42) 26%, transparent 64%);"
+      class="detail-hero-scrim absolute inset-0"
       aria-hidden="true"
     ></div>
     <div class="absolute top-4 inset-x-0 z-10">
@@ -257,7 +256,7 @@
           {#if episodeCount > 0}
             <div class="surface p-4 mb-4">
               <div class="flex items-center gap-4">
-                <div class="relative w-12 h-12 grid place-items-center rounded-full shrink-0" style="background: conic-gradient(var(--volt-400) {percent}%, rgb(255 255 255 / 0.08) 0);">
+                <div class="relative w-12 h-12 grid place-items-center rounded-full shrink-0" style="background: conic-gradient(var(--volt-400) {percent}%, var(--track) 0);">
                   <span class="absolute inset-[3px] rounded-full" style="background: var(--void-900);"></span>
                   <span class="relative font-mono text-[11px] font-semibold" style="color: var(--volt-200);">{percent}%</span>
                 </div>
@@ -433,8 +432,8 @@
   }
 
   .menu-item:hover {
-    background: rgb(255 255 255 / 0.06);
-    color: var(--paper-50);
+    background: var(--tint-1);
+    color: var(--text-1);
   }
 
   .menu-item.is-active {

@@ -5,7 +5,7 @@
 {#if kind === "hero"}
   <div class="relative h-[clamp(340px,38vw,430px)] overflow-hidden" style="border-bottom: 1px solid var(--line);" aria-label="Loading highlights">
     <div class="shimmer absolute inset-0"></div>
-    <div class="absolute inset-0" style="background: linear-gradient(90deg, var(--void-950) 0%, rgb(8 8 15 / 0.88) 34%, transparent 78%);"></div>
+    <div class="absolute inset-0" style="background: var(--skeleton-scrim);"></div>
     <div class="relative h-full max-w-[1440px] mx-auto px-6 md:px-8 flex flex-col justify-center pb-10 space-y-4">
       <div class="shimmer h-3 w-40 rounded"></div>
       <div class="shimmer h-11 w-[min(520px,70%)] rounded-xl"></div>

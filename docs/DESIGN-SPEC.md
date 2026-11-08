@@ -4,7 +4,7 @@ Status: active. This is the visual contract for Kaminari. If a screen does not m
 
 ## Direction
 
-Dark media first. Near black canvas, warm paper text, one volt indigo accent. Dark is home, light lands in P2. Posters feel rich, not flat. Glass only for overlays: palette, player bar, toasts, dialogs. Everything else stays solid so text stays readable.
+Dark media first. Near black canvas, warm paper text, one volt indigo accent. Dark stays the signature, Light is a first class theme, and System follows Windows. Posters feel rich, not flat. Glass only for overlays: palette, player bar, toasts, dialogs. Everything else stays solid so text stays readable.
 
 Type: Sora or Space Grotesk for display and hero numbers, Inter for UI, Noto Sans JP for Japanese titles, JetBrains Mono for timecodes and diagnostics. Display never runs body copy. Body never runs all caps.
 
@@ -38,7 +38,17 @@ Tokens live in `src/app.css`. Add a token before you add a one off value.
 
 Contrast: paper on void passes AAA. Volt on void is 4.6 to 1. Volt is for large type, bold labels, focus rings and fills paired with text, never for small body copy. Verified with axe and a token test in CI.
 
-Radius steps are 12, 16, 20, 24. Small controls use 12. Cards use 16. Hero, player and dialogs use 20 or 24. Borders are 1px white at 8 percent on dark. When light lands in P2, borders flip to ink at 8 percent.
+Radius steps are 12, 16, 20, 24. Small controls use 12. Cards use 16. Hero, player and dialogs use 20 or 24. Borders are 1px white at 8 percent on dark. In light, borders are ink at 10 percent.
+
+### Themes
+
+Three modes: System, Dark, Light. The choice lives under `kaminari.theme` in localStorage, and `public/theme-init.js` applies it before the module loads so the first frame is already correct. System listens to `prefers-color-scheme` and repaints live.
+
+Light is named Daylight. Page `#f6f7fc`, cards `#ffffff`, ink `#191826`, muted `#6a6880`, borders ink at 10 percent, shadows tinted indigo instead of black. The primary gradient runs `#605ef0` to `#4d4ad8`, which keeps white button text above 4.5 to 1. Success uses `#0a7c56`, warning `#b45309`, danger `#e11d48`.
+
+Media surfaces keep the dark token set in both themes: poster art, source art and the player. That keeps badge text, progress strips and player chrome legible over unknown artwork. The home hero, detail banner and source hero flip to an airy wash with ink copy in light, so the page never looks like a dark app with a white sheet pasted on.
+
+The light theme is not an inversion. The atmosphere keeps the violet current, the grain stays, and the glass overlays turn to frosted porcelain. No pure black, no pure white text on the page.
 
 ## Components
 

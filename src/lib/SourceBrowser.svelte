@@ -379,7 +379,7 @@
           bind:value={query}
           placeholder="Search this source"
           class="h-8 w-[240px] rounded-lg pl-8 pr-3 text-sm outline-none"
-          style="background: rgb(255 255 255 / 0.05); border: 1px solid var(--line); color: var(--paper-50);"
+          style="background: var(--input-bg); border: 1px solid var(--line); color: var(--text-1);"
           aria-label="Search this source"
         />
       </label>
@@ -413,7 +413,7 @@
           {#if selected.banner || selected.cover}
             <img src={selected.banner || selected.cover} alt="" class="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-40" />
           {/if}
-          <div class="absolute inset-0" style="background: linear-gradient(90deg, var(--void-950) 0%, rgb(8 8 15 / 0.78) 52%, rgb(8 8 15 / 0.22) 100%), linear-gradient(0deg, var(--void-950) 0%, transparent 70%);"></div>
+          <div class="source-hero-scrim absolute inset-0" aria-hidden="true"></div>
           <div class="relative flex flex-col sm:flex-row gap-6 p-6 md:p-8">
             <div
               class="w-[150px] sm:w-[190px] shrink-0 aspect-[2/3] rounded-2xl overflow-hidden"
@@ -542,7 +542,7 @@
                 {#if streams[episode.id]}
                   <div class="px-3 pb-3 space-y-1.5" style="border-top: 1px solid var(--line); padding-top: 10px;">
                     {#each streams[episode.id] as stream}
-                      <div class="flex items-center gap-2 px-2.5 py-2 rounded-lg" style="background: rgb(5 5 11 / 0.4); border: 1px solid var(--line);">
+                      <div class="flex items-center gap-2 px-2.5 py-2 rounded-lg" style="background: var(--well-bg); border: 1px solid var(--line);">
                         <span class="chip chip-volt text-[9px] px-1.5 py-0.5 shrink-0">
                           {stream.type.toUpperCase()}
                         </span>

@@ -66,6 +66,18 @@ What we measured. On 2026-11-08 the sample was installed and searched through th
 
 What we did not do. `getShow`, `getEpisodes` and `resolveEpisode` are implemented in the sample but not wired to a browse UI yet. Async methods return `ASYNC_UNSUPPORTED`. Packages are unsigned and stay local. No registry.
 
+## 2026-11-08 Light theme and theme modes
+
+Context. The app only shipped dark. That is the signature, but it is not a reasonable default for everyone. The user asked for a light mode and room for other styles.
+
+What we shipped. A token layer with System, Dark and Light modes, a theme picker in Settings, localStorage persistence, a pre-mount `public/theme-init.js`, and a live `prefers-color-scheme` listener. Light is a porcelain page with ink type, indigo-tinted shadows and light glass. The home hero, detail banner and source hero use light scrims with ink copy. Poster art, source art and the player keep the dark token set in both themes so badges, progress strips and player controls stay legible over unknown artwork.
+
+What we measured. Light primary buttons use white on `#605ef0` to `#4d4ad8`, about 4.7 to 1 at the top and 6.2 to 1 at the bottom. Muted ink `#6a6880` on the page passes 5 to 1. The theme picker switched dark, light and system in the running app, persistence survived a reload, and System followed the OS, which reported light on this machine. Screenshots at 1920 covered home, library, history, settings, sources, detail and source detail without dark artifacts on page chrome.
+
+What broke and changed. Svelte pruned `[data-theme="light"] .detail-hero-scrim` rules inside component style blocks because the attribute never appears in that component's markup. The dark scrim survived, so light detail copy landed on dark art. Both hero scrims moved to global `app.css` and the issue disappeared.
+
+What we did not do. Accent palettes, a high contrast mode, and a full axe pass on light. Those are follow-ups, not blockers.
+
 ## 2026-11-08 Source resume handoff
 
 Context. Continue Watching cards said Resume but only opened the source detail. The user had to find the same episode and click Resolve, then Resume, before a frame played.

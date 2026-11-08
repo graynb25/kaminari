@@ -4,6 +4,16 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.10.0 - 2026-11-08
+
+- Themes: System, Dark and Light modes, persisted locally and initialized before the first paint
+- Light: porcelain page, ink type, soft indigo shadows, airy hero and detail scrims, and a light title bar, nav rail, cards, palette and dialogs
+- Themes: System follows the Windows light or dark preference live
+- Appearance: theme picker in Settings with clear active state and keyboard access
+- Media: poster badges, source cards and the player keep their dark surfaces in both themes so artwork stays legible
+- Settings: corrected the version cards and removed the stale Appearance placeholder row
+- Version: bump to 0.10.0
+
 ## 0.9.1 - 2026-11-08
 
 - Continue Watching: clicking a source card now resolves that episode and resumes at the saved position

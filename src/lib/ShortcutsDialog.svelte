@@ -116,13 +116,13 @@
       aria-modal="true"
       aria-label="Keyboard shortcuts"
     >
-      <div class="flex items-center gap-3 px-5 py-4 sticky top-0 z-10" style="border-bottom: 1px solid var(--line); background: rgb(7 7 14 / 0.86); backdrop-filter: blur(20px);">
+      <div class="flex items-center gap-3 px-5 py-4 sticky top-0 z-10" style="border-bottom: 1px solid var(--line); background: var(--glass-strong); backdrop-filter: blur(20px);">
         <span class="w-9 h-9 grid place-items-center rounded-xl" style="background: rgb(108 107 245 / 0.12); border: 1px solid var(--line-volt); color: var(--volt-300);">
           <Icon name="keyboard" size={18} />
         </span>
         <div class="min-w-0 flex-1">
           <h2 class="text-lg font-semibold" style="font-family: var(--font-display);">Keyboard shortcuts</h2>
-          <p class="text-[11px]" style="color: var(--paper-500);">Everything reachable without a mouse.</p>
+          <p class="text-[11px]" style="color: var(--text-4);">Everything reachable without a mouse.</p>
         </div>
         <button bind:this={closeButton} class="btn-ghost px-3 py-1.5 text-xs" onclick={onClose}>
           Close
@@ -135,18 +135,18 @@
           <section class={group.title === "Player" ? "md:col-span-2" : ""} aria-label={group.title}>
             <div class="flex items-center gap-2 mb-2.5">
               <span style="color: var(--volt-300);"><Icon name={group.icon} size={14} /></span>
-              <h3 class="text-[10px] font-semibold uppercase tracking-[0.18em]" style="color: var(--paper-500);">{group.title}</h3>
+              <h3 class="text-[10px] font-semibold uppercase tracking-[0.18em]" style="color: var(--text-4);">{group.title}</h3>
             </div>
             <dl class={group.title === "Player" ? "grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5" : "space-y-1.5"}>
               {#each group.rows as [key, what]}
                 <div class="flex items-center gap-3 text-sm">
                   <kbd
                     class="px-2 py-1 rounded-md text-[11px] shrink-0 min-w-[54px] text-center"
-                    style="background: rgb(255 255 255 / 0.055); border: 1px solid var(--line-strong); color: var(--paper-50); font-family: var(--font-mono);"
+                    style="background: var(--tint-1); border: 1px solid var(--line-strong); color: var(--text-1); font-family: var(--font-mono);"
                   >
                     {key}
                   </kbd>
-                  <dt style="color: var(--paper-300);">{what}</dt>
+                  <dt style="color: var(--text-2);">{what}</dt>
                 </div>
               {/each}
             </dl>
@@ -154,7 +154,7 @@
         {/each}
       </div>
 
-      <div class="px-5 py-3 flex items-center gap-2 text-[10px]" style="border-top: 1px solid var(--line); color: var(--paper-500);">
+      <div class="px-5 py-3 flex items-center gap-2 text-[10px]" style="border-top: 1px solid var(--line); color: var(--text-4);">
         <Icon name="info" size={12} />
         Player keys work while the player is open. Press ? anywhere outside a text field.
       </div>

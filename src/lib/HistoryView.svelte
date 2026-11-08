@@ -230,7 +230,7 @@
   }
 
   .history-row:hover {
-    background: rgb(255 255 255 / 0.045);
+    background: var(--tint-1);
   }
 
   .history-row:focus-visible {

@@ -112,7 +112,7 @@
             bind:value={query}
             placeholder="Filter by title"
             class="h-9 w-56 rounded-xl pl-9 pr-3 text-sm outline-none"
-            style="background: rgb(23 23 38 / 0.72); border: 1px solid var(--line); color: var(--paper-50);"
+            style="background: var(--control-bg); border: 1px solid var(--line); color: var(--text-1);"
             aria-label="Filter library by title"
           />
         </label>
@@ -187,7 +187,7 @@
             {@const count = status === "all" ? items.length : items.filter((entry) => entry.status === status).length}
             <button
               class="px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors"
-              style="background: {statusFilter === status ? 'linear-gradient(180deg, var(--volt-400), var(--volt-500))' : 'rgb(23 23 38 / 0.72)'}; border: 1px solid {statusFilter === status ? 'rgb(255 255 255 / 0.18)' : 'var(--line)'}; color: {statusFilter === status ? '#fff' : 'var(--paper-300)'};"
+              style="background: {statusFilter === status ? 'linear-gradient(180deg, var(--volt-400), var(--volt-500))' : 'var(--control-bg)'}; border: 1px solid {statusFilter === status ? 'rgb(255 255 255 / 0.18)' : 'var(--line)'}; color: {statusFilter === status ? '#fff' : 'var(--text-2)'};"
               aria-pressed={statusFilter === status}
               onclick={() => (statusFilter = status)}
             >
@@ -229,7 +229,7 @@
                 <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background: {statusColor(entry.status)};" aria-hidden="true"></span>
                 <select
                   class="h-7 rounded-md px-1.5 text-[11px] font-semibold outline-none"
-                  style="background: rgb(23 23 38 / 0.72); border: 1px solid var(--line); color: var(--paper-300);"
+                  style="background: var(--control-bg); border: 1px solid var(--line); color: var(--text-2);"
                   value={entry.status}
                   onchange={(event) =>
                     onSetStatus(entry.media, (event.currentTarget as HTMLSelectElement).value)}
