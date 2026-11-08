@@ -30,9 +30,9 @@ If you already know React, the Rust side does not care. The contract stays the s
 
 ## Status
 
-Working today: cinematic browse with five AniList rails, Top 10 Today, Ctrl K palette, detail pages, a local library, watched episode tracking, Continue Watching, an Aniyomi registry reader that stores source metadata, and a native JavaScript extension host with a live public domain sample.
+Working today: cinematic browse with five AniList rails, Top 10 Today, Ctrl K palette, detail pages, a local library, watched episode tracking, Continue Watching, an Aniyomi registry reader that stores source metadata, and a native JavaScript extension host with a source browser, details, episodes and stream resolve.
 
-Next: source browse and detail for native extensions, then libmpv playback. The app does not download APKs or run package code from the Aniyomi registry.
+Next: libmpv playback for resolved streams. The app does not download APKs or run package code from the Aniyomi registry.
 
 Windows is the first target. macOS and Linux come later.
 

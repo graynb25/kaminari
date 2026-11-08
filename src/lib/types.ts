@@ -108,6 +108,35 @@ export type JsSearchResult = {
   hasNext?: boolean;
 };
 
+export type JsShowDetail = {
+  id: string;
+  title: string;
+  cover?: string | null;
+  banner?: string | null;
+  synopsis?: string | null;
+  year?: number | null;
+  genres?: string[] | null;
+  status?: string | null;
+};
+
+export type JsEpisode = {
+  id: string;
+  showId?: string | null;
+  number: number;
+  title?: string | null;
+  thumbnail?: string | null;
+  airedAt?: string | null;
+  durationSec?: number | null;
+};
+
+export type JsStream = {
+  url: string;
+  type: string;
+  quality?: string | null;
+  headers?: Record<string, string> | null;
+  subtitles?: { lang: string; url: string; label?: string }[] | null;
+};
+
 export type HistoryItem = {
   media: Media;
   episode: number;

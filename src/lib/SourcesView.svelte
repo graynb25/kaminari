@@ -22,9 +22,11 @@
   let {
     boot,
     notify,
+    onBrowse,
   }: {
     boot: Boot | null;
     notify: (text: string, tone?: "info" | "success" | "error") => void;
+    onBrowse: (extension: JsExtension) => void;
   } = $props();
 
   const DEFAULT_REGISTRY =
@@ -321,13 +323,21 @@
                   {/each}
                 </div>
               </div>
-              <button
-                class="btn-ghost px-2.5 py-1 text-xs shrink-0"
-                disabled={jsBusy === extension.id}
-                onclick={() => void removeJs(extension)}
-              >
-                Remove
-              </button>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <button
+                  class="btn-primary px-2.5 py-1 text-xs"
+                  onclick={() => onBrowse(extension)}
+                >
+                  Browse
+                </button>
+                <button
+                  class="btn-ghost px-2.5 py-1 text-xs"
+                  disabled={jsBusy === extension.id}
+                  onclick={() => void removeJs(extension)}
+                >
+                  Remove
+                </button>
+              </div>
             </div>
 
             <form

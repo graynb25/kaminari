@@ -1,7 +1,7 @@
 // Commands exposed to Svelte. Payloads in camelCase, typed, no secrets here.
 
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::sync::Arc;
 use tauri::State;
 
@@ -216,20 +216,50 @@ pub fn js_extension_test(
     id: String,
     query: String,
 ) -> Result<serde_json::Value, String> {
-    let stored = state
-        .js_extension(&id)
+    run_js_extension(state.inner(), &id, "search", json!([query, 1]))
+}
+
+#[tauri::command]
+pub fn js_extension_detail(
+    state: State<'_, Db>,
+    id: String,
+    show_id: String,
+) -> Result<Value, String> {
+    run_js_extension(state.inner(), &id, "getShow", json!([show_id]))
+}
+
+#[tauri::command]
+pub fn js_extension_episodes(
+    state: State<'_, Db>,
+    id: String,
+    show_id: String,
+) -> Result<Value, String> {
+    run_js_extension(state.inner(), &id, "getEpisodes", json!([show_id]))
+}
+
+#[tauri::command]
+pub fn js_extension_resolve(
+    state: State<'_, Db>,
+    id: String,
+    episode_id: String,
+) -> Result<Value, String> {
+    run_js_extension(state.inner(), &id, "resolveEpisode", json!([episode_id]))
+}
+
+fn run_js_extension(db: &Db, id: &str, op: &str, args: Value) -> Result<Value, String> {
+    let stored = db
+        .js_extension(id)
         .map_err(ipc_error)?
         .ok_or_else(|| "extension is not installed".to_string())?;
-    let db = state.inner().clone();
-    let storage: Arc<dyn ExtStorage> = Arc::new(db);
+    let storage: Arc<dyn ExtStorage> = Arc::new(db.clone());
     let package = ExtPackage {
         manifest: stored.manifest,
         code: stored.code,
     };
     ext_host::run(
         &package,
-        "search",
-        json!([query, 1]),
+        op,
+        args,
         storage,
         &ext_host::HostLimits::default(),
     )

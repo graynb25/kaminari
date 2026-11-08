@@ -51,7 +51,10 @@ fn main() {
             commands::js_extension_install_sample,
             commands::js_extension_install_path,
             commands::js_extension_remove,
-            commands::js_extension_test
+            commands::js_extension_test,
+            commands::js_extension_detail,
+            commands::js_extension_episodes,
+            commands::js_extension_resolve
         ])
         .run(tauri::generate_context!())
         .expect("error starting Kaminari");

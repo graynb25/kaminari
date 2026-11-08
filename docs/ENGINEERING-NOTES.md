@@ -66,6 +66,16 @@ What we measured. On 2026-11-08 the sample was installed and searched through th
 
 What we did not do. `getShow`, `getEpisodes` and `resolveEpisode` are implemented in the sample but not wired to a browse UI yet. Async methods return `ASYNC_UNSUPPORTED`. Packages are unsigned and stay local. No registry.
 
+## 2026-11-08 Native source browser
+
+Context. Search worked, but a source had no detail, episode or resolve path in the UI.
+
+What we shipped. `js_extension_detail`, `js_extension_episodes` and `js_extension_resolve` call the same host with `getShow`, `getEpisodes` and `resolveEpisode`. A full-screen SourceBrowser opens from a native extension card, runs an empty search on mount, opens a result, lists episodes and resolves a stream URL. The sample strips archive.org HTML and parses durations.
+
+What we measured. On 2026-11-08 the sample opened an archive.org title, returned one episode, and resolved an MP4 URL. The whole path stayed under the 5s and 10s caps.
+
+What we did not do. Playback. The resolve panel shows and copies URLs; libmpv is the next milestone.
+
 ## 2026-11-08 Library status and history
 
 Context. The library could hold titles but not file them by state, and watch events had no page of their own.

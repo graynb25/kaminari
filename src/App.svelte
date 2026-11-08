@@ -13,6 +13,7 @@
   import Shelf from "./lib/Shelf.svelte";
   import ShortcutsDialog from "./lib/ShortcutsDialog.svelte";
   import Skeleton from "./lib/Skeleton.svelte";
+  import SourceBrowser from "./lib/SourceBrowser.svelte";
   import SourcesView from "./lib/SourcesView.svelte";
   import TitleBar from "./lib/TitleBar.svelte";
   import Toasts from "./lib/Toasts.svelte";
@@ -32,7 +33,7 @@
     type ShelfKind,
   } from "./lib/api";
   import { displayTitle, isRateLimitMessage } from "./lib/format";
-  import type { Boot, ContinueItem, HistoryItem, LibraryItem, Media, RailState, Toast, ToastTone, View } from "./lib/types";
+  import type { Boot, ContinueItem, HistoryItem, JsExtension, LibraryItem, Media, RailState, Toast, ToastTone, View } from "./lib/types";
 
   let title = $state("Kaminari");
   let boot = $state<Boot | null>(null);
@@ -52,6 +53,7 @@
   let watchedDetail = $state<number[]>([]);
   let continueItems = $state<ContinueItem[]>([]);
   let historyItems = $state<HistoryItem[]>([]);
+  let sourceBrowser = $state<JsExtension | null>(null);
   let paletteOpen = $state(false);
   let shortcutsOpen = $state(false);
   let toasts = $state<Toast[]>([]);
@@ -538,7 +540,7 @@
           onBrowse={() => goView("browse")}
         />
       {:else if view === "sources"}
-        <SourcesView boot={boot} notify={notify} />
+        <SourcesView boot={boot} notify={notify} onBrowse={(extension) => (sourceBrowser = extension)} />
       {:else}
         <SettingsView boot={boot} />
       {/if}
@@ -555,6 +557,14 @@
 />
 
 <ShortcutsDialog open={shortcutsOpen} onClose={() => (shortcutsOpen = false)} />
+
+{#if sourceBrowser}
+  <SourceBrowser
+    extension={sourceBrowser}
+    onClose={() => (sourceBrowser = null)}
+    notify={notify}
+  />
+{/if}
 
 <Toasts toasts={toasts} onDismiss={dismissToast} />
 

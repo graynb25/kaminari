@@ -7,8 +7,11 @@ import type {
   ContinueItem,
   HistoryItem,
   InstalledSource,
+  JsEpisode,
   JsExtension,
   JsSearchResult,
+  JsShowDetail,
+  JsStream,
   LegacyExtension,
   LibraryItem,
   Media,
@@ -114,4 +117,16 @@ export function jsExtensionRemove(id: string): Promise<void> {
 
 export function jsExtensionTest(id: string, query: string): Promise<JsSearchResult> {
   return invoke<JsSearchResult>("js_extension_test", { id, query });
+}
+
+export function jsExtensionDetail(id: string, showId: string): Promise<JsShowDetail> {
+  return invoke<JsShowDetail>("js_extension_detail", { id, showId });
+}
+
+export function jsExtensionEpisodes(id: string, showId: string): Promise<JsEpisode[]> {
+  return invoke<JsEpisode[]>("js_extension_episodes", { id, showId });
+}
+
+export function jsExtensionResolve(id: string, episodeId: string): Promise<JsStream[]> {
+  return invoke<JsStream[]>("js_extension_resolve", { id, episodeId });
 }

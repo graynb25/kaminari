@@ -4,6 +4,13 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.4.0 - 2026-11-08
+
+- Native source browser: search a JavaScript source, open a show, list episodes, resolve streams, and copy a stream URL
+- Commands: `js_extension_detail`, `js_extension_episodes`, `js_extension_resolve`
+- Sample: clean archive.org descriptions, nicer episode titles, duration parsing
+- Version: bump to 0.4.0
+
 ## 0.3.0 - 2026-11-08
 
 - Native JS extension host: one QuickJS runtime per call, 5s and 10s timeouts, 64MB memory cap, HTTPS host allowlist, blocking fetch, HTML selectors, SHA-256, SQLite storage and a logger

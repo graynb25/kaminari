@@ -17,6 +17,33 @@
     return Number.isFinite(year) ? year : undefined;
   }
 
+  function clean(value) {
+    return text(value)
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&quot;/g, '"')
+      .replace(/&#0?39;/g, "'")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function durationOf(value) {
+    const raw = first(value);
+    if (!raw) return undefined;
+    const str = String(raw);
+    if (str.includes(":")) {
+      const parts = str.split(":").map((part) => parseInt(part, 10) || 0);
+      return parts.length === 3
+        ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+        : parts[0] * 60 + parts[1];
+    }
+    const seconds = parseInt(str, 10);
+    return Number.isFinite(seconds) ? seconds : undefined;
+  }
+
   function search(query, page) {
     const textQuery = query && String(query).trim() ? `title:(${String(query).trim()}) AND ` : "";
     const url =
@@ -54,7 +81,7 @@
       id: String(id),
       title: text(first(meta.title)) || String(id),
       cover: `${BASE}/services/img/${encodeURIComponent(id)}`,
-      synopsis: text(first(meta.description)),
+      synopsis: clean(first(meta.description)),
       year: parseInt(first(meta.year), 10) || undefined,
       genres: ["Animation"],
       status: "finished",
@@ -70,8 +97,12 @@
       id: `${showId}|${file.name}`,
       showId: String(showId),
       number: index + 1,
-      title: file.name,
-      durationSec: parseInt(file.length, 10) || undefined,
+      title:
+        String(file.name || "")
+          .replace(/\.[^.]+$/, "")
+          .replace(/[._]+/g, " ")
+          .trim() || `Episode ${index + 1}`,
+      durationSec: durationOf(file.length),
     }));
   }
 
