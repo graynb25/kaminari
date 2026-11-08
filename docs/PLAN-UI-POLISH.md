@@ -45,7 +45,7 @@ Gate: screenshots at 1024, 1280, 1600 and 2560 in Storm and Daylight, a keyboard
 
 ## Phase 2: atoms, 3 to 5 days
 
-- `PageHeader.svelte` for eyebrow, title, subtitle, actions and the soft glow. Replace the four repeated headers.
+- `PageHeader.svelte` for eyebrow, title, subtitle, action content passed as `children`, and the soft glow. Replace the four repeated headers.
 - Artwork lifecycle in `PosterCard`: reserved frame, shimmer underlay, blur-up on decode, `complete` check for cache, and error fallback. Then reuse for continue cards, history thumbs, hero banners and detail banner.
 - `stagger-grid` entrance on the library and source result grids, capped at 18 items so a 500 poster list does not animate everything.
 - `BrandMark.svelte` for title bar, footer, empty state and Settings.

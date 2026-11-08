@@ -5,12 +5,12 @@
     eyebrow,
     title,
     subtitle,
-    actions,
+    children,
   }: {
     eyebrow: string;
     title: string;
     subtitle?: string;
-    actions?: Snippet;
+    children?: Snippet;
   } = $props();
 </script>
 
@@ -23,7 +23,5 @@
       <p class="page-sub">{subtitle}</p>
     {/if}
   </div>
-  {#if actions}
-    <div class="page-head-actions">{@render actions()}</div>
-  {/if}
+  <div class="page-head-actions">{@render children?.()}</div>
 </header>
