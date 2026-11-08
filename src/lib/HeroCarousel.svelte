@@ -17,7 +17,13 @@
     onPlay: (item: Media) => void;
   } = $props();
 
-  const slides = $derived(items.slice(0, 5));
+  // The hero only uses titles with a real banner. A clean full-bleed image with
+  // the slow zoom reads better than a blurred cover, and the shelves still show
+  // titles without one.
+  const slides = $derived.by(() => {
+    const withBanners = items.filter((item) => !!item.bannerImage);
+    return withBanners.length >= 3 ? withBanners.slice(0, 5) : items.slice(0, 5);
+  });
   let index = $state(0);
   let paused = $state(false);
   let resumeTimer: number | null = $state(null);
@@ -62,6 +68,11 @@
       event.preventDefault();
       go(index - 1);
     }
+  }
+
+  function rankOf(slide: Media): number {
+    const rank = items.findIndex((item) => item.id === slide.id);
+    return rank >= 0 ? rank + 1 : 1;
   }
 
   function seasonLabel(): string {
@@ -151,7 +162,7 @@
           >
             <p class="hero-eyebrow">
               <span class="live-dot" aria-hidden="true"></span>
-              #{position + 1} Trending
+              #{rankOf(slide)} Trending
               <span style="color: var(--paper-500);">/</span>
               {seasonLabel()}
             </p>

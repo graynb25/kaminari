@@ -4,6 +4,12 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.8.2 - 2026-11-08
+
+- Hero: only trending titles with a real banner feed the carousel, so every slide is a clear full-bleed image with the slow zoom
+- Hero: titles without a banner stay in the shelves; the poster fallback only appears if fewer than three banners exist
+- Version: bump to 0.8.2
+
 ## 0.8.1 - 2026-11-08
 
 - Hero: when AniList has no banner, show a clear poster card over the blurred cover instead of a fully blurred header

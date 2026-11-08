@@ -78,11 +78,11 @@ What we did not do. Playback. The resolve panel shows and copies URLs; libmpv is
 
 ## 2026-11-08 Hero poster fallback
 
-Context. The user reviewed the new hero and said some headers were fully blurred. AniList has no `bannerImage` for several 2026 and upcoming titles, so those slides fell back to a blurred cover with no clear focal image.
+Context. The user reviewed the new hero and said some headers were fully blurred. AniList has no `bannerImage` for several 2026 and upcoming titles, so those slides fell back to a blurred cover. The user then pointed at the Dragon Ball Super slide and said that clear full-bleed banner with the slow zoom is how every slide should display.
 
-What we shipped. The fallback now keeps a softer blurred cover for color and adds a clear poster card on the right of the hero, inside the 1440 content column. The card is hidden below 1100px so it cannot crowd the copy. Banner slides are unchanged and still full bleed.
+What we shipped. The hero now filters trending to entries with a real `bannerImage` before taking five slides. Every slide is a clear full-bleed image with the existing slow zoom. The eyebrow keeps the original trending rank by looking the slide up in the unfiltered list. Titles without a banner stay in Top 10 and the shelves. The blurred cover plus clear poster card remains only as a fallback when fewer than three banner titles exist.
 
-What we measured. SPY×FAMILY Season 4 and Reborn as a Space Mercenary both lack a banner in the current AniList data. With the poster card, the real app shows clear art on the right and readable copy on the left at 1920. The 1280 layout hides the card and keeps the blurred backdrop.
+What we measured. 17 of the first 24 trending titles have a banner on 2026-11-08, so the filter still fills five slides. The real app shows Black Clover Season 2 (#6) and ONE PIECE (#9) full bleed at 1920, each with the slow zoom, and the copy stays readable.
 
 ## 2026-11-08 Visual system pass
 
