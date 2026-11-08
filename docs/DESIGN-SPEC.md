@@ -54,6 +54,10 @@ Five trending titles from AniList. Height clamps from 320 to 440 by viewport wid
 
 Slide order: eyebrow (`#1 TRENDING, FALL 2026`), 40px display title, meta row (score, year, episodes, format), two line synopsis, three buttons (Play, Add, Details). Text staggers 60ms through transitions, not animation fill, so a dropped frame cannot hide the copy. Missing banner falls back to blurred cover at 4x plus scrim.
 
+### Scores
+
+AniList returns a score from 0 to 100. Show it on a 10 point scale with one decimal. Cards read `★ 8.7`, hero and detail read `8.7/10`. The card badge carries a tooltip naming the raw AniList value, for example `AniList score 87 out of 100`. Never put a star next to a 0 to 100 number. That reads like 87 stars.
+
 ### Shelf
 
 Header row: H2, count, See all link, scroll buttons that appear on hover and stay on focus. Body scrolls horizontal with snap, 16px gaps. Scrollbars stay hidden, arrow buttons carry scroll, keyboard arrows work on the focused shelf. First run shows one callout, not stacked empty boxes. Library Preview renders only when the library has items. Backdrop variant is 16:9 at 320px wide with remaining time and progress. Poster variant is 2:3.

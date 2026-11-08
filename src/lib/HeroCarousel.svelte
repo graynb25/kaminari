@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { coverOf, cleanHtml, displayTitle, metaOf } from "./format";
+  import { coverOf, cleanHtml, displayTitle, metaOf, scoreOutOfTen } from "./format";
   import type { Media } from "./types";
 
   let {
@@ -109,7 +109,7 @@
             aria-hidden={active ? undefined : "true"}
             inert={!active}
           >
-              <p class="eyebrow">#{position + 1} Trending{slide.averageScore ? ` · ${slide.averageScore}%` : ""}</p>
+              <p class="eyebrow">#{position + 1} Trending{slide.averageScore ? ` · ${scoreOutOfTen(slide.averageScore)}/10` : ""}</p>
               <h1
                 class="mt-3 leading-[1.08] line-clamp-2"
                 style="font-family: var(--font-display); font-size: clamp(28px, 3.4vw, 40px); font-weight: 700; letter-spacing: -0.02em;"

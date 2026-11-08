@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { coverOf, cleanHtml, displayTitle, metaOf } from "./format";
+  import { coverOf, cleanHtml, displayTitle, metaOf, scoreLabel, scoreOutOfTen } from "./format";
   import type { Media } from "./types";
 
   let {
@@ -62,7 +62,7 @@
         {/if}
       </div>
       <div class="pb-1 min-w-0">
-        <p class="eyebrow">{media.format ?? "Title"} {media.averageScore ? `· ${media.averageScore}%` : ""}</p>
+        <p class="eyebrow">{media.format ?? "Title"} {media.averageScore ? `· ${scoreOutOfTen(media.averageScore)}/10` : ""}</p>
         <h1
           class="mt-1 leading-tight"
           style="font-family: var(--font-display); font-size: 32px; font-weight: 700; letter-spacing: -0.01em;"
@@ -146,7 +146,7 @@
         </h2>
         <div class="flex justify-between text-sm">
           <span style="color: var(--paper-500);">Score</span>
-          <span class="font-semibold" style="font-family: var(--font-mono);">{media.averageScore ?? "n/a"}</span>
+          <span class="font-semibold" style="font-family: var(--font-mono);" title={media.averageScore ? `AniList score ${media.averageScore} out of 100` : undefined}>{scoreLabel(media.averageScore)}</span>
         </div>
         <div class="flex justify-between text-sm">
           <span style="color: var(--paper-500);">Format</span>

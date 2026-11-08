@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { coverOf, displayTitle, metaOf } from "./format";
+  import { coverOf, displayTitle, metaOf, scoreOutOfTen } from "./format";
   import type { Media } from "./types";
 
   let {
@@ -66,8 +66,9 @@
         <span
           class="absolute top-2 right-2 text-xs font-semibold px-1.5 py-0.5 rounded-md"
           style="background: rgb(8 8 15 / 0.78); color: var(--volt-300); font-family: var(--font-mono);"
+          title="AniList score {item.averageScore} out of 100"
         >
-          ★ {item.averageScore}
+          ★ {scoreOutOfTen(item.averageScore)}
         </span>
       {/if}
     </button>

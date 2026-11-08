@@ -30,6 +30,18 @@ export function metaOf(item: Media): string {
   return bits.join("  ·  ");
 }
 
+// AniList returns 0 to 100. We show a 10 point score with one decimal.
+// A star next to 87 reads like 87 stars, which is not the scale.
+export function scoreOutOfTen(score?: number | null): string {
+  if (score == null || score <= 0) return "";
+  return (score / 10).toFixed(1);
+}
+
+export function scoreLabel(score?: number | null): string {
+  const value = scoreOutOfTen(score);
+  return value ? `${value} / 10` : "n/a";
+}
+
 export function isRateLimitMessage(message: string): boolean {
   const lower = message.toLowerCase();
   return lower.includes("429") || lower.includes("rate") || lower.includes("retry-after");
