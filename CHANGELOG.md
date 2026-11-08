@@ -4,7 +4,11 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.11.2 - 2026-11-08
+
+- Licenses: render the dialog at app root so it stays centered and fully visible on small windows
 - Tests: 15 Vitest cases covering titles, covers, HTML cleanup, scores, rate limit copy and relative time
+- Version: bump to 0.11.2
 
 ## 0.11.1 - 2026-11-08
 

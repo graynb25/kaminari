@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
-  import LicensesDialog from "./LicensesDialog.svelte";
   import { playerStatus } from "./api";
   import {
     getThemeMode,
@@ -14,11 +13,15 @@
   let {
     boot,
     onOpenShortcuts,
-  }: { boot: Boot | null; onOpenShortcuts?: () => void } = $props();
+    onOpenLicenses,
+  }: {
+    boot: Boot | null;
+    onOpenShortcuts?: () => void;
+    onOpenLicenses: () => void;
+  } = $props();
 
   let player = $state<PlayerStatus | null>(null);
   let themeMode = $state<ThemeMode>(getThemeMode());
-  let licensesOpen = $state(false);
 
   function pickMode(next: ThemeMode) {
     themeMode = next;
@@ -223,15 +226,11 @@
         Every Rust crate, npm package, font and built-in sample in this build, with its license and source.
       </p>
     </div>
-    <button class="btn-ghost px-3.5 py-2 text-xs" onclick={() => (licensesOpen = true)}>
+    <button class="btn-ghost px-3.5 py-2 text-xs" onclick={onOpenLicenses}>
       <Icon name="list" size={14} />
       View licenses
     </button>
   </div>
-
-  {#if licensesOpen}
-    <LicensesDialog onClose={() => (licensesOpen = false)} />
-  {/if}
 </div>
 
 <style>

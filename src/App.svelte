@@ -8,6 +8,7 @@
   import HistoryView from "./lib/HistoryView.svelte";
   import Icon from "./lib/Icon.svelte";
   import LibraryView from "./lib/LibraryView.svelte";
+  import LicensesDialog from "./lib/LicensesDialog.svelte";
   import NavRail from "./lib/NavRail.svelte";
   import PosterCard from "./lib/PosterCard.svelte";
   import Rail from "./lib/Rail.svelte";
@@ -96,6 +97,7 @@
   let sourceBrowser = $state<SourceBrowserState | null>(null);
   let paletteOpen = $state(false);
   let shortcutsOpen = $state(false);
+  let licensesOpen = $state(false);
   let toasts = $state<Toast[]>([]);
   let toastSeq = $state(0);
   let lastFocus = $state<HTMLElement | null>(null);
@@ -764,11 +766,15 @@
           {:else if view === "sources"}
             <SourcesView boot={boot} notify={notify} onBrowse={openExtension} />
           {:else}
-            <SettingsView boot={boot} onOpenShortcuts={() => (shortcutsOpen = true)} />
+            <SettingsView
+              boot={boot}
+              onOpenShortcuts={() => (shortcutsOpen = true)}
+              onOpenLicenses={() => (licensesOpen = true)}
+            />
           {/if}
         </div>
       {/key}
-        <AppFooter />
+        <AppFooter onOpenLicenses={() => (licensesOpen = true)} />
       </div>
     </main>
   </div>
@@ -798,6 +804,10 @@
     onClose={() => (sourceBrowser = null)}
     notify={notify}
   />
+{/if}
+
+{#if licensesOpen}
+  <LicensesDialog onClose={() => (licensesOpen = false)} />
 {/if}
 
 <Toasts toasts={toasts} onDismiss={dismissToast} />
