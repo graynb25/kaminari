@@ -1,16 +1,18 @@
 // SQLite helpers. One file, WAL, migrations checked in.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 use crate::anilist::{CoverImage, Media, MediaTitle};
 use crate::error::{AppError, AppResult};
+use crate::ext_host::{ExtStorage, Manifest};
 use crate::registry::LegacyExtension;
 
+#[derive(Clone)]
 pub struct Db {
-    conn: Mutex<Connection>,
+    conn: Arc<Mutex<Connection>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -53,6 +55,25 @@ pub struct HistoryItem {
     pub watched_at: i64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsExtensionRow {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub api_version: String,
+    pub enabled: bool,
+    pub trust: String,
+    pub installed_at: i64,
+    pub hosts: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StoredJsExtension {
+    pub manifest: Manifest,
+    pub code: String,
+}
+
 impl Db {
     pub fn new(path: &str) -> AppResult<Self> {
         let conn = Connection::open(path)?;
@@ -61,8 +82,9 @@ impl Db {
         conn.pragma_update(None, "busy_timeout", 5000)?;
         conn.execute_batch(include_str!("../migrations/0001_init.sql"))?;
         conn.execute_batch(include_str!("../migrations/0002_watched.sql"))?;
+        conn.execute_batch(include_str!("../migrations/0003_js_extensions.sql"))?;
         Ok(Self {
-            conn: Mutex::new(conn),
+            conn: Arc::new(Mutex::new(conn)),
         })
     }
 
@@ -319,6 +341,88 @@ impl Db {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    pub fn list_js_extensions(&self) -> AppResult<Vec<JsExtensionRow>> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let mut statement = conn.prepare(
+            "SELECT id, name, version, api_version, enabled, trust, installed_at, manifest
+             FROM js_extensions ORDER BY name COLLATE NOCASE",
+        )?;
+        let rows = statement.query_map([], |row| {
+            let manifest_raw: String = row.get(7)?;
+            let manifest = serde_json::from_str::<Manifest>(&manifest_raw).ok();
+            Ok(JsExtensionRow {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                version: row.get(2)?,
+                api_version: row.get(3)?,
+                enabled: row.get::<_, i64>(4)? != 0,
+                trust: row.get(5)?,
+                installed_at: row.get(6)?,
+                hosts: manifest
+                    .map(|manifest| manifest.permissions.hosts)
+                    .unwrap_or_default(),
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn js_extension(&self, id: &str) -> AppResult<Option<StoredJsExtension>> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let row: Option<(String, String)> = conn
+            .query_row(
+                "SELECT manifest, code FROM js_extensions WHERE id = ?1",
+                params![id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let Some((manifest_raw, code)) = row else {
+            return Ok(None);
+        };
+        let manifest: Manifest = serde_json::from_str(&manifest_raw)
+            .map_err(|err| AppError::Db(format!("stored manifest is invalid: {err}")))?;
+        Ok(Some(StoredJsExtension { manifest, code }))
+    }
+
+    pub fn install_js_extension(
+        &self,
+        manifest: &Manifest,
+        code: &str,
+        trust: &str,
+    ) -> AppResult<()> {
+        manifest.validate()?;
+        let manifest_raw =
+            serde_json::to_string(manifest).map_err(|err| AppError::Db(err.to_string()))?;
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        conn.execute(
+            "INSERT INTO js_extensions(
+                id, name, version, api_version, manifest, code, enabled, trust, installed_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, unixepoch())
+             ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                version = excluded.version,
+                api_version = excluded.api_version,
+                manifest = excluded.manifest,
+                code = excluded.code,
+                trust = excluded.trust",
+            params![
+                manifest.id,
+                manifest.name,
+                manifest.version,
+                manifest.api_version,
+                manifest_raw,
+                code,
+                trust,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_js_extension(&self, id: &str) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        conn.execute("DELETE FROM js_extensions WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
     pub fn list_sources(&self) -> AppResult<Vec<InstalledSource>> {
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         let mut statement = conn.prepare(
@@ -503,9 +607,57 @@ fn db_locked() -> AppError {
     AppError::Db("database lock poisoned".to_string())
 }
 
+impl ExtStorage for Db {
+    fn get(&self, extension_id: &str, key: &str) -> Option<String> {
+        let conn = self.conn.lock().ok()?;
+        conn.query_row(
+            "SELECT value FROM js_storage WHERE extension_id = ?1 AND key = ?2",
+            params![extension_id, key],
+            |row| row.get(0),
+        )
+        .optional()
+        .ok()
+        .flatten()
+    }
+
+    fn set(&self, extension_id: &str, key: &str, value: &str) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let used: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(length(CAST(key AS BLOB)) + length(CAST(value AS BLOB))), 0)
+             FROM js_storage WHERE extension_id = ?1",
+            params![extension_id],
+            |row| row.get(0),
+        )?;
+        if used as usize + key.len() + value.len() > 1024 * 1024 {
+            return Err(AppError::Blocked(
+                "extension storage limit reached (1 MB)".to_string(),
+            ));
+        }
+        conn.execute(
+            "INSERT INTO js_storage(extension_id, key, value, updated_at)
+             VALUES (?1, ?2, ?3, unixepoch())
+             ON CONFLICT(extension_id, key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = unixepoch()",
+            params![extension_id, key, value],
+        )?;
+        Ok(())
+    }
+
+    fn remove(&self, extension_id: &str, key: &str) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        conn.execute(
+            "DELETE FROM js_storage WHERE extension_id = ?1 AND key = ?2",
+            params![extension_id, key],
+        )?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ext_host::ExtStorage;
     use crate::registry::LegacySource;
 
     fn sample_media() -> Media {
@@ -577,6 +729,30 @@ mod tests {
 
         db.remove_source(&entry.pkg).unwrap();
         assert!(db.list_sources().unwrap().is_empty());
+    }
+
+    #[test]
+    fn install_js_extension_and_storage() {
+        let db = Db::new(":memory:").unwrap();
+        let package = crate::ext_host::sample_package().unwrap();
+        db.install_js_extension(&package.manifest, &package.code, "builtin")
+            .unwrap();
+
+        let list = db.list_js_extensions().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "app.kaminari.publicdomain");
+        assert_eq!(list[0].hosts, vec!["https://archive.org/*"]);
+        assert!(db.js_extension(&package.manifest.id).unwrap().is_some());
+
+        ExtStorage::set(&db, &package.manifest.id, "token", "abc").unwrap();
+        assert_eq!(
+            ExtStorage::get(&db, &package.manifest.id, "token"),
+            Some("abc".to_string())
+        );
+
+        db.remove_js_extension(&package.manifest.id).unwrap();
+        assert!(db.list_js_extensions().unwrap().is_empty());
+        assert_eq!(ExtStorage::get(&db, &package.manifest.id, "token"), None);
     }
 
     #[test]

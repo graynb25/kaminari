@@ -56,6 +56,16 @@ SQLite with WAL. One file, checked in migrations, backup with `VACUUM INTO`. Lib
 
 Desktop updates come from GitHub Releases with Minisign signatures. The updater polls `latest.json` and shows the version, size, and notes before it touches anything. Roll back is reinstall the prior `.exe`. The library file is left alone.
 
+## 2026-11-08 Native JS host live search
+
+Context. The app could read AniList and store Aniyomi metadata, but it could not run a source. The plan called for a sync QuickJS host with a Rust bridge.
+
+What we shipped. A host in `ext_host.rs` with one runtime per call, 5s and 10s deadlines, 64MB memory, 1MB stack, an HTTPS host allowlist, blocking `net.fetch`, `html.select` through the Rust scraper, SHA-256, SQLite storage and a logger. `js_extensions` and `js_storage` tables, `.kext` zip reading, a built-in Public Domain Animation package, and a Sources test panel. Nine host tests cover static results, missing methods, async rejection, timeout, allocation, host denial, storage across fresh runtimes, HTML select, and kext round trip. Two DB tests cover install and storage cascade.
+
+What we measured. On 2026-11-08 the sample was installed and searched through the live Sources page. archive.org returned 24 Popeye rows with covers and years. The host tests finish in about 0.10s total, so a cold runtime is below the 50ms budget on this machine. The sample search took well under the 5s cap.
+
+What we did not do. `getShow`, `getEpisodes` and `resolveEpisode` are implemented in the sample but not wired to a browse UI yet. Async methods return `ASYNC_UNSUPPORTED`. Packages are unsigned and stay local. No registry.
+
 ## 2026-11-08 Library status and history
 
 Context. The library could hold titles but not file them by state, and watch events had no page of their own.

@@ -1,0 +1,15 @@
+{
+  "id": "app.kaminari.publicdomain",
+  "name": "Public Domain Animation",
+  "version": "1.0.0",
+  "apiVersion": "0.1",
+  "entry": "index.js",
+  "lang": "en",
+  "baseUrl": "https://archive.org",
+  "minHost": "0.3.0",
+  "nsfw": false,
+  "permissions": {
+    "hosts": ["https://archive.org/*"],
+    "storageKb": 512
+  }
+}

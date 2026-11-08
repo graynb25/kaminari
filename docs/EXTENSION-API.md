@@ -1,6 +1,6 @@
 # Extension API
 
-Status: draft v0.1. AniList ships built in. The native JavaScript host is planned in `docs/PLAN-JS-EXTENSIONS.md`, and the first host runs synchronous methods. Promise support is a later version; until then the host returns `ASYNC_UNSUPPORTED`. Breaking changes bump `apiVersion`.
+Status: draft v0.1. The native JavaScript host is live, and a real sample source ships in `extensions/public-domain`. The first host runs synchronous methods. Promise support is a later version; until then the host returns `ASYNC_UNSUPPORTED`. See `docs/PLAN-JS-EXTENSIONS.md`. Breaking changes bump `apiVersion`.
 
 ## Package
 

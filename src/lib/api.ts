@@ -7,6 +7,8 @@ import type {
   ContinueItem,
   HistoryItem,
   InstalledSource,
+  JsExtension,
+  JsSearchResult,
   LegacyExtension,
   LibraryItem,
   Media,
@@ -92,4 +94,24 @@ export function sourceRemove(id: string): Promise<void> {
 
 export function sourceToggle(id: string, enabled: boolean): Promise<void> {
   return invoke<void>("source_toggle", { id, enabled });
+}
+
+export function jsExtensionList(): Promise<JsExtension[]> {
+  return invoke<JsExtension[]>("js_extension_list");
+}
+
+export function jsExtensionInstallSample(): Promise<void> {
+  return invoke<void>("js_extension_install_sample");
+}
+
+export function jsExtensionInstallPath(path: string): Promise<void> {
+  return invoke<void>("js_extension_install_path", { path });
+}
+
+export function jsExtensionRemove(id: string): Promise<void> {
+  return invoke<void>("js_extension_remove", { id });
+}
+
+export function jsExtensionTest(id: string, query: string): Promise<JsSearchResult> {
+  return invoke<JsSearchResult>("js_extension_test", { id, query });
 }

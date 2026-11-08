@@ -13,6 +13,10 @@ pub enum AppError {
     RateLimited(u32),
     #[error("player missing: {0}")]
     PlayerMissing(String),
+    #[error("extension error: {0}")]
+    Extension(String),
+    #[error("extension timed out after {0} seconds")]
+    ExtensionTimeout(u64),
 }
 
 impl From<rusqlite::Error> for AppError {

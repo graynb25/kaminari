@@ -4,10 +4,15 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.3.0 - 2026-11-08
+
+- Native JS extension host: one QuickJS runtime per call, 5s and 10s timeouts, 64MB memory cap, HTTPS host allowlist, blocking fetch, HTML selectors, SHA-256, SQLite storage and a logger
+- Sample: Public Domain Animation reads archive.org, and a live test search returned real public domain rows
+- Sources: native extension list, install sample, install a `.kext` path, remove, test search, host and trust display
 - Library: status filters with counts, title filter, per-card status menu (watching, planning, completed, paused, dropped)
 - History: new view (key 3) with recent watched episodes, relative times, and a link back to the series
 - Fix: history rows order correctly when two events land in the same second
-- Version: bump to 0.2.0
+- Version: bump to 0.3.0
 
 ## 0.2.0 - 2026-11-08
 

@@ -1,12 +1,14 @@
 // Commands exposed to Svelte. Payloads in camelCase, typed, no secrets here.
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::sync::Arc;
 use tauri::State;
 
 use crate::anilist::{AniListClient, Media, ShelfKind};
-use crate::db::{ContinueItem, Db, HistoryItem, InstalledSource, LibraryItem};
+use crate::db::{ContinueItem, Db, HistoryItem, InstalledSource, JsExtensionRow, LibraryItem};
 use crate::error::AppError;
-use crate::ext_host;
+use crate::ext_host::{self, ExtPackage, ExtStorage};
 use crate::registry::{fetch_index, LegacyExtension};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -178,4 +180,58 @@ pub fn source_remove(state: State<'_, Db>, id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn source_toggle(state: State<'_, Db>, id: String, enabled: bool) -> Result<(), String> {
     state.toggle_source(&id, enabled).map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn js_extension_list(state: State<'_, Db>) -> Result<Vec<JsExtensionRow>, String> {
+    state.list_js_extensions().map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn js_extension_install_sample(state: State<'_, Db>) -> Result<(), String> {
+    let package = ext_host::sample_package().map_err(ipc_error)?;
+    state
+        .install_js_extension(&package.manifest, &package.code, "builtin")
+        .map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn js_extension_install_path(state: State<'_, Db>, path: String) -> Result<(), String> {
+    let bytes = std::fs::read(&path)
+        .map_err(|err| AppError::Extension(format!("cannot read package: {err}")).to_string())?;
+    let package = ext_host::package_from_kext(&bytes).map_err(ipc_error)?;
+    state
+        .install_js_extension(&package.manifest, &package.code, "sideloaded")
+        .map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn js_extension_remove(state: State<'_, Db>, id: String) -> Result<(), String> {
+    state.remove_js_extension(&id).map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn js_extension_test(
+    state: State<'_, Db>,
+    id: String,
+    query: String,
+) -> Result<serde_json::Value, String> {
+    let stored = state
+        .js_extension(&id)
+        .map_err(ipc_error)?
+        .ok_or_else(|| "extension is not installed".to_string())?;
+    let db = state.inner().clone();
+    let storage: Arc<dyn ExtStorage> = Arc::new(db);
+    let package = ExtPackage {
+        manifest: stored.manifest,
+        code: stored.code,
+    };
+    ext_host::run(
+        &package,
+        "search",
+        json!([query, 1]),
+        storage,
+        &ext_host::HostLimits::default(),
+    )
+    .map_err(ipc_error)
 }

@@ -12,6 +12,8 @@ Acceptance: on a clean Windows 11 VM with WebView2 present, a tester can search 
 
 QuickJS host with 5 second timeout (10 for resolve) and 64MB cap. `.kext` loader, built-in public domain sample, Sources test panel, source browse and detail view. See `docs/PLAN-JS-EXTENSIONS.md` for the full contract. Signed registry and dev tooling follow once the host is reliable.
 
+Status: host core and the Sources test panel are done. The sample returns live archive.org rows. Source browse and detail are next.
+
 Acceptance: the built-in sample installs, searches archive.org, lists episodes, resolves a stream, and the timeout, memory, host denial and storage tests pass without network access. Legacy Aniyomi metadata import stays as it is: `pkg` to id, `apk` to artifact, `sources[]` to rows with string ids preserved. See `docs/EXTENSION-API.md` for the map.
 
 ## P2: Wow polish

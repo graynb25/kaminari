@@ -1,6 +1,6 @@
 # Native JS extension host plan
 
-Status: draft for review. No host code is written yet. This document is the contract we build against.
+Status: M0, M1 and M2 are done. The host runs a real search against archive.org. M3 (source browse and detail) is next. No host code runs outside the bridge. This document is the contract we build against.
 
 ## Why this exists
 

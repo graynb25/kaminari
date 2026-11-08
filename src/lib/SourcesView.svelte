@@ -1,7 +1,23 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { registryFetch, sourceInstall, sourceList, sourceRemove } from "./api";
-  import type { Boot, InstalledSource, LegacyExtension } from "./types";
+  import {
+    jsExtensionInstallPath,
+    jsExtensionInstallSample,
+    jsExtensionList,
+    jsExtensionRemove,
+    jsExtensionTest,
+    registryFetch,
+    sourceInstall,
+    sourceList,
+    sourceRemove,
+  } from "./api";
+  import type {
+    Boot,
+    InstalledSource,
+    JsExtension,
+    JsSearchItem,
+    LegacyExtension,
+  } from "./types";
 
   let {
     boot,
@@ -22,6 +38,15 @@
   let filter = $state("");
   let busy = $state<string | null>(null);
   let limit = $state(60);
+  let jsExtensions = $state<JsExtension[]>([]);
+  let jsLoading = $state(true);
+  let jsBusy = $state<string | null>(null);
+  let jsPath = $state("");
+  let jsTestId = $state<string | null>(null);
+  let jsTestQuery = $state("Popeye");
+  let jsTestLoading = $state(false);
+  let jsTestError = $state<string | null>(null);
+  let jsTestItems = $state<JsSearchItem[]>([]);
 
   const mem = $derived(
     boot ? `${Math.round(boot.limits.extMemoryBytes / 1024 / 1024)}MB per runtime` : "Loading",
@@ -44,7 +69,90 @@
 
   onMount(() => {
     void refreshInstalled();
+    void refreshJsExtensions();
   });
+
+  async function refreshJsExtensions() {
+    jsLoading = true;
+    try {
+      jsExtensions = await jsExtensionList();
+    } catch {
+      jsExtensions = [];
+    } finally {
+      jsLoading = false;
+    }
+  }
+
+  async function installSample() {
+    jsBusy = "sample";
+    try {
+      await jsExtensionInstallSample();
+      await refreshJsExtensions();
+      notify("Installed the public domain sample extension.", "success");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`Sample install failed: ${message}`, "error");
+    } finally {
+      jsBusy = null;
+    }
+  }
+
+  async function installPath() {
+    const path = jsPath.trim();
+    if (!path) {
+      notify("Paste a path to a .kext package first.", "error");
+      return;
+    }
+    jsBusy = "path";
+    try {
+      await jsExtensionInstallPath(path);
+      jsPath = "";
+      await refreshJsExtensions();
+      notify("Installed the package as sideloaded.", "success");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`Package install failed: ${message}`, "error");
+    } finally {
+      jsBusy = null;
+    }
+  }
+
+  async function removeJs(extension: JsExtension) {
+    jsBusy = extension.id;
+    try {
+      await jsExtensionRemove(extension.id);
+      if (jsTestId === extension.id) {
+        jsTestId = null;
+        jsTestItems = [];
+        jsTestError = null;
+      }
+      await refreshJsExtensions();
+      notify(`Removed ${extension.name}.`, "success");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`Remove failed: ${message}`, "error");
+    } finally {
+      jsBusy = null;
+    }
+  }
+
+  async function runJsTest(extension: JsExtension) {
+    jsTestId = extension.id;
+    jsTestLoading = true;
+    jsTestError = null;
+    jsTestItems = [];
+    try {
+      const result = await jsExtensionTest(extension.id, jsTestQuery.trim());
+      jsTestItems = result.items ?? [];
+      if (jsTestItems.length === 0) {
+        jsTestError = "The source answered, but returned no rows.";
+      }
+    } catch (e) {
+      jsTestError = e instanceof Error ? e.message : String(e);
+    } finally {
+      jsTestLoading = false;
+    }
+  }
 
   async function refreshInstalled() {
     try {
@@ -114,13 +222,201 @@
 <div class="p-6 md:p-8 max-w-[1440px] mx-auto">
   <div class="flex items-baseline gap-3 mb-1">
     <h1 class="text-[28px] font-bold" style="font-family: var(--font-display);">Sources</h1>
-    <span class="text-sm" style="color: var(--paper-500);">Aniyomi registry, metadata only</span>
+    <span class="text-sm" style="color: var(--paper-500);">Native host and Aniyomi metadata</span>
   </div>
   <p class="text-sm mb-6 max-w-3xl leading-relaxed" style="color: var(--paper-300);">
-    The Aniyomi ecosystem publishes a signed catalogue as JSON. Paste a registry URL, inspect what
-    each package covers, and add it to your catalog. Kaminari does not download APKs or run package
-    code yet. The QuickJS host lands in P1.
+    Kaminari runs its own JavaScript packages in a QuickJS host. The Aniyomi registry below is
+    metadata only, because those packages are Android APKs. Neither path bundles a source.
   </p>
+
+  <section class="mb-10" aria-label="Native JavaScript extensions">
+    <div class="flex flex-wrap items-baseline gap-3 mb-3">
+      <h2 class="text-xl font-semibold" style="font-family: var(--font-display);">
+        Native extensions
+      </h2>
+      <span class="text-sm" style="color: var(--paper-500);">QuickJS host</span>
+      <span class="text-xs ml-auto" style="color: var(--paper-500); font-family: var(--font-mono);">
+        5s calls, 64MB, 1MB storage
+      </span>
+    </div>
+    <p class="text-sm mb-4 max-w-3xl leading-relaxed" style="color: var(--paper-300);">
+      Each call gets a fresh runtime. Packages get an HTTPS allowlist, a blocking fetch, an HTML
+      selector, SHA-256, namespaced storage and a logger. No filesystem, no child process, no
+      environment. The sample reads public domain animation from archive.org.
+    </p>
+
+    <div
+      class="p-4 rounded-2xl mb-4"
+      style="background: var(--void-900); border: 1px solid var(--line);"
+    >
+      <div class="flex flex-col sm:flex-row gap-2">
+        <button
+          class="btn-primary px-4 py-2 text-sm shrink-0"
+          disabled={jsBusy === "sample"}
+          onclick={() => void installSample()}
+        >
+          {jsBusy === "sample" ? "Installing." : "Install sample"}
+        </button>
+        <input
+          bind:value={jsPath}
+          placeholder="Path to a .kext package"
+          class="flex-1 h-9 rounded-lg px-3 text-sm outline-none"
+          style="background: var(--void-800); border: 1px solid var(--line); color: var(--paper-50); font-family: var(--font-mono);"
+          aria-label="Path to a .kext package"
+          spellcheck="false"
+        />
+        <button
+          class="btn-ghost px-4 py-2 text-sm shrink-0"
+          disabled={jsBusy === "path"}
+          onclick={() => void installPath()}
+        >
+          {jsBusy === "path" ? "Installing." : "Install from path"}
+        </button>
+      </div>
+      <p class="text-xs mt-2 leading-relaxed" style="color: var(--paper-500);">
+        No registry yet. Every package shows its hosts and trust level. Unsigned packages are
+        sideloaded and stay local.
+      </p>
+    </div>
+
+    {#if jsLoading}
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {#each Array(2) as _}
+          <div class="h-[132px] rounded-2xl shimmer" aria-hidden="true"></div>
+        {/each}
+      </div>
+    {:else if jsExtensions.length === 0}
+      <div
+        class="rounded-2xl px-5 py-6 text-sm"
+        style="background: var(--void-900); border: 1px dashed var(--line); color: var(--paper-300);"
+      >
+        No native extensions installed. Install the sample to run a real search through the host.
+      </div>
+    {:else}
+      <div class="space-y-3">
+        {#each jsExtensions as extension (extension.id)}
+          <article
+            class="p-4 rounded-2xl"
+            style="background: var(--void-900); border: 1px solid var(--line);"
+          >
+            <div class="flex items-start gap-3">
+              <div
+                class="w-10 h-10 shrink-0 grid place-items-center rounded-xl text-xs font-bold"
+                style="background: var(--void-800); border: 1px solid var(--line); color: var(--volt-300); font-family: var(--font-mono);"
+              >
+                JS
+              </div>
+              <div class="min-w-0 flex-1">
+                <h3 class="text-sm font-semibold">{extension.name}</h3>
+                <p
+                  class="text-[11px] mt-0.5 truncate"
+                  style="color: var(--paper-500); font-family: var(--font-mono);"
+                  title={extension.id}
+                >
+                  {extension.id} · v{extension.version} · {extension.trust}
+                </p>
+                <div class="flex flex-wrap gap-1.5 mt-2">
+                  {#each extension.hosts as host}
+                    <span class="chip text-[10px] px-2 py-0.5">{host}</span>
+                  {/each}
+                </div>
+              </div>
+              <button
+                class="btn-ghost px-2.5 py-1 text-xs shrink-0"
+                disabled={jsBusy === extension.id}
+                onclick={() => void removeJs(extension)}
+              >
+                Remove
+              </button>
+            </div>
+
+            <form
+              class="flex flex-col sm:flex-row gap-2 mt-3"
+              onsubmit={(event) => {
+                event.preventDefault();
+                void runJsTest(extension);
+              }}
+            >
+              <input
+                bind:value={jsTestQuery}
+                placeholder="Try Popeye or Betty Boop"
+                class="flex-1 h-8 rounded-lg px-3 text-sm outline-none"
+                style="background: var(--void-800); border: 1px solid var(--line); color: var(--paper-50);"
+                aria-label="Test search on {extension.name}"
+              />
+              <button
+                type="submit"
+                class="btn-primary px-3 py-1.5 text-xs shrink-0"
+                disabled={jsTestLoading}
+              >
+                {jsTestLoading && jsTestId === extension.id ? "Running." : "Test search"}
+              </button>
+            </form>
+
+            {#if jsTestId === extension.id}
+              <div class="mt-3" aria-live="polite">
+                {#if jsTestLoading}
+                  <p class="text-xs" style="color: var(--paper-500);">
+                    Running a fresh QuickJS runtime.
+                  </p>
+                {:else if jsTestError}
+                  <div
+                    class="rounded-lg px-3 py-2 text-xs"
+                    style="background: rgb(248 113 113 / 0.1); border: 1px solid rgb(248 113 113 / 0.35); color: var(--paper-50);"
+                    role="alert"
+                  >
+                    {jsTestError}
+                  </div>
+                {:else}
+                  <div class="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
+                    {#each jsTestItems as item (item.id)}
+                      <div
+                        class="flex items-center gap-2 px-2 py-1.5 rounded-lg"
+                        style="background: var(--void-800); border: 1px solid var(--line);"
+                      >
+                        <div
+                          class="w-7 h-10 shrink-0 rounded overflow-hidden"
+                          style="background: var(--void-700);"
+                        >
+                          {#if item.cover}
+                            <img
+                              src={item.cover}
+                              alt=""
+                              loading="lazy"
+                              class="w-full h-full object-cover"
+                            />
+                          {/if}
+                        </div>
+                        <p class="text-xs font-semibold flex-1 truncate">{item.title}</p>
+                        <span
+                          class="text-[10px]"
+                          style="color: var(--paper-500); font-family: var(--font-mono);"
+                        >
+                          {item.year ?? ""}
+                        </span>
+                      </div>
+                    {/each}
+                  </div>
+                  <details class="mt-2">
+                    <summary class="text-[11px] cursor-pointer" style="color: var(--paper-500);">
+                      Raw JSON
+                    </summary>
+                    <pre
+                      class="mt-1 p-2 rounded-lg text-[10px] overflow-auto max-h-48"
+                      style="background: var(--void-950); border: 1px solid var(--line); color: var(--paper-300); font-family: var(--font-mono);">{JSON.stringify(
+                        jsTestItems,
+                        null,
+                        2,
+                      )}</pre>
+                  </details>
+                {/if}
+              </div>
+            {/if}
+          </article>
+        {/each}
+      </div>
+    {/if}
+  </section>
 
   <div
     class="p-4 rounded-2xl mb-6"

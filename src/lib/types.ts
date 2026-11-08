@@ -83,6 +83,31 @@ export type InstalledSource = {
   nsfw: boolean;
 };
 
+export type JsExtension = {
+  id: string;
+  name: string;
+  version: string;
+  apiVersion: string;
+  enabled: boolean;
+  trust: string;
+  installedAt: number;
+  hosts: string[];
+};
+
+export type JsSearchItem = {
+  id: string;
+  title: string;
+  cover?: string | null;
+  year?: number | null;
+  score?: number | null;
+  episodes?: number | null;
+};
+
+export type JsSearchResult = {
+  items: JsSearchItem[];
+  hasNext?: boolean;
+};
+
 export type HistoryItem = {
   media: Media;
   episode: number;
