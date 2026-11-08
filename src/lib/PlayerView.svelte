@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import type HlsType from "hls.js";
   import Icon from "./Icon.svelte";
+  import { playbackUrl } from "./streamProxy";
   import type { JsStream } from "./types";
 
   let {
@@ -49,6 +50,8 @@
 
   const subtitles = $derived(stream.subtitles ?? []);
   const hasHeaders = $derived(Object.keys(stream.headers ?? {}).length > 0);
+  const playbackSource = $derived(playbackUrl(stream));
+  const proxied = $derived(Boolean(stream.proxiedUrl));
   const streamHost = $derived.by(() => {
     try {
       return new URL(stream.url).host;
@@ -239,16 +242,16 @@
     error = null;
     ended = false;
     buffering = true;
-    const isHls = stream.type === "hls" || /\.m3u8(\?|$)/i.test(stream.url);
+    const isHls = stream.type === "hls" || /\.m3u8(\?|$)/i.test(playbackSource);
     if (!isHls) {
-      video.src = stream.url;
+      video.src = playbackSource;
     } else {
       try {
         const { default: Hls } = await import("hls.js");
         if (!video) return;
         if (Hls.isSupported()) {
           hls = new Hls({ enableWorker: true });
-          hls.loadSource(stream.url);
+          hls.loadSource(playbackSource);
           hls.attachMedia(video);
           hls.on(Hls.Events.ERROR, (_event, data) => {
             if (data.fatal) {
@@ -257,7 +260,7 @@
             }
           });
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-          video.src = stream.url;
+          video.src = playbackSource;
         } else {
           buffering = false;
           error = "HLS is not supported in this WebView. Open it in mpv.";
@@ -446,6 +449,7 @@
       `Fill: ${fill ? "on" : "off"}`,
       `Subtitles: ${activeSubtitle}`,
       `Headers: ${hasHeaders ? "requested" : "none"}`,
+      `Proxied: ${proxied ? "yes" : "no"}`,
     ].filter(Boolean);
     try {
       await navigator.clipboard.writeText(lines.join("\n"));
@@ -594,6 +598,7 @@
         <div class="flex justify-between gap-3"><dt style="color: var(--paper-500);">Fill</dt><dd>{fill ? "on" : "off"}</dd></div>
         <div class="flex justify-between gap-3"><dt style="color: var(--paper-500);">Subtitles</dt><dd>{activeSubtitle}</dd></div>
         <div class="flex justify-between gap-3"><dt style="color: var(--paper-500);">Headers</dt><dd>{hasHeaders ? "requested" : "none"}</dd></div>
+        <div class="flex justify-between gap-3"><dt style="color: var(--paper-500);">Proxied</dt><dd>{proxied ? "yes" : "no"}</dd></div>
       </dl>
       <button class="btn-ghost w-full mt-3 py-1.5 text-[11px]" onclick={() => void copyDiagnostics()}>
         <Icon name="copy" size={12} />

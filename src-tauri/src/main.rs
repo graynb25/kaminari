@@ -8,6 +8,7 @@ mod db;
 mod error;
 mod ext_host;
 mod player;
+mod proxy;
 mod registry;
 
 use tauri::Manager;
@@ -26,6 +27,30 @@ fn main() {
             let db_path = data_dir.join("kaminari.db");
             let database = db::Db::new(db_path.to_string_lossy().as_ref())?;
             app.manage(database);
+
+            let (proxy, server) = proxy::ProxyStore::bind();
+            if let Some((listener, router)) = server {
+                let guard = proxy.clone();
+                tauri::async_runtime::spawn(async move {
+                    let listener = match tokio::net::TcpListener::from_std(listener) {
+                        Ok(listener) => listener,
+                        Err(err) => {
+                            tracing::error!(error = %err, "proxy: listener could not start");
+                            guard.disable();
+                            return;
+                        }
+                    };
+                    if let Err(err) = axum::serve(listener, router).await {
+                        tracing::error!(error = %err, "proxy: server stopped");
+                        guard.disable();
+                    }
+                });
+            }
+            let sweeper = proxy.clone();
+            tauri::async_runtime::spawn(async move {
+                sweeper.sweep_loop().await;
+            });
+            app.manage(proxy);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -57,6 +82,9 @@ fn main() {
             commands::js_extension_detail,
             commands::js_extension_episodes,
             commands::js_extension_resolve,
+            commands::proxy_register,
+            commands::proxy_revoke,
+            commands::proxy_status,
             commands::player_play,
             commands::player_stop,
             commands::player_status,

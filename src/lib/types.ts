@@ -135,6 +135,27 @@ export type JsStream = {
   quality?: string | null;
   headers?: Record<string, string> | null;
   subtitles?: { lang: string; url: string; label?: string }[] | null;
+  proxiedUrl?: string | null;
+  proxyId?: string | null;
+};
+
+export type ProxyStatus = {
+  port: number;
+  entries: number;
+  enabled: boolean;
+};
+
+export type ProxyRegistration = {
+  proxyUrl: string;
+  opaqueId: string;
+  expiresInSec: number;
+  kind: string;
+};
+
+export type ProxyStreamInput = {
+  url: string;
+  kind: string;
+  headers?: Record<string, string> | null;
 };
 
 export type PlaybackSubtitle = {

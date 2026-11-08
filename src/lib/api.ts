@@ -18,6 +18,9 @@ import type {
   PlaybackInfo,
   PlaybackRequest,
   PlayerStatus,
+  ProxyRegistration,
+  ProxyStatus,
+  ProxyStreamInput,
   SourceLibraryItem,
   SourceProgress,
   SourceContinueItem,
@@ -136,6 +139,21 @@ export function jsExtensionEpisodes(id: string, showId: string): Promise<JsEpiso
 
 export function jsExtensionResolve(id: string, episodeId: string): Promise<JsStream[]> {
   return invoke<JsStream[]>("js_extension_resolve", { id, episodeId });
+}
+
+export function proxyRegister(
+  extensionId: string,
+  stream: ProxyStreamInput,
+): Promise<ProxyRegistration> {
+  return invoke<ProxyRegistration>("proxy_register", { extensionId, stream });
+}
+
+export function proxyRevoke(opaqueId: string): Promise<void> {
+  return invoke<void>("proxy_revoke", { opaqueId });
+}
+
+export function proxyStatus(): Promise<ProxyStatus> {
+  return invoke<ProxyStatus>("proxy_status");
 }
 
 export function playerPlay(request: PlaybackRequest): Promise<PlaybackInfo> {

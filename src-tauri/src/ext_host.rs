@@ -168,7 +168,7 @@ impl Manifest {
         Ok(())
     }
 
-    fn allowed_rules(&self) -> AppResult<Vec<HostRule>> {
+    pub(crate) fn allowed_rules(&self) -> AppResult<Vec<HostRule>> {
         let mut rules = Vec::new();
         for raw in &self.permissions.hosts {
             if let Some(rule) = HostRule::parse(raw) {
@@ -264,13 +264,13 @@ struct HostContext {
 }
 
 #[derive(Debug, Clone)]
-struct HostRule {
+pub(crate) struct HostRule {
     host: String,
     path_prefix: String,
 }
 
 impl HostRule {
-    fn parse(raw: &str) -> Option<Self> {
+    pub(crate) fn parse(raw: &str) -> Option<Self> {
         let trimmed = raw.trim().trim_end_matches('*');
         let url = reqwest::Url::parse(trimmed).ok()?;
         if url.scheme() != "https" {
@@ -288,7 +288,7 @@ impl HostRule {
         })
     }
 
-    fn allows(&self, url: &reqwest::Url) -> bool {
+    pub(crate) fn allows(&self, url: &reqwest::Url) -> bool {
         url.scheme() == "https"
             && url
                 .host_str()

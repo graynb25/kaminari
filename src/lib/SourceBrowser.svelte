@@ -9,11 +9,15 @@
     jsExtensionResolve,
     jsExtensionTest,
     playerPlay,
+    proxyRegister,
+    proxyRevoke,
+    proxyStatus,
     sourceLibraryAdd,
     sourceLibraryRemove,
     sourceProgressGet,
     sourceProgressSet,
   } from "./api";
+  import { proxyFlagEnabled, shouldProxy } from "./streamProxy";
   import type {
     JsEpisode,
     JsSearchItem,
@@ -60,6 +64,7 @@
   let closeButton: HTMLButtonElement | null = $state(null);
   let previousFocus: HTMLElement | null = null;
   let autoPlayed = false;
+  let progressSave: Promise<void> = Promise.resolve();
 
   const inSourceLibrary = $derived(
     selected
@@ -243,7 +248,16 @@
   }
 
   async function closePlayer() {
+    const proxyId = activePlayback?.stream.proxyId ?? null;
     activePlayback = null;
+    await progressSave;
+    if (proxyId) {
+      try {
+        await proxyRevoke(proxyId);
+      } catch {
+        // Revoke is best effort. The entry also expires on its own.
+      }
+    }
     if (!selected) return;
     try {
       progress = await sourceProgressGet(extension.id, selected.id);
@@ -281,7 +295,27 @@
   }
 
   async function playStream(stream: JsStream, episode: JsEpisode) {
-    activePlayback = { stream, episode, startSec: resumeFor(episode.id) };
+    let prepared = stream;
+    if (shouldProxy(stream) && proxyFlagEnabled()) {
+      try {
+        const status = await proxyStatus();
+        if (status.enabled) {
+          const registered = await proxyRegister(extension.id, {
+            url: stream.url,
+            kind: stream.type,
+            headers: stream.headers ?? null,
+          });
+          prepared = {
+            ...stream,
+            proxiedUrl: registered.proxyUrl,
+            proxyId: registered.opaqueId,
+          };
+        }
+      } catch {
+        notify("The protected stream could not be proxied. Trying it directly.", "info");
+      }
+    }
+    activePlayback = { stream: prepared, episode, startSec: resumeFor(episode.id) };
   }
 
   async function playEpisode(episode: JsEpisode) {
@@ -713,8 +747,9 @@
       ? ` Â· ${activePlayback.episode.title}`
       : ''}"
     startSec={activePlayback.startSec}
-    onProgress={(position, duration, watched) =>
-      void saveProgress(position, duration, watched)}
+    onProgress={(position, duration, watched) => {
+      progressSave = saveProgress(position, duration, watched);
+    }}
     onClose={() => void closePlayer()}
     onOpenExternal={() =>
       void openExternal(activePlayback!.stream, activePlayback!.episode)}

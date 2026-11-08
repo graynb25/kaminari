@@ -13,6 +13,7 @@ use crate::db::{
 use crate::error::AppError;
 use crate::ext_host::{self, ExtPackage, ExtStorage};
 use crate::player::{self, PlaybackInfo, PlaybackRequest, PlayerState, PlayerStatus};
+use crate::proxy::{ProxyStatus, ProxyStore, ProxyStreamInput, ProxyUrl};
 use crate::registry::{fetch_index, LegacyExtension};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -268,6 +269,31 @@ fn run_js_extension(db: &Db, id: &str, op: &str, args: Value) -> Result<Value, S
         &ext_host::HostLimits::default(),
     )
     .map_err(ipc_error)
+}
+
+#[tauri::command]
+pub async fn proxy_register(
+    state: State<'_, ProxyStore>,
+    db: State<'_, Db>,
+    extension_id: String,
+    stream: ProxyStreamInput,
+) -> Result<ProxyUrl, String> {
+    let stored = db
+        .js_extension(&extension_id)
+        .map_err(ipc_error)?
+        .ok_or_else(|| "extension is not installed".to_string())?;
+    let allowed = stored.manifest.allowed_rules().map_err(ipc_error)?;
+    state.register(&extension_id, &stream, allowed).await
+}
+
+#[tauri::command]
+pub fn proxy_revoke(state: State<'_, ProxyStore>, opaque_id: String) -> Result<(), String> {
+    state.revoke(&opaque_id)
+}
+
+#[tauri::command]
+pub fn proxy_status(state: State<'_, ProxyStore>) -> Result<ProxyStatus, String> {
+    Ok(state.status())
 }
 
 #[tauri::command]

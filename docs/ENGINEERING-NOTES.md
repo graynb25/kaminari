@@ -118,6 +118,20 @@ Context. The app is a player and extension host with no shipped content. The use
 
 What we wrote. `docs/TERMS.md` describes the app, the user's responsibility, third-party extensions, no warranty, liability limits and copyright complaints. `docs/PRIVACY.md` describes the local SQLite and WebView data, the direct AniList, registry, extension and stream requests, no telemetry, deletion paths and contact. Both link from the README.
 
+## 2026-11-08 Loopback proxy for protected MP4
+
+Context. MP4 streams that require `Referer`, `User-Agent` or a seed `Cookie` fail in the WebView because a `<video>` element cannot set request headers. External mpv already carries them through `--http-header-fields`. P0 adds a loopback path for the in-app player without widening the extension sandbox.
+
+What we shipped. `src-tauri/src/proxy.rs` binds `127.0.0.1` on the first free port in `39321` to `39328`. If all eight are busy the server stays off and `proxy_status.enabled` is false. Entries live in memory only: 128 bit opaque id, 128 bit token, 2 hour idle TTL, 4 hour absolute TTL, 64 entry cap, 60 second sweep. `GET` and `HEAD /s/{id}/file` forward `Range` and relay `206`, `Content-Range`, `Content-Length` and `Accept-Ranges`. A 200 response to a range request is converted by skipping at most 16 MB, then a 206 is synthesized. A seek beyond that returns 502 instead of reading an unbounded body. Upstream bodies stream through 64 KB chunks with no full body buffer.
+
+Security. Register checks the URL against the extension manifest host allowlist, then resolves DNS and blocks loopback, private, link-local, multicast, unspecified and `169.254.169.254` addresses. Each redirect is resolved and checked again, capped at 3 hops, and non http(s) targets are refused. The client pins the checked addresses with `resolve_to_addrs`. Headers are limited to `User-Agent`, `Referer`, `Origin`, `Cookie` (the seed value until the jar lands), `Authorization` (same origin only), `Accept` and `Accept-Language`, with CR, LF, NUL, count and byte caps. CSP now lists the exact eight loopback origins in `connect-src` and `media-src`; a Rust test parses `tauri.conf.json` and fails on a missing origin, an extra loopback origin or a wildcard.
+
+Frontend. `shouldProxy` is true only for MP4 with non-empty headers. HLS stays direct and falls back to mpv. The `kaminari.proxy` localStorage flag defaults to off and `proxy_status.enabled` must also be true. `SourceBrowser` registers before play and revokes after the close progress save. Copy still uses the upstream URL. Player diagnostics show `Proxied: yes` or `no` and never include the token.
+
+What we measured. On this machine the release `kaminari.exe` grew from 18,778,624 bytes at `af15951` to 19,529,216 bytes with P0, a delta of 750,592 bytes (733.0 KiB, 4.0 percent). The lock gained five crates: `axum`, `axum-core`, `httpdate`, `matchit` and `serde_path_to_error`. `futures-util` and `tokio-util` were already in the tree; both are direct dependencies now for the 64 KB stream wrapper. All 35 Rust tests pass in 0.10s, including 11 proxy tests for tokens, headers, ranges, the skip cap, redirects, SSRF and CSP. The installer size was not measured in this pass.
+
+What we did not do. No HLS manifest or segment rewrite, no cookie jar or `Set-Cookie` capture, no live or master playlists, no subtitle proxy, and no Settings switch. `axum` needs the `tokio` feature for `axum::serve`, so the feature list is `http1`, `json`, `query` plus `tokio`. P1 starts with `/s/{id}/manifest.m3u8` and `/s/{id}/seg/{child}`.
+
 What we did not claim. We did not write that the app is "for educational purposes" or that it cannot facilitate infringement. A label is not a legal defense. The documents describe facts and prohibit unlawful use. The strongest posture remains: no content, no source list, no APK execution, sandboxed extensions, user-supplied sources.
 
 What is missing. `[[CONTACT_EMAIL]]`, `[[JURISDICTION]]` and `[[REPOSITORY_URL]]` are deliberate placeholders. Fill them before publishing, and have a qualified lawyer review the documents for the distribution jurisdiction. This is not legal advice.
