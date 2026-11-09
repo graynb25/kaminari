@@ -378,7 +378,7 @@
               <dl>
                 <div class="flex flex-col sm:flex-row sm:items-baseline gap-1 py-2.5" style="border-top: 1px solid var(--line);">
                   <dt class="text-sm sm:w-40 shrink-0" style="color: var(--paper-450);">Loopback proxy</dt>
-                  <dd class="text-sm break-all" style="color: var(--paper-50);">
+                  <dd class="text-sm wrap-break-word min-w-0" style="color: var(--paper-50);">
                     {#if proxy === null}
                       Checking
                     {:else if proxy.enabled}
@@ -406,7 +406,7 @@
                     style={position > 0 ? "border-top: 1px solid var(--line);" : ""}
                   >
                     <dt class="text-sm sm:w-40 shrink-0" style="color: var(--paper-450);">{row.label}</dt>
-                    <dd class="text-sm break-all" style="color: var(--paper-50);">{rowValue(row.label, row.value)}</dd>
+                    <dd class="text-sm wrap-break-word min-w-0" style="color: var(--paper-50);">{rowValue(row.label, row.value)}</dd>
                   </div>
                 {/each}
               </dl>
