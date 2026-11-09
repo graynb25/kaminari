@@ -11,6 +11,7 @@ mod mpv_embed;
 mod player;
 mod proxy;
 mod registry;
+mod tray;
 
 use tauri::Manager;
 
@@ -54,6 +55,11 @@ fn main() {
                 sweeper.sweep_loop().await;
             });
             app.manage(proxy);
+
+            if let Err(err) = tray::setup(app.handle()) {
+                tracing::warn!(error = %err, "tray: setup failed");
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
