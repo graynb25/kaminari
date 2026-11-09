@@ -4,6 +4,12 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.17.1 - 2026-11-09
+
+- Styles: base and component CSS moved into cascade layers, with 36 deliberate overrides and reduced motion kept unlayered
+- Styles: utilities now win where the markup asks, so the online pill hides below 1024, long stat values truncate and buttons use their declared text size
+- Version: bump to 0.17.1
+
 ## 0.17.0 - 2026-11-09
 
 - Settings: sticky anchor rail at 1024 and wider, chips below, active section tracking and scroll margins

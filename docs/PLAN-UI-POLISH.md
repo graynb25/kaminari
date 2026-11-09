@@ -1,6 +1,6 @@
 # UI polish plan
 
-Status: phase 1, phase 2, and phase 3 except cascade layers shipped. Cascade layers remain. Derived from a full read of Papyrus (one 1,136-line Tailwind 4 stylesheet, 86 Blade views) and Kaminari (24 Svelte components, 2,219 lines of `app.css`) on 2026-11-08. The conclusion is refinement, not a port. Kaminari already carries a close descendant of the same component grammar: poster card, hero, shelf, glass, toast, stat card, empty state, legal markdown, ranges and player surfaces.
+Status: phase 1, phase 2 and phase 3 shipped. Derived from a full read of Papyrus (one 1,136-line Tailwind 4 stylesheet, 86 Blade views) and Kaminari (24 Svelte components, 2,219 lines of `app.css`) on 2026-11-08. The conclusion is refinement, not a port. Kaminari already carries a close descendant of the same component grammar: poster card, hero, shelf, glass, toast, stat card, empty state, legal markdown, ranges and player surfaces.
 
 The rule for this pass: finish the atoms and states, do not redesign the identity. Keep Sora, Inter, JetBrains Mono, the void/volt/paper palette, the 1440px container, the 12/16/20/24 radius scale and the 72px rail.
 
@@ -58,9 +58,9 @@ Gate: the same screenshots plus a 500 poster scroll check. No layout shift when 
 
 ## Phase 3: structure, 1 to 2 weeks
 
-Shipped: Modal, Callout, ProgressBar, Settings navigation and FatalState. Open: cascade layers.
+Shipped: Modal, Callout, ProgressBar, Settings navigation, FatalState and cascade layers.
 
-- Move base and component CSS into `@layer base` and `@layer components`, keeping reduced motion and deliberate overrides unlayered. Move declarations, do not rewrite values. This is the highest risk item and needs the visual gate.
+- Move base and component CSS into `@layer base` and `@layer components`, keeping reduced motion and deliberate overrides unlayered. Move declarations, do not rewrite values. This is the highest risk item and needs the visual gate. Shipped: 260 blocks moved, 36 kept unlayered, 14 states checked.
 - `Modal.svelte` owning backdrop, panel material, focus trap, Escape, focus restore and the overlay lock. Migrate Legal, Licenses, Shortcuts and the palette shell. Keep SourceBrowser full screen but reuse the focus logic.
 - `Callout.svelte` with info, success, warning and danger tones, plus `ProgressBar.svelte` with `role="progressbar"` and a transform based fill. Migrate the offline banner, library refresh, source registry, source search, resolve and install states.
 - Settings anchor rail at `lg`, horizontal chips below, with `scroll-margin-top` and `aria-current="location"`.

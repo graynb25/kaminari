@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-09 Cascade layers
+
+Context. `src/app.css` was unlayered, so base element rules and component classes silently beat Tailwind utilities. `hidden lg:inline-flex` never hid the online pill, `truncate` never truncated, and `text-xs` never set a button size.
+
+What we shipped. Moved 260 rule blocks into `@layer base` and `@layer components`: 16 base and 244 components. Kept 36 blocks unlayered: focus rings, the overlay lock, the daylight hero, scrim and rank overrides, pointer and touch fallbacks, player route state, toast offset, text-stroke fallback, and the three reduced-motion blocks. Selector text, property order and values are unchanged.
+
+What we measured. 316 rule blocks before and after, with none missing and none added. 14 rendered states at 1280, 1024 and 900 in both themes diffed against the 0.17.0 baseline. The visible changes are the intended utility wins: the online pill hides below 1024, long stat values truncate, and buttons take their declared text size. No overflow, clipping or page errors. Reduced motion reports a 0s page animation and no stagger or kenburns, a focused button keeps its 2px violet outline, and an open dialog locks `#content` to `overflow: hidden`. The palette, shortcuts dialog, source browser and in-app player were checked separately.
+
+What we did not do. No values were rewritten, no `!important` was added, and P1 packaging still waits on lawyer sign-off.
+
 ## 2026-11-09 Settings navigation and FatalState
 
 Context. Settings was one long page with no section navigation, and an app or view failure had no composed surface beyond a toast or a blank region.
