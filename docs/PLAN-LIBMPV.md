@@ -260,7 +260,13 @@ Approved on 2026-11-08. These replace the open questions.
 
 ### P0 dev artifacts, not committed
 
-The spike keeps both DLLs in `src-tauri/lib/`, which is gitignored. Nothing is added to `bundle.resources` in P0.
+The spike keeps both DLLs in `src-tauri/lib/`, which is gitignored. The plugin searches only the exe directory and exe/lib, so before running the harness copy them into the debug target with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/prepare-libmpv-dev.ps1
+```
+
+Re-run that after `cargo clean` or a fresh target directory. Nothing is added to `bundle.resources` in P0.
 
 | Component | Version | URL | Archive SHA-256 | DLL SHA-256 | Size |
 |---|---|---|---|---|---|

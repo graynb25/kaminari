@@ -118,6 +118,16 @@ Context. The app is a player and extension host with no shipped content. The use
 
 What we wrote. `docs/TERMS.md` describes the app, the user's responsibility, third-party extensions, no warranty, liability limits and copyright complaints. `docs/PRIVACY.md` describes the local SQLite and WebView data, the direct AniList, registry, extension and stream requests, no telemetry, deletion paths and contact. Both link from the README.
 
+## 2026-11-08 Embedded libmpv P0 spike
+
+Context. The WebView player cannot cover HEVC, ASS and HDR reliably. P0 had to prove the native surface, compositing and fallback before any packaging or license commitment.
+
+What we shipped. A default-off `kaminari.libmpv` flag, `MpvView`, typed `mpv_embed` commands with a fixed intent allowlist, a dev harness at `?mpvHarness=1`, gitignored DLLs in `src-tauri/lib`, and `scripts/prepare-libmpv-dev.ps1` to copy them into the debug target. PlayerView remains the default and the app stays opaque outside the player route.
+
+What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscreen: video visible under the glass bars, diagnostics and error panel. First frame was 1.82 and 1.94 s for the archive.org Popeye MP4, 0.59 s for a 10 s MP4 and 0.23 s for local 1080p 10-bit HEVC. HEVC used `hevc` and `hwdec-current=d3d11va`; CPU was 0.5 percent of the machine, GPU video 3.5 percent average and 10.6 percent peak. With the DLLs missing, SourceBrowser mounted PlayerView, showed the fallback toast and played. Two open and close cycles left `activeLabel` null. DLLs are 101,853,696 and 391,680 bytes uncompressed.
+
+What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. No license texts or source offer, no installer delta, no clean install or update test. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected HLS stays on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
+
 ## 2026-11-08 Modal, Callout and ProgressBar atoms
 
 Context. Each dialog carried its own focus trap, Escape handling, overlay lock, panel material and scroll shell. Callouts and progress bars were hand rolled with different tones and widths.

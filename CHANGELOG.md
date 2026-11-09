@@ -4,6 +4,8 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+- Dev: embedded libmpv P0 spike behind the default-off `kaminari.libmpv` flag, with a dev harness and gitignored DLLs
+
 ## 0.16.0 - 2026-11-08
 
 - UI: shared Modal with focus trap, Escape, focus restore and one overlay lock for legal, licenses, shortcuts and palette
