@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import BrandMark from "./BrandMark.svelte";
   import Icon from "./Icon.svelte";
+  import { redactSecrets } from "./redact";
 
   let {
     code,
@@ -32,7 +33,7 @@
       `Code: ${code}`,
       `Version: ${__APP_VERSION__}`,
       `Time: ${new Date().toISOString()}`,
-      `Message: ${detail ?? message}`,
+      `Message: ${redactSecrets(detail ?? message)}`,
       "Note: tokens and secrets are never included.",
     ];
     return lines.join("\n");
@@ -58,7 +59,7 @@
     <p class="fatal-body">{message}</p>
     <p class="fatal-code mono" aria-label="Error code">{code}</p>
     {#if detail}
-      <p class="fatal-detail">{detail}</p>
+      <p class="fatal-detail">{redactSecrets(detail)}</p>
     {/if}
     <div class="fatal-actions">
       {#if onRetry}
