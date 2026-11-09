@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Base layer: fonts, tokens, resets, base type and scrollbars. */
+@layer base {
+
 /* Bundled so the desktop app keeps its voice offline. Latin and Latin Ext only.
    Japanese titles fall back to the OS JP face until a subset ships. */
 @font-face {
@@ -378,15 +381,35 @@ button:disabled {
   opacity: 0.48;
 }
 
-:focus-visible {
-  outline: 2px solid var(--volt-400);
-  outline-offset: 2px;
-}
-
 ::selection {
   background: var(--selection-bg);
   color: var(--text-1);
 }
+
+/* Scrollbar: styled, keyboard friendly */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 999px;
+  border: 2px solid var(--scroll-border);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+  border-color: var(--scroll-border);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+}
+
+/* Component layer: named classes. Tailwind utilities win over these by design. */
+@layer components {
 
 /* Atmosphere: fixed layers behind the app. Content sits above them. */
 .app-atmosphere {
@@ -759,10 +782,6 @@ button:disabled {
   }
 }
 
-body[data-overlay] #content {
-  overflow: hidden;
-}
-
 .modal-in {
   animation: modalIn 320ms var(--ease-out) both;
 }
@@ -833,12 +852,6 @@ body[data-overlay] #content {
 .stagger-grid > *:nth-child(17) { animation-delay: 352ms; }
 .stagger-grid > *:nth-child(18) { animation-delay: 374ms; }
 .stagger-grid > *:nth-child(n + 19) { animation: none; }
-
-@media (prefers-reduced-motion: reduce) {
-  .stagger-grid > * {
-    animation: none !important;
-  }
-}
 
 /* Title bar */
 .titlebar {
@@ -1305,58 +1318,6 @@ body[data-overlay] #content {
   box-shadow: 0 1px 0 var(--accent-wash-strong), 0 28px 60px -28px var(--accent-shadow-strong);
 }
 
-/* Daylight hero: the image stays, the left becomes a bright magazine spread. */
-[data-theme="light"] .hero-shell::after {
-  box-shadow: inset 0 -90px 120px -70px rgb(246 247 252 / 0.95);
-}
-
-[data-theme="light"] .hero-scrim {
-  background:
-    linear-gradient(90deg, #f8f9fd 0%, rgb(248 249 253 / 0.97) 27%, rgb(248 249 253 / 0.74) 52%, rgb(248 249 253 / 0.12) 78%, transparent 100%),
-    linear-gradient(0deg, var(--void-950) 1%, rgb(248 249 253 / 0.62) 20%, transparent 58%),
-    linear-gradient(180deg, rgb(248 249 253 / 0.48), transparent 32%);
-}
-
-[data-theme="light"] .hero-title {
-  text-shadow: 0 2px 30px rgb(255 255 255 / 0.45);
-}
-
-[data-theme="light"] .hero-meta-item {
-  background: rgb(255 255 255 / 0.62);
-  border-color: var(--line);
-  color: var(--text-2);
-}
-
-[data-theme="light"] .hero-meta-item.is-score {
-  background: var(--accent-wash);
-  border-color: var(--line-volt);
-  color: var(--volt-200);
-}
-
-[data-theme="light"] .hero-counter {
-  color: var(--text-4);
-}
-
-[data-theme="light"] .hero-dot {
-  background: rgb(24 22 48 / 0.2);
-}
-
-[data-theme="light"] .hero-dot.active {
-  background: var(--volt-400);
-}
-
-[data-theme="light"] .hero-arrow {
-  background: rgb(255 255 255 / 0.64);
-  border-color: var(--line);
-  color: var(--text-1);
-}
-
-[data-theme="light"] .hero-arrow:hover {
-  background: var(--volt-500);
-  border-color: transparent;
-  color: #ffffff;
-}
-
 /* Detail and source hero scrims. Kept global so Svelte does not prune the
    data-theme override. */
 .detail-hero-scrim {
@@ -1365,22 +1326,10 @@ body[data-overlay] #content {
     linear-gradient(0deg, var(--void-950) 0%, rgb(8 8 15 / 0.42) 26%, transparent 64%);
 }
 
-[data-theme="light"] .detail-hero-scrim {
-  background:
-    linear-gradient(90deg, #f8f9fd 2%, rgb(248 249 253 / 0.9) 46%, rgb(248 249 253 / 0.18) 82%, transparent 100%),
-    linear-gradient(0deg, var(--void-950) 0%, rgb(248 249 253 / 0.56) 26%, transparent 64%);
-}
-
 .source-hero-scrim {
   background:
     linear-gradient(90deg, var(--void-950) 0%, rgb(8 8 15 / 0.78) 52%, rgb(8 8 15 / 0.22) 100%),
     linear-gradient(0deg, var(--void-950) 0%, transparent 70%);
-}
-
-[data-theme="light"] .source-hero-scrim {
-  background:
-    linear-gradient(90deg, #f8f9fd 0%, rgb(248 249 253 / 0.94) 52%, rgb(248 249 253 / 0.3) 100%),
-    linear-gradient(0deg, var(--void-950) 0%, rgb(248 249 253 / 0.5) 70%, transparent 100%);
 }
 
 /* Shelves */
@@ -1467,12 +1416,6 @@ body[data-overlay] #content {
   scroll-snap-align: start;
 }
 
-.shelf-scroll:focus-visible {
-  outline: 2px solid var(--volt-400);
-  outline-offset: 4px;
-  border-radius: 8px;
-}
-
 /* Poster cards */
 .poster-card {
   position: relative;
@@ -1499,11 +1442,6 @@ body[data-overlay] #content {
 
 .poster-card:active {
   transform: translateY(-2px) scale(0.985);
-}
-
-.poster-card:has(:focus-visible) {
-  outline: 2px solid var(--volt-400);
-  outline-offset: 3px;
 }
 
 .poster-art {
@@ -1623,15 +1561,6 @@ body[data-overlay] #content {
   pointer-events: auto;
 }
 
-@media (hover: none) {
-  .poster-quick,
-  .shelf-nav {
-    opacity: 1;
-    transform: none;
-    pointer-events: auto;
-  }
-}
-
 .poster-quick button {
   display: inline-flex;
   align-items: center;
@@ -1705,22 +1634,6 @@ body[data-overlay] #content {
   -webkit-text-stroke: 1px var(--accent-line-strong);
 }
 
-@supports not (-webkit-text-stroke: 1px black) {
-  .rank-num {
-    color: var(--paper-500);
-  }
-}
-
-[data-theme="light"] .rank-num {
-  color: rgb(25 24 38 / 0.08);
-  -webkit-text-stroke-color: rgb(25 24 38 / 0.2);
-}
-
-[data-theme="light"] .rank-num.rank-hot {
-  color: var(--accent-wash);
-  -webkit-text-stroke-color: var(--accent-line-strong);
-}
-
 /* Skeletons */
 .shimmer {
   position: relative;
@@ -1784,14 +1697,6 @@ body[data-overlay] #content {
 .artwork.is-loaded .artwork-img {
   opacity: 1;
   filter: blur(0);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .artwork-img {
-    opacity: 1;
-    filter: none;
-    transition: none;
-  }
 }
 
 /* Toasts */
@@ -1885,10 +1790,6 @@ body[data-overlay] #content {
   }
 }
 
-body[data-player-open="true"] .toast-stack {
-  bottom: 7.5rem;
-}
-
 /* Ranges */
 .range-volt,
 .seek-volt {
@@ -1964,18 +1865,6 @@ body[data-player-open="true"] .toast-stack {
   background: #000;
 }
 
-/* The libmpv spike draws video into the native window behind the WebView.
-   Only the player route goes transparent, and the app chrome is hidden so a
-   normal page never sits between the video and the glass controls. */
-body[data-player-open="true"],
-body[data-player-open="true"] #app {
-  background: transparent;
-}
-
-body[data-player-open="true"] .app-shell {
-  visibility: hidden;
-}
-
 .player-glass {
   background: rgb(8 8 15 / 0.72);
   border: 1px solid rgb(255 255 255 / 0.12);
@@ -2033,16 +1922,6 @@ body[data-player-open="true"] .app-shell {
 .player-select option {
   background: var(--void-900);
   color: var(--paper-50);
-}
-
-@media (pointer: coarse) {
-  .player-control {
-    width: 44px;
-    height: 44px;
-  }
-  .player-select {
-    height: 44px;
-  }
 }
 
 /* Page furniture */
@@ -2389,27 +2268,6 @@ body[data-player-open="true"] .app-shell {
   text-underline-offset: 2px;
 }
 
-/* Scrollbar: styled, keyboard friendly */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--scroll-thumb);
-  border-radius: 999px;
-  border: 2px solid var(--scroll-border);
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--scroll-thumb-hover);
-  border-color: var(--scroll-border);
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
 @media (min-width: 768px) {
   .hero-copy {
     padding-left: 32px;
@@ -2418,6 +2276,169 @@ body[data-player-open="true"] .app-shell {
   .hero-controls {
     left: 32px;
     right: 32px;
+  }
+}
+}
+
+/* Unlayered overrides. These stay outside the layers so they keep beating
+   utilities and component defaults, as they did before the move. */
+/* Focus rings stay unlayered so outline-none utilities cannot remove them. */
+:focus-visible {
+  outline: 2px solid var(--volt-400);
+  outline-offset: 2px;
+}
+
+.shelf-scroll:focus-visible {
+  outline: 2px solid var(--volt-400);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.poster-card:has(:focus-visible) {
+  outline: 2px solid var(--volt-400);
+  outline-offset: 3px;
+}
+
+/* Overlay lock must beat the overflow-y-auto utility on #content. */
+body[data-overlay] #content {
+  overflow: hidden;
+}
+
+/* Daylight hero overrides stay unlayered so no utility can override the light palette. */
+/* Daylight hero: the image stays, the left becomes a bright magazine spread. */
+[data-theme="light"] .hero-shell::after {
+  box-shadow: inset 0 -90px 120px -70px rgb(246 247 252 / 0.95);
+}
+
+[data-theme="light"] .hero-scrim {
+  background:
+    linear-gradient(90deg, #f8f9fd 0%, rgb(248 249 253 / 0.97) 27%, rgb(248 249 253 / 0.74) 52%, rgb(248 249 253 / 0.12) 78%, transparent 100%),
+    linear-gradient(0deg, var(--void-950) 1%, rgb(248 249 253 / 0.62) 20%, transparent 58%),
+    linear-gradient(180deg, rgb(248 249 253 / 0.48), transparent 32%);
+}
+
+[data-theme="light"] .hero-title {
+  text-shadow: 0 2px 30px rgb(255 255 255 / 0.45);
+}
+
+[data-theme="light"] .hero-meta-item {
+  background: rgb(255 255 255 / 0.62);
+  border-color: var(--line);
+  color: var(--text-2);
+}
+
+[data-theme="light"] .hero-meta-item.is-score {
+  background: var(--accent-wash);
+  border-color: var(--line-volt);
+  color: var(--volt-200);
+}
+
+[data-theme="light"] .hero-counter {
+  color: var(--text-4);
+}
+
+[data-theme="light"] .hero-dot {
+  background: rgb(24 22 48 / 0.2);
+}
+
+[data-theme="light"] .hero-dot.active {
+  background: var(--volt-400);
+}
+
+[data-theme="light"] .hero-arrow {
+  background: rgb(255 255 255 / 0.64);
+  border-color: var(--line);
+  color: var(--text-1);
+}
+
+[data-theme="light"] .hero-arrow:hover {
+  background: var(--volt-500);
+  border-color: transparent;
+  color: #ffffff;
+}
+
+/* Daylight scrim overrides stay unlayered for the same reason. */
+[data-theme="light"] .detail-hero-scrim {
+  background:
+    linear-gradient(90deg, #f8f9fd 2%, rgb(248 249 253 / 0.9) 46%, rgb(248 249 253 / 0.18) 82%, transparent 100%),
+    linear-gradient(0deg, var(--void-950) 0%, rgb(248 249 253 / 0.56) 26%, transparent 64%);
+}
+
+[data-theme="light"] .source-hero-scrim {
+  background:
+    linear-gradient(90deg, #f8f9fd 0%, rgb(248 249 253 / 0.94) 52%, rgb(248 249 253 / 0.3) 100%),
+    linear-gradient(0deg, var(--void-950) 0%, rgb(248 249 253 / 0.5) 70%, transparent 100%);
+}
+
+/* Touch devices show quick actions and shelf arrows even though the base rules hide them. */
+@media (hover: none) {
+  .poster-quick,
+  .shelf-nav {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+
+/* Text stroke fallback stays unlayered so it beats the layered rank colors. */
+@supports not (-webkit-text-stroke: 1px black) {
+  .rank-num {
+    color: var(--paper-500);
+  }
+}
+
+/* Daylight rank overrides stay unlayered so they beat the layered rank colors. */
+[data-theme="light"] .rank-num {
+  color: rgb(25 24 38 / 0.08);
+  -webkit-text-stroke-color: rgb(25 24 38 / 0.2);
+}
+
+[data-theme="light"] .rank-num.rank-hot {
+  color: var(--accent-wash);
+  -webkit-text-stroke-color: var(--accent-line-strong);
+}
+
+/* Toasts lift above the player bar while the player is open. */
+body[data-player-open="true"] .toast-stack {
+  bottom: 7.5rem;
+}
+
+/* Player route must clear the page background and hide the app shell. */
+/* The libmpv spike draws video into the native window behind the WebView.
+   Only the player route goes transparent, and the app chrome is hidden so a
+   normal page never sits between the video and the glass controls. */
+body[data-player-open="true"],
+body[data-player-open="true"] #app {
+  background: transparent;
+}
+
+body[data-player-open="true"] .app-shell {
+  visibility: hidden;
+}
+
+/* Coarse pointers need larger player targets than the base rules. */
+@media (pointer: coarse) {
+  .player-control {
+    width: 44px;
+    height: 44px;
+  }
+  .player-select {
+    height: 44px;
+  }
+}
+
+/* Reduced motion stays unlayered so it beats every animation. */
+@media (prefers-reduced-motion: reduce) {
+  .stagger-grid > * {
+    animation: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artwork-img {
+    opacity: 1;
+    filter: none;
+    transition: none;
   }
 }
 
