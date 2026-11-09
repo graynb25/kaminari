@@ -4,18 +4,33 @@
 
 (function () {
   const BASE = "https://example.com";
+  const PAGE_SIZE = 24; // replace with the page size your site really returns
+
+  // Map an HTTP status onto the error codes the UI shows.
+  function codeFor(status) {
+    if (status === 404) return "NOT_FOUND";
+    if (status === 429) return "RATE_LIMITED";
+    if (status === 401 || status === 403) return "AUTH_REQUIRED";
+    return "PARSE_ERROR";
+  }
 
   // Fetch a path from the allowlisted host and parse the JSON body.
   function getJson(path) {
     const res = net.fetch(BASE + path);
     if (res.status !== 200) {
       throw {
-        code: res.status === 404 ? "NOT_FOUND" : "PARSE_ERROR",
+        code: codeFor(res.status),
         message: "example.com answered " + res.status,
-        retryable: res.status >= 500,
+        retryable: res.status === 429 || res.status >= 500,
       };
     }
     return JSON.parse(res.body);
+  }
+
+  // Years arrive as 2026 or as "2026". Anything unparseable is unknown.
+  function yearOf(value) {
+    const year = parseInt(String(value), 10);
+    return Number.isFinite(year) ? year : undefined;
   }
 
   // search(query, page) lists matching shows.
@@ -32,9 +47,9 @@
         id: String(row.id),
         title: String(row.title),
         cover: row.poster ? String(row.poster) : undefined,
-        year: Number.isFinite(row.year) ? row.year : undefined,
+        year: yearOf(row.year),
       })),
-      hasNext: rows.length > 0,
+      hasNext: rows.length >= PAGE_SIZE,
     };
 
     // Site serves HTML instead of JSON? Drop the JSON path above and use this:
@@ -45,7 +60,7 @@
     //     id: String(card.attrs["data-id"]),
     //     title: card.text.trim(),
     //   })),
-    //   hasNext: cards.length === 24,
+    //   hasNext: cards.length >= PAGE_SIZE,
     // };
   }
 
@@ -57,7 +72,7 @@
       title: String(data.title || id),
       cover: data.poster ? String(data.poster) : undefined,
       synopsis: data.summary ? String(data.summary) : undefined,
-      year: Number.isFinite(data.year) ? data.year : undefined,
+      year: yearOf(data.year),
       genres: Array.isArray(data.genres) ? data.genres.map(String) : undefined,
       status: "unknown",
     };
@@ -86,6 +101,11 @@
         url: String(data.url),
         type: "mp4", // one of "hls", "mp4", "dash", "embed"
         quality: "auto",
+        // Headers are optional. Send them only when the site checks the request,
+        // and list every host they point at in permissions.hosts.
+        // headers: { Referer: "https://example.com/", "User-Agent": "Mozilla/5.0" },
+        // Subtitles ride along when the site ships tracks.
+        // subtitles: [{ lang: "en", url: "https://example.com/subs/en.vtt" }],
       },
     ];
   }
