@@ -28,13 +28,14 @@
   let proxy = $state<ProxyStatus | null>(null);
   let proxyOn = $state(proxyFlagEnabled());
   let activeId = $state("settings-appearance");
+  let manualActive = false;
 
   type NavItem = { id: string; title: string; hint: string };
 
   const navItems: NavItem[] = [
     { id: "settings-appearance", title: "Appearance", hint: "Theme and preview" },
-    { id: "settings-playback", title: "Playback", hint: "Proxy for protected streams" },
     { id: "settings-app", title: "App", hint: "Version, stack, player" },
+    { id: "settings-playback", title: "Playback", hint: "Proxy for protected streams" },
     { id: "settings-data", title: "Data", hint: "Endpoints and local library" },
     { id: "settings-updates-diagnostics", title: "Updates and diagnostics", hint: "Budgets and export" },
     { id: "settings-licenses", title: "Licenses", hint: "Packages and their licenses" },
@@ -52,6 +53,7 @@
   }
 
   function goToSection(id: string) {
+    manualActive = true;
     activeId = id;
     const target = document.getElementById(id);
     if (!target) return;
@@ -80,26 +82,66 @@
     const targets: HTMLElement[] = navItems
       .map((item) => document.getElementById(item.id))
       .filter((el): el is HTMLElement => el !== null);
-    if (targets.length === 0 || typeof IntersectionObserver === "undefined") return;
+    if (targets.length === 0) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-        if (visible.length > 0) {
-          const top = visible[0];
-          if (top.target instanceof HTMLElement) activeId = top.target.id;
-        }
-      },
-      {
-        root: scrollRoot instanceof HTMLElement ? scrollRoot : null,
-        rootMargin: "-12% 0px -72% 0px",
-        threshold: 0,
-      },
-    );
-    for (const target of targets) observer.observe(target);
-    return () => observer.disconnect();
+    const root = scrollRoot instanceof HTMLElement ? scrollRoot : null;
+    let frame = 0;
+
+    const update = () => {
+      frame = 0;
+      if (manualActive) return;
+      const offset = 140;
+      const atBottom =
+        root !== null && root.scrollTop + root.clientHeight >= root.scrollHeight - 2;
+      if (atBottom && navItems.length > 0) {
+        activeId = navItems[navItems.length - 1].id;
+        return;
+      }
+      let current = navItems[0]?.id ?? "settings-appearance";
+      for (const item of navItems) {
+        const el = document.getElementById(item.id);
+        if (el && el.getBoundingClientRect().top <= offset) current = item.id;
+      }
+      activeId = current;
+    };
+
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+
+    const onUserScroll = () => {
+      manualActive = false;
+      schedule();
+    };
+
+    const onKeyScroll = (event: KeyboardEvent) => {
+      if (
+        event.key === "ArrowUp" ||
+        event.key === "ArrowDown" ||
+        event.key === "PageUp" ||
+        event.key === "PageDown" ||
+        event.key === "Home" ||
+        event.key === "End"
+      ) {
+        onUserScroll();
+      }
+    };
+
+    root?.addEventListener("scroll", schedule, { passive: true });
+    root?.addEventListener("wheel", onUserScroll, { passive: true });
+    root?.addEventListener("touchstart", onUserScroll, { passive: true });
+    window.addEventListener("resize", schedule);
+    window.addEventListener("keydown", onKeyScroll);
+    update();
+
+    return () => {
+      root?.removeEventListener("scroll", schedule);
+      root?.removeEventListener("wheel", onUserScroll);
+      root?.removeEventListener("touchstart", onUserScroll);
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("keydown", onKeyScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
   });
 
   // Static section shape. The rows that depend on the async boot snapshot
@@ -280,7 +322,7 @@
         </div>
       </section>
 
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div class="grid grid-cols-2 gap-3 mb-6">
         <div class="stat-card">
           <p class="stat-label">Version</p>
           <p class="stat-value">{__APP_VERSION__}</p>
@@ -304,7 +346,7 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {#each sections as section}
           <section id={section.id} data-settings-section class="surface settings-section p-5">
             <div class="flex items-center gap-2.5 mb-3">
@@ -433,6 +475,12 @@
     flex-wrap: wrap;
     gap: 8px;
     margin-bottom: 20px;
+  }
+
+  @media (min-width: 1024px) {
+    .settings-chips {
+      display: none;
+    }
   }
 
   .settings-layout {

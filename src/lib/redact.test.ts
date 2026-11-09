@@ -20,6 +20,27 @@ describe("redactSecrets", () => {
     expect(cookie).toContain("[redacted]");
   });
 
+  it("redacts refresh tokens and set-cookie header values", () => {
+    const query = redactSecrets(
+      "https://cdn.example/v?refresh_token=refresh123&client_secret=client456&lang=en",
+    );
+    expect(query).toContain("refresh_token=[redacted]");
+    expect(query).toContain("client_secret=[redacted]");
+    expect(query).toContain("lang=en");
+    expect(query).not.toContain("refresh123");
+    expect(query).not.toContain("client456");
+
+    const setCookie = redactSecrets("Set-Cookie: sid=abc123; Path=/; HttpOnly");
+    expect(setCookie).not.toContain("abc123");
+    expect(setCookie).toContain("[redacted]");
+  });
+
+  it("redacts an inline Authorization header to the end of the line", () => {
+    const out = redactSecrets("request failed with Authorization: Bearer secret123 and retry later");
+    expect(out).not.toContain("secret123");
+    expect(out).toContain("[redacted]");
+  });
+
   it("leaves a clean string alone", () => {
     expect(redactSecrets("mpv not found")).toBe("mpv not found");
   });
