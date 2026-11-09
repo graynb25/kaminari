@@ -4,6 +4,12 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.16.2 - 2026-11-09
+
+- Licenses: FFmpeg commit `cc583787b` verified from the winbuild job log, Native group names the exact source
+- Docs: native license package marked complete; lawyer sign-off remains the only legal gate
+- Version: bump to 0.16.2
+
 ## 0.16.1 - 2026-11-09
 
 - Licenses: native libmpv license package with artifact hashes, texts and source offer, marked not bundled

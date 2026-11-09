@@ -32,11 +32,11 @@ Hashes above were verified on the development machine with `Get-FileHash`. The a
 - libmpv-wrapper: https://github.com/nini22P/libmpv-wrapper
 - tauri-plugin-libmpv: https://github.com/nini22P/tauri-plugin-libmpv (crate 0.3.2, local registry LICENSE is the MPL-2.0 text copied here).
 
-## FFmpeg source reference (open P1 verification)
+## FFmpeg source reference (verified)
 
-The zhongfly release for this build ships a sibling asset named `ffmpeg-lgpl-x86_64-git-cc583787b.7z` (SHA-256 `30ef003bdd8ad8588e722736138d45efefe271e130dcc3827a5e1e2348dac40a`). That name points at FFmpeg short ref `cc583787b`, which resolves on FFmpeg GitHub to commit `cc583787bbecd4914fee7c2bf7f09463113822fe` ("avcodec/vvc: correct RPR reference coordinate derivation", 2026-11-08).
+The Build MPV (64, true) job at https://github.com/zhongfly/mpv-winbuild/actions/runs/42478239987/job/128724313594 ran on 2026-11-08. At 12:12:25Z it executed `git -C mpv-winbuild-cmake/src_packages/ffmpeg rev-parse --short HEAD` and returned `cc583787b`. That short ref resolves on FFmpeg GitHub to `cc583787bbecd4914fee7c2bf7f09463113822fe` ("avcodec/vvc: correct RPR reference coordinate derivation", 2026-11-08). The same job produced the FFmpeg asset `ffmpeg-lgpl-x86_64-git-cc583787b.7z` (SHA-256 `30ef003bdd8ad8588e722736138d45efefe271e130dcc3827a5e1e2348dac40a`) and the `mpv-dev-lgpl-x86_64-20261108-git-8bc468896e.7z` archive above. The FFmpeg commit is now proven from the build log, not only from the asset name. Source URL: https://github.com/FFmpeg/FFmpeg/commit/cc583787bbecd4914fee7c2bf7f09463113822fe
 
-That is filename evidence only. The winbuild FFmpeg recipe tracks FFmpeg master with no pinned tag, so the name does not prove the exact FFmpeg commit statically linked inside `libmpv-2.dll`. Do not treat the full SHA above as proven. Resolving the exact FFmpeg commit (build log linkage or embedded version evidence) is an open P1 verification, owned by the player-path session, and it must close before any packaging that ships the DLL. Until then the dialog and manifest say "not bundled" and carry no exact FFmpeg version claim.
+The `mpv-dev-lgpl` archive still carries no license or copyright file. The license texts and the source offer in this folder cover it. Lawyer sign-off remains the final legal gate.
 
 ## License texts in this folder
 
@@ -53,5 +53,4 @@ No source distribution accompanies this build because no binary is distributed. 
 ## Remaining legal gate
 
 1. Lawyer sign-off on this package (texts, artifact table, FFmpeg linkage, source offer wording).
-2. Closed P1 verification of the exact FFmpeg commit inside the shipped `libmpv-2.dll`.
-3. Only then: P1 packaging work (bundling, installer notes, CHANGELOG entry), which is explicitly out of scope here.
+2. Only then: P1 packaging work (bundling, installer notes, CHANGELOG entry), which is explicitly out of scope here.

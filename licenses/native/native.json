@@ -1,1 +1,41 @@
-{"label":"Native libraries (not bundled in this build)","note":"No native DLLs are bundled in this build. The entries below are development artifacts only, kept out of the installer until P1 packaging and lawyer sign-off.","packages":[{"bundled":false,"license":"LGPL-2.1","licenseFile":"mpv-Copyright-8bc468896e.txt","name":"libmpv","note":"Development artifact in src-tauri/lib, not in this installer. LGPL-mode dev build, mpv v0.42.0-11-g8bc468896e. Licensing notice: licenses/native/mpv-Copyright-8bc468896e.txt.","source":"https://github.com/mpv-player/mpv/commit/8bc468896ec711cc5a3ac33dae9cbc0e266bcfa4","versions":["v0.42.0-11-g8bc468896e","not bundled"]},{"bundled":false,"license":"LGPL-3.0","licenseFile":"LGPL-3.0.txt","name":"FFmpeg (statically linked into the LGPL libmpv build)","note":"Development artifact, not in this installer. The zhongfly release names ffmpeg-lgpl-x86_64-git-cc583787b.7z, which points at FFmpeg short ref cc583787b. That ref resolves on FFmpeg GitHub, but filename evidence alone does not prove the exact commit inside libmpv-2.dll. Exact commit is an open P1 verification. See licenses/native/README.md.","source":"https://github.com/FFmpeg/FFmpeg","versions":["not bundled"]},{"bundled":false,"license":"LGPL-2.1","licenseFile":"LGPL-2.1.txt","name":"libmpv-wrapper","note":"Development artifact in src-tauri/lib, not in this installer. C bridge between tauri-plugin-libmpv and libmpv. License text is the pinned wrapper LICENSE, copied byte for byte.","source":"https://github.com/nini22P/libmpv-wrapper","versions":["not bundled"]}]}
+{
+  "label": "Native libraries (not bundled in this build)",
+  "note": "No native DLLs are bundled in this build. The entries below are development artifacts only, kept out of the installer until P1 packaging and lawyer sign-off.",
+  "packages": [
+    {
+      "bundled": false,
+      "license": "LGPL-2.1",
+      "licenseFile": "mpv-Copyright-8bc468896e.txt",
+      "name": "libmpv",
+      "note": "Development artifact in src-tauri/lib, not in this installer. LGPL-mode dev build, mpv v0.42.0-11-g8bc468896e. Licensing notice: licenses/native/mpv-Copyright-8bc468896e.txt.",
+      "source": "https://github.com/mpv-player/mpv/commit/8bc468896ec711cc5a3ac33dae9cbc0e266bcfa4",
+      "versions": [
+        "v0.42.0-11-g8bc468896e",
+        "not bundled"
+      ]
+    },
+    {
+      "bundled": false,
+      "license": "LGPL-3.0",
+      "licenseFile": "LGPL-3.0.txt",
+      "name": "FFmpeg (statically linked into the LGPL libmpv build)",
+      "note": "Development artifact, not in this installer. FFmpeg commit cc583787b (full cc583787bbecd4914fee7c2bf7f09463113822fe) is verified from the Build MPV (64, true) log on 2026-11-08. The same job produced the LGPL libmpv archive. See licenses/native/README.md.",
+      "source": "https://github.com/FFmpeg/FFmpeg/commit/cc583787bbecd4914fee7c2bf7f09463113822fe",
+      "versions": [
+        "cc583787b",
+        "not bundled"
+      ]
+    },
+    {
+      "bundled": false,
+      "license": "LGPL-2.1",
+      "licenseFile": "LGPL-2.1.txt",
+      "name": "libmpv-wrapper",
+      "note": "Development artifact in src-tauri/lib, not in this installer. C bridge between tauri-plugin-libmpv and libmpv. License text is the pinned wrapper LICENSE, copied byte for byte.",
+      "source": "https://github.com/nini22P/libmpv-wrapper",
+      "versions": [
+        "not bundled"
+      ]
+    }
+  ]
+}

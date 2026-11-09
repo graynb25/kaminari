@@ -6,9 +6,9 @@ Date: 2026-11-09.
 
 ## Hard gates
 
-- [ ] License package is complete: LGPL-2.1 text for the wrapper, LGPL-2.1 and LGPLv3 texts for the LGPL libmpv plus FFmpeg build, MPL-2.0 text for the plugin, mpv copyright attribution, exact versions, source URLs, archive hashes, build date, and a stable source offer.
+- [x] License package is complete: LGPL-2.1 text for the wrapper, LGPL-2.1 and LGPLv3 texts for the LGPL libmpv plus FFmpeg build, MPL-2.0 text for the plugin, mpv copyright attribution, exact versions, source URLs, archive hashes, build date, and a stable source offer.
 - [ ] A qualified lawyer signs off on the package and the dynamic linking posture.
-- [ ] No DLLs until sign-off. `src-tauri/lib/` stays gitignored, `bundle.resources` gains no `lib/**/*` entry, and no installer ships `libmpv-2.dll` or `libmpv-wrapper.dll` before the gates pass.
+- [x] No DLLs until sign-off. `src-tauri/lib/` stays gitignored, `bundle.resources` gains no `lib/**/*` entry, and no installer ships `libmpv-2.dll` or `libmpv-wrapper.dll` before the gates pass.
 
 ## Artifact hashes
 
@@ -23,6 +23,8 @@ Verify both the archive and the extracted DLL before packaging. These are the P0
 Get-FileHash "libmpv-wrapper-windows-x86_64.zip", "mpv-dev-lgpl-x86_64-20261108-git-8bc468896e.7z" -Algorithm SHA256
 Get-FileHash "src-tauri/lib/libmpv-wrapper.dll", "src-tauri/lib/libmpv-2.dll" -Algorithm SHA256
 ```
+
+FFmpeg source: the Build MPV (64, true) job at https://github.com/zhongfly/mpv-winbuild/actions/runs/42478239987/job/128724313594 ran `git -C mpv-winbuild-cmake/src_packages/ffmpeg rev-parse --short HEAD` at 12:12:25Z and returned `cc583787b`. The full commit is `cc583787bbecd4914fee7c2bf7f09463113822fe`. The same job produced the LGPL libmpv archive. The source offer and texts are in `licenses/native/README.md`.
 
 ## Header safety rule
 
