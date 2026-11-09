@@ -4,6 +4,13 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.21.0 - 2026-11-09
+
+- Settings: export and import theme, accent and proxy settings as JSON
+- Data: backup and restore the SQLite library with a restart prompt
+- Build: native file dialogs through `tauri-plugin-dialog`
+- Version: bump to 0.21.0
+
 ## 0.20.0 - 2026-11-09
 
 - Settings: Violet, Ocean, Forest, Ember and Rose accent presets, persisted locally

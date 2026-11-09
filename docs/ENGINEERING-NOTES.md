@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-09 Settings export and library backup
+
+Context. P3 needed portable local data before sync. The library lives in WAL SQLite and had no UI path to copy or restore it.
+
+What we shipped. A settings JSON with theme, accent and proxy. A SQLite backup through `VACUUM INTO` and a restore through `rusqlite::backup::Backup` with table validation and migrations. Native dialogs through `tauri-plugin-dialog`. Data actions for backup, restore, export and import, with a restart prompt after restore.
+
+What we measured. The backup was 106,496 bytes with media 1, library 1, watched 2 and source_library 1. A test library row was added, the backup restored, the library returned to 1 and the test row was gone. A non-Kaminari SQLite file was rejected with the missing table names. The settings JSON was 162 bytes and round-tripped through export and read. The native Backup library dialog opened and cancelled cleanly, and the button re-enabled. 54 frontend and 78 Rust tests pass, with no page errors. The 0.21.0 installer is 37,745,278 bytes (36.00 MiB); the installed build reported the four Data actions and wrote a 106,496-byte backup.
+
+What we did not do. The native file selection for import and export was not automated; the commands and dialog opening were tested. Restore needs a restart, and the backup is not encrypted.
+
 ## 2026-11-09 Accent presets
 
 Context. The P2 plan left accent picker hooks open, and the app had one fixed violet accent.

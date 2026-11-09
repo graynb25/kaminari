@@ -61,6 +61,8 @@ Run for each packaging candidate. Record the native payload separately from the 
 
 0.20.0 measurement, 2026-11-09: installer 37,659,877 bytes (35.92 MiB). The DLL payload is unchanged. The installed build reported `mpv_embed_status.available=true` with the install `lib` directory.
 
+0.21.0 measurement, 2026-11-09: installer 37,745,278 bytes (36.00 MiB). The DLL payload is unchanged. The installed build reported version 0.21.0, the four Data actions and a 106,496-byte backup.
+
 ```powershell
 npm exec --yes pnpm@10 -- tauri build
 Get-Item "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object Name, Length

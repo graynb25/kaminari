@@ -1,9 +1,9 @@
 {
   "generatedAt": "2026-11-09",
-  "appVersion": "0.20.0",
+  "appVersion": "0.21.0",
   "platform": "x86_64-pc-windows-msvc",
   "summary": {
-    "packages": 440,
+    "packages": 444,
     "licenses": 33,
     "notRecorded": 0,
     "proprietary": 0
@@ -17,7 +17,7 @@
           "key": "bundled:Kaminari::MIT",
           "name": "Kaminari",
           "versions": [
-            "0.20.0"
+            "0.21.0"
           ],
           "license": "MIT",
           "source": "https://github.com/graynb25/kaminari"
@@ -1851,6 +1851,15 @@
           "source": "https://github.com/seanmonstar/reqwest"
         },
         {
+          "key": "rust:rfd::MIT",
+          "name": "rfd",
+          "versions": [
+            "0.17.2"
+          ],
+          "license": "MIT",
+          "source": "https://github.com/PolyMeilex/rfd"
+        },
+        {
           "key": "rust:ring::Apache-2.0 AND ISC",
           "name": "ring",
           "versions": [
@@ -2395,6 +2404,24 @@
           ],
           "license": "Apache-2.0 OR MIT",
           "source": "https://github.com/tauri-apps/tauri"
+        },
+        {
+          "key": "rust:tauri-plugin-dialog::Apache-2.0 OR MIT",
+          "name": "tauri-plugin-dialog",
+          "versions": [
+            "2.8.4"
+          ],
+          "license": "Apache-2.0 OR MIT",
+          "source": "https://github.com/tauri-apps/plugins-workspace"
+        },
+        {
+          "key": "rust:tauri-plugin-fs::Apache-2.0 OR MIT",
+          "name": "tauri-plugin-fs",
+          "versions": [
+            "2.7.1"
+          ],
+          "license": "Apache-2.0 OR MIT",
+          "source": "https://github.com/tauri-apps/plugins-workspace"
         },
         {
           "key": "rust:tauri-plugin-libmpv::MPL-2.0",
@@ -3428,6 +3455,15 @@
           ],
           "license": "Apache-2.0 OR MIT",
           "source": "https://github.com/tauri-apps/tauri"
+        },
+        {
+          "key": "javascript:@tauri-apps/plugin-dialog::MIT OR Apache-2.0",
+          "name": "@tauri-apps/plugin-dialog",
+          "versions": [
+            "2.8.4"
+          ],
+          "license": "MIT OR Apache-2.0",
+          "source": "https://github.com/tauri-apps/plugins-workspace"
         },
         {
           "key": "javascript:@types/estree::MIT",
