@@ -4,6 +4,13 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.17.0 - 2026-11-09
+
+- Settings: sticky anchor rail at 1024 and wider, chips below, active section tracking and scroll margins
+- Settings: responsive 2 by 2 stat cards and single-column cards below 1280
+- App: FatalState for boot snapshot failure and view crashes, with redacted diagnostics and retry
+- Version: bump to 0.17.0
+
 ## 0.16.2 - 2026-11-09
 
 - Licenses: FFmpeg commit `cc583787b` verified from the winbuild job log, Native group names the exact source

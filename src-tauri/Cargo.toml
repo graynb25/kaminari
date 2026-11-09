@@ -1,6 +1,6 @@
 [package]
 name = "kaminari"
-version = "0.16.2"
+version = "0.17.0"
 description = "Desktop anime app for PC. Tauri 2 plus Rust plus Svelte."
 edition = "2021"
 

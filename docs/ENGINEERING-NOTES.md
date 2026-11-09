@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-09 Settings navigation and FatalState
+
+Context. Settings was one long page with no section navigation, and an app or view failure had no composed surface beyond a toast or a blank region.
+
+What we shipped. A sticky Settings rail at 1024 and wider, a wrapping chip row below, section IDs and scroll margins, and active tracking with click override and bottom detection. The nav order follows the page: Appearance, App, Playback, Data, Updates, Licenses, About. The stat cards are a 2 by 2 grid and the section cards stack below 1280 so the narrower rail column stays readable. `FatalState` uses the brand mark, a mono error code, Retry and Copy diagnostics, and redacts query tokens and Authorization, Cookie and Set-Cookie values. It renders on boot snapshot failure and through a Svelte view boundary. The boot path does not claim to catch Rust or database failures before the WebView.
+
+What we measured. At 1280 and 1024 the rail is visible, the chips are hidden, and there is no horizontal overflow. At 900 the rail is hidden and the chips are visible. Clicking Playback and About sets the correct active item, and a manual wheel scroll updates it again. The stat cards and section cards stay readable at the narrower content width.
+
+What we did not do. Cascade layers. Pre-WebView Rust and database startup failures remain outside the Svelte boundary.
+
 ## 2026-11-08 Modal, Callout and ProgressBar atoms
 
 Context. Each dialog carried its own focus trap, Escape handling, overlay lock, panel material and scroll shell. Callouts and progress bars were hand rolled with different tones and widths.
