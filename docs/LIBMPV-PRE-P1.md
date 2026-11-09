@@ -28,8 +28,9 @@ Get-FileHash "src-tauri/lib/libmpv-wrapper.dll", "src-tauri/lib/libmpv-2.dll" -A
 
 - `mpv_embed_load` rejects any stream with headers unless the URL is a loopback proxy URL on ports 39321 to 39328.
 - It also rejects any header value containing a comma. The wrapper rejects JSON arrays, so fields are joined into one comma separated string and a comma inside a value moves the field boundary.
-- `libmpvNeedsProxy` in `src/lib/libmpv.ts` keeps streams with headers and no proxied URL on PlayerView. SourceBrowser tells the user that the loopback proxy is required instead of starting mpv and failing later.
-- `shouldProxy` sends every header protected stream through the loopback proxy, not only MP4 and HLS. Headerless media stays direct.
+- `libmpvNeedsProxy` in `src/lib/libmpv.ts` keeps streams with headers and no proxied URL on PlayerView. SourceBrowser shows the loopback proxy notice for MP4 and HLS, and points DASH and embed users to external mpv.
+- `shouldProxy` keeps the proxy scope to header protected MP4 and HLS. Headerless media stays direct.
+- The loopback proxy supports MP4 and HLS only. DASH and embed streams with headers stay on the external mpv path.
 - When the wrapper supports header lists, update the Rust rule, the helper, and their tests in one change. Do not relax the comma or proxy checks first.
 
 ## Transparency decision

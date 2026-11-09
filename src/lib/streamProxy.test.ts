@@ -41,7 +41,7 @@ describe("shouldProxy", () => {
     expect(shouldProxy(hls)).toBe(true);
   });
 
-  it("proxies every kind of stream with headers", () => {
+  it("leaves DASH and embed streams with headers off the proxy", () => {
     const dash = stream({
       url: "https://cdn.example/show/manifest.mpd",
       type: "dash",
@@ -49,7 +49,14 @@ describe("shouldProxy", () => {
     });
     expect(isHlsStream(dash)).toBe(false);
     expect(isMp4Stream(dash)).toBe(false);
-    expect(shouldProxy(dash)).toBe(true);
+    expect(shouldProxy(dash)).toBe(false);
+
+    const embed = stream({
+      url: "https://cdn.example/show/embed",
+      type: "embed",
+      headers: { Referer: "https://source.example/" },
+    });
+    expect(shouldProxy(embed)).toBe(false);
   });
 
   it("leaves headerless HLS on the direct path", () => {

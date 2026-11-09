@@ -1,5 +1,5 @@
 // Pure rules for the loopback proxy. Svelte components stay thin around these.
-// Every stream with headers goes through the loopback proxy. Headerless media
+// MP4 and HLS with headers go through the loopback proxy. Headerless media
 // stays direct so mpv and public sample URLs keep their current path.
 
 import type { JsStream } from "./types";
@@ -27,7 +27,7 @@ export function isMp4Stream(stream: JsStream): boolean {
 }
 
 export function shouldProxy(stream: JsStream): boolean {
-  return hasStreamHeaders(stream);
+  return hasStreamHeaders(stream) && (isMp4Stream(stream) || isHlsStream(stream));
 }
 
 export function playbackUrl(stream: JsStream): string {

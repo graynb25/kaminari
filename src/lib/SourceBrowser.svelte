@@ -329,7 +329,9 @@
     const libmpvOn = libmpvEnabled();
     if (libmpvOn && libmpvNeedsProxy(prepared)) {
       notify(
-        "libmpv needs the loopback proxy for this stream's headers. Using the WebView player.",
+        shouldProxy(prepared)
+          ? "libmpv needs the loopback proxy for this stream's headers. Using the WebView player."
+          : "This stream type cannot use the loopback proxy. Open it in mpv. Using the WebView player.",
         "info",
       );
     } else if (libmpvOn) {
