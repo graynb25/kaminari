@@ -5,10 +5,30 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 use crate::error::{AppError, AppResult};
 
 const ENDPOINT: &str = "https://graphql.anilist.co";
+
+pub const ANILIST_AUTH_URL: &str = "https://anilist.co/api/v2/oauth/authorize?client_id=56484&response_type=token&redirect_uri=kaminari%3A%2F%2Fauth%2Fcallback";
+
+pub fn auth_url() -> &'static str {
+    ANILIST_AUTH_URL
+}
+
+/// Parses only the AniList implicit grant callback. The token stays in Rust.
+pub fn parse_auth_callback(url: &Url) -> Result<String, &'static str> {
+    if url.scheme() != "kaminari" || url.host_str() != Some("auth") || url.path() != "/callback" {
+        return Err("not an AniList callback");
+    }
+    let fragment = url.fragment().ok_or("AniList callback has no token")?;
+    url::form_urlencoded::parse(fragment.as_bytes())
+        .find(|(key, _)| key == "access_token")
+        .map(|(_, value)| value.into_owned())
+        .filter(|token| !token.trim().is_empty())
+        .ok_or("AniList callback has no token")
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +60,22 @@ pub struct Media {
     pub format: Option<String>,
     pub status: Option<String>,
     pub episodes: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Viewer {
+    pub id: i64,
+    pub name: String,
+    pub avatar: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AniListAuthStatus {
+    pub connected: bool,
+    pub viewer: Option<Viewer>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,6 +143,30 @@ struct MediaEnvelope {
 }
 
 #[derive(Debug, Deserialize)]
+struct ViewerAvatar {
+    large: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ViewerResponse {
+    id: i64,
+    name: String,
+    avatar: Option<ViewerAvatar>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ViewerData {
+    #[serde(rename = "Viewer")]
+    viewer: ViewerResponse,
+}
+
+#[derive(Debug, Deserialize)]
+struct ViewerEnvelope {
+    data: Option<ViewerData>,
+    errors: Option<Vec<GraphQlError>>,
+}
+
+#[derive(Debug, Deserialize)]
 struct GraphQlError {
     message: String,
 }
@@ -119,6 +179,7 @@ struct Bucket {
 pub struct AniListClient {
     http: reqwest::Client,
     bucket: Mutex<Bucket>,
+    token: Mutex<Option<String>>,
 }
 
 impl Default for AniListClient {
@@ -138,7 +199,16 @@ impl AniListClient {
                 tokens: 90.0,
                 last_refill: Instant::now(),
             }),
+            token: Mutex::new(None),
         }
+    }
+
+    pub fn set_token(&self, token: &str) {
+        *self.token.lock().expect("token lock") = Some(token.to_string());
+    }
+
+    pub fn clear_token(&self) {
+        *self.token.lock().expect("token lock") = None;
     }
 
     async fn acquire(&self) {
@@ -169,7 +239,8 @@ impl AniListClient {
         variables: serde_json::Value,
     ) -> AppResult<serde_json::Value> {
         self.acquire().await;
-        let response = self
+        let token = self.token.lock().expect("token lock").clone();
+        let mut request = self
             .http
             .post(ENDPOINT)
             .header(
@@ -180,7 +251,11 @@ impl AniListClient {
                     " (+https://github.com/graynb25/kaminari)"
                 ),
             )
-            .json(&serde_json::json!({ "query": query, "variables": variables }))
+            .json(&serde_json::json!({ "query": query, "variables": variables }));
+        if let Some(token) = token {
+            request = request.bearer_auth(token);
+        }
+        let response = request
             .send()
             .await
             .map_err(|err| AppError::Net(err.to_string()))?;
@@ -193,6 +268,15 @@ impl AniListClient {
                 .and_then(|value| value.parse::<u32>().ok())
                 .unwrap_or(60);
             return Err(AppError::RateLimited(retry_after));
+        }
+
+        if matches!(
+            response.status(),
+            reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+        ) {
+            return Err(AppError::Auth(
+                "AniList rejected the saved token. Connect again.".to_string(),
+            ));
         }
 
         if !response.status().is_success() {
@@ -265,6 +349,24 @@ impl AniListClient {
             .data
             .map(|data| data.media)
             .ok_or_else(|| AppError::Net("AniList returned no media".to_string()))
+    }
+
+    pub async fn viewer(&self) -> AppResult<Viewer> {
+        let json = self.post(&viewer_query(), serde_json::json!({})).await?;
+        let envelope: ViewerEnvelope =
+            serde_json::from_value(json).map_err(|err| AppError::Net(err.to_string()))?;
+        if let Some(errors) = envelope.errors {
+            return Err(AppError::Auth(graphql_message(errors)));
+        }
+        let viewer = envelope
+            .data
+            .map(|data| data.viewer)
+            .ok_or_else(|| AppError::Auth("AniList returned no viewer".to_string()))?;
+        Ok(Viewer {
+            id: viewer.id,
+            name: viewer.name,
+            avatar: viewer.avatar.and_then(|avatar| avatar.large),
+        })
     }
 }
 
@@ -340,6 +442,19 @@ query Detail($id: Int) {
     )
 }
 
+fn viewer_query() -> String {
+    r#"
+query Viewer {
+  Viewer {
+    id
+    name
+    avatar { large }
+  }
+}
+"#
+    .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -402,5 +517,58 @@ mod tests {
         let envelope: PageEnvelope = serde_json::from_str(raw).unwrap();
         let message = graphql_message(envelope.errors.unwrap());
         assert_eq!(message, "Invalid query");
+    }
+
+    #[test]
+    fn auth_url_has_client_id_and_encoded_redirect() {
+        let url = auth_url();
+        assert!(url.contains("client_id=56484"));
+        assert!(url.contains("response_type=token"));
+        assert!(url.contains("redirect_uri=kaminari%3A%2F%2Fauth%2Fcallback"));
+    }
+
+    #[test]
+    fn parses_valid_auth_callback() {
+        let url = Url::parse("kaminari://auth/callback#access_token=abc123.def456").unwrap();
+        assert_eq!(parse_auth_callback(&url).as_deref(), Ok("abc123.def456"));
+    }
+
+    #[test]
+    fn rejects_wrong_scheme() {
+        let url = Url::parse("https://auth/callback#access_token=abc123").unwrap();
+        assert!(parse_auth_callback(&url).is_err());
+    }
+
+    #[test]
+    fn rejects_wrong_path() {
+        let url = Url::parse("kaminari://auth/other#access_token=abc123").unwrap();
+        assert!(parse_auth_callback(&url).is_err());
+    }
+
+    #[test]
+    fn rejects_callback_without_token() {
+        let url = Url::parse("kaminari://auth/callback#token_type=Bearer").unwrap();
+        assert!(parse_auth_callback(&url).is_err());
+    }
+
+    #[test]
+    fn decodes_percent_encoded_token() {
+        let url = Url::parse("kaminari://auth/callback#access_token=abc%2Fdef%3D").unwrap();
+        assert_eq!(parse_auth_callback(&url).as_deref(), Ok("abc/def="));
+    }
+
+    #[test]
+    fn parses_viewer_response() {
+        let raw = r#"{
+          "data": { "Viewer": { "id": 42, "name": "Kite", "avatar": { "large": "https://img.example/kite.jpg" } } }
+        }"#;
+        let envelope: ViewerEnvelope = serde_json::from_str(raw).unwrap();
+        let viewer = envelope.data.unwrap().viewer;
+        assert_eq!(viewer.id, 42);
+        assert_eq!(viewer.name, "Kite");
+        assert_eq!(
+            viewer.avatar.and_then(|avatar| avatar.large).as_deref(),
+            Some("https://img.example/kite.jpg")
+        );
     }
 }

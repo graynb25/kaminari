@@ -6,6 +6,13 @@
   import Icon from "./Icon.svelte";
   import PageHeader from "./PageHeader.svelte";
   import { playerStatus, proxyStatus } from "./api";
+  import {
+    anilistAuthLogout,
+    anilistAuthStart,
+    anilistAuthStatus,
+    onAnilistAuthChanged,
+    type AniListAuthStatus,
+  } from "./anilistAuth";
   import { proxyFlagEnabled, setProxyFlag } from "./streamProxy";
   import { applySettings, collectSettings, parseSettings } from "./settingsBackup";
   import {
@@ -38,6 +45,21 @@
   let dataStatus = $state("");
   let dataStatusTone = $state<"success" | "error">("success");
   let restartNeeded = $state(false);
+  let anilistAuth = $state<AniListAuthStatus | null>(null);
+  let anilistBusy = $state(false);
+  let anilistWaiting = $state(false);
+  let anilistError = $state("");
+
+  const anilistHasError = $derived(Boolean(anilistError || anilistAuth?.error));
+  const anilistStatusText = $derived(
+    anilistError ||
+      (anilistWaiting
+        ? "Waiting for AniList approval in your browser."
+        : anilistAuth?.error ?? ""),
+  );
+  const anilistStatusError = $derived(
+    Boolean(anilistError || (!anilistWaiting && anilistAuth?.error)),
+  );
 
   type NavItem = { id: string; title: string; hint: string };
 
@@ -210,6 +232,39 @@
     }
   }
 
+  async function connectAniList() {
+    if (anilistBusy || anilistWaiting) return;
+    anilistError = "";
+    if (anilistAuth?.error) {
+      anilistAuth = { ...anilistAuth, error: null };
+    }
+    anilistBusy = true;
+    anilistWaiting = true;
+    try {
+      await anilistAuthStart();
+    } catch (err) {
+      anilistWaiting = false;
+      anilistError = errorText(err);
+    } finally {
+      anilistBusy = false;
+    }
+  }
+
+  async function disconnectAniList() {
+    if (anilistBusy) return;
+    anilistBusy = true;
+    anilistError = "";
+    try {
+      await anilistAuthLogout();
+      anilistAuth = { connected: false, viewer: null, error: null };
+      anilistWaiting = false;
+    } catch (err) {
+      anilistError = errorText(err);
+    } finally {
+      anilistBusy = false;
+    }
+  }
+
   function goToSection(id: string) {
     manualActive = true;
     activeId = id;
@@ -299,6 +354,41 @@
       window.removeEventListener("resize", schedule);
       window.removeEventListener("keydown", onKeyScroll);
       if (frame) cancelAnimationFrame(frame);
+    };
+  });
+
+  onMount(() => {
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    let eventSeq = 0;
+
+    void (async () => {
+      try {
+        const stop = await onAnilistAuthChanged((status) => {
+          if (disposed) return;
+          eventSeq += 1;
+          anilistAuth = status;
+          anilistWaiting = false;
+          anilistError = "";
+        });
+        if (disposed) stop();
+        else unlisten = stop;
+      } catch (err) {
+        if (!disposed) anilistError = errorText(err);
+      }
+
+      try {
+        const seq = eventSeq;
+        const status = await anilistAuthStatus();
+        if (!disposed && seq === eventSeq) anilistAuth = status;
+      } catch (err) {
+        if (!disposed) anilistError = errorText(err);
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      unlisten?.();
     };
   });
 
@@ -591,6 +681,65 @@
                 {/each}
               </dl>
               {#if section.id === "settings-data"}
+                <div class="anilist-account" style="border-top: 1px solid var(--line);">
+                  <div class="flex flex-wrap items-center gap-3 pt-3">
+                    {#if anilistAuth?.viewer}
+                      {#if anilistAuth.viewer.avatar}
+                        <img
+                          class="anilist-avatar"
+                          src={anilistAuth.viewer.avatar}
+                          alt=""
+                          loading="lazy"
+                        />
+                      {:else}
+                        <span class="w-9 h-9 grid place-items-center rounded-full shrink-0" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
+                          <Icon name="eye" size={16} />
+                        </span>
+                      {/if}
+                      <div class="min-w-0 flex-1">
+                        <p class="text-sm font-semibold truncate">{anilistAuth.viewer.name}</p>
+                        <p class="text-xs mt-0.5" style="color: var(--paper-400);">
+                          AniList account connected
+                        </p>
+                      </div>
+                      <button
+                        class="btn-ghost px-3 py-2 text-xs"
+                        disabled={anilistBusy}
+                        onclick={disconnectAniList}
+                      >
+                        <Icon name="xCircle" size={14} />
+                        Disconnect
+                      </button>
+                    {:else}
+                      <span class="w-9 h-9 grid place-items-center rounded-full shrink-0" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
+                        <Icon name="link" size={16} />
+                      </span>
+                      <div class="min-w-0 flex-1">
+                        <p class="text-sm font-semibold">AniList account</p>
+                        <p class="text-xs mt-0.5" style="color: var(--paper-400);">
+                          Connect to keep your AniList list and progress in step.
+                        </p>
+                      </div>
+                      <button
+                        class="btn-ghost px-3 py-2 text-xs"
+                        disabled={anilistBusy || anilistWaiting}
+                        onclick={connectAniList}
+                      >
+                        <Icon name="external" size={14} />
+                        {anilistHasError ? "Reconnect" : "Connect AniList"}
+                      </button>
+                    {/if}
+                  </div>
+                  {#if anilistStatusText}
+                    <p
+                      role="status"
+                      class="data-status"
+                      class:is-error={anilistStatusError}
+                    >
+                      {anilistStatusText}
+                    </p>
+                  {/if}
+                </div>
                 <div class="data-actions" style="border-top: 1px solid var(--line);">
                   <div class="flex flex-wrap items-center gap-2 pt-3">
                     <button
@@ -782,6 +931,16 @@
 
   .settings-rail-item[aria-current="location"] .settings-rail-hint {
     color: var(--text-3);
+  }
+
+  .anilist-avatar {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--tint-1);
+    border: 1px solid var(--line-volt);
   }
 
   .data-actions {

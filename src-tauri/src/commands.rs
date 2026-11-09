@@ -5,9 +5,9 @@ use serde_json::{json, Value};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::anilist::{AniListClient, Media, ShelfKind};
+use crate::anilist::{AniListAuthStatus, AniListClient, Media, ShelfKind, Viewer};
 use crate::db::{
     ContinueItem, Db, HistoryItem, InstalledSource, JsExtensionRow, LibraryItem,
     SourceContinueItem, SourceHistoryItem, SourceLibraryItem, SourceProgress,
@@ -42,6 +42,140 @@ pub struct BackupExport {
 }
 
 const SETTINGS_MAX_BYTES: usize = 64 * 1024;
+const ANILIST_KEYRING_SERVICE: &str = "app.kaminari.desktop";
+const ANILIST_KEYRING_USER: &str = "anilist";
+
+fn keyring_entry() -> Result<keyring::Entry, String> {
+    keyring::Entry::new(ANILIST_KEYRING_SERVICE, ANILIST_KEYRING_USER)
+        .map_err(|err| format!("cannot open the AniList keychain entry: {err}"))
+}
+
+fn load_anilist_token() -> Result<Option<String>, String> {
+    match keyring_entry()?.get_password() {
+        Ok(token) => Ok(Some(token)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(err) => Err(format!(
+            "cannot read the AniList token from the keychain: {err}"
+        )),
+    }
+}
+
+fn store_anilist_token(token: &str) -> Result<(), String> {
+    keyring_entry()?
+        .set_password(token)
+        .map_err(|err| format!("cannot save the AniList token in the keychain: {err}"))
+}
+
+fn remove_anilist_token() -> Result<(), String> {
+    match keyring_entry()?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(err) => Err(format!(
+            "cannot remove the AniList token from the keychain: {err}"
+        )),
+    }
+}
+
+async fn validate_anilist_token(client: &AniListClient, token: &str) -> Result<Viewer, AppError> {
+    client.set_token(token);
+    let result = client.viewer().await;
+    if result.is_err() {
+        client.clear_token();
+    }
+    result
+}
+
+pub async fn anilist_auth_status_for(client: &AniListClient) -> AniListAuthStatus {
+    let token = match load_anilist_token() {
+        Ok(Some(token)) if !token.trim().is_empty() => token,
+        Ok(_) => {
+            client.clear_token();
+            return AniListAuthStatus {
+                connected: false,
+                viewer: None,
+                error: None,
+            };
+        }
+        Err(err) => {
+            client.clear_token();
+            return AniListAuthStatus {
+                connected: false,
+                viewer: None,
+                error: Some(err),
+            };
+        }
+    };
+
+    match validate_anilist_token(client, &token).await {
+        Ok(viewer) => AniListAuthStatus {
+            connected: true,
+            viewer: Some(viewer),
+            error: None,
+        },
+        Err(AppError::Auth(message)) => {
+            let error = match remove_anilist_token() {
+                Ok(()) => message,
+                Err(clear_err) => format!("{message} {clear_err}"),
+            };
+            AniListAuthStatus {
+                connected: false,
+                viewer: None,
+                error: Some(error),
+            }
+        }
+        Err(err) => AniListAuthStatus {
+            connected: true,
+            viewer: None,
+            error: Some(format!(
+                "Could not reach AniList. The saved token was kept. {err}"
+            )),
+        },
+    }
+}
+
+pub async fn complete_anilist_auth(app: &AppHandle, token: String) -> AniListAuthStatus {
+    let client = app.state::<AniListClient>();
+    let status = match validate_anilist_token(client.inner(), &token).await {
+        Ok(viewer) => match store_anilist_token(&token) {
+            Ok(()) => {
+                client.set_token(&token);
+                AniListAuthStatus {
+                    connected: true,
+                    viewer: Some(viewer),
+                    error: None,
+                }
+            }
+            Err(err) => {
+                client.clear_token();
+                AniListAuthStatus {
+                    connected: false,
+                    viewer: None,
+                    error: Some(err),
+                }
+            }
+        },
+        Err(AppError::Auth(message)) => AniListAuthStatus {
+            connected: false,
+            viewer: None,
+            error: Some(message),
+        },
+        Err(err) => AniListAuthStatus {
+            connected: false,
+            viewer: None,
+            error: Some(format!(
+                "Could not reach AniList. Try connecting again. {err}"
+            )),
+        },
+    };
+    let _ = app.emit("anilist-auth-changed", &status);
+    status
+}
+
+pub async fn handle_anilist_deep_link(app: AppHandle, url: url::Url) {
+    let Ok(token) = crate::anilist::parse_auth_callback(&url) else {
+        return;
+    };
+    complete_anilist_auth(&app, token).await;
+}
 
 fn ipc_error(error: AppError) -> String {
     error.to_string()
@@ -99,6 +233,30 @@ pub async fn anilist_search(
 #[tauri::command]
 pub async fn anilist_detail(state: State<'_, AniListClient>, id: i64) -> Result<Media, String> {
     state.detail(id).await.map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn anilist_auth_start(app: AppHandle) -> Result<String, String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let url = crate::anilist::auth_url();
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|err| format!("cannot open the AniList sign in page: {err}"))?;
+    Ok(url.to_string())
+}
+
+#[tauri::command]
+pub async fn anilist_auth_status(
+    state: State<'_, AniListClient>,
+) -> Result<AniListAuthStatus, String> {
+    Ok(anilist_auth_status_for(state.inner()).await)
+}
+
+#[tauri::command]
+pub fn anilist_auth_logout(state: State<'_, AniListClient>) -> Result<(), String> {
+    state.clear_token();
+    remove_anilist_token()
 }
 
 #[tauri::command]

@@ -7,6 +7,8 @@ pub enum AppError {
     Db(String),
     #[error("network error: {0}")]
     Net(String),
+    #[error("{0}")]
+    Auth(String),
     #[error("extension blocked: {0}")]
     Blocked(String),
     #[error("rate limited, retry in {0} seconds")]

@@ -14,6 +14,16 @@ mod registry;
 mod tray;
 
 use tauri::Manager;
+use tauri_plugin_deep_link::DeepLinkExt;
+
+fn handle_deep_links(handle: &tauri::AppHandle, urls: Vec<url::Url>) {
+    for url in urls {
+        let handle = handle.clone();
+        tauri::async_runtime::spawn(async move {
+            commands::handle_anilist_deep_link(handle, url).await;
+        });
+    }
+}
 
 fn main() {
     tracing_subscriber::fmt()
@@ -21,6 +31,15 @@ fn main() {
         .init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_libmpv::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(anilist::AniListClient::new())
@@ -61,6 +80,21 @@ fn main() {
                 tracing::warn!(error = %err, "tray: setup failed");
             }
 
+            let handle = app.handle().clone();
+            app.deep_link().on_open_url({
+                let handle = handle.clone();
+                move |event| handle_deep_links(&handle, event.urls())
+            });
+
+            #[cfg(any(target_os = "linux", all(target_os = "windows", debug_assertions)))]
+            if let Err(err) = app.deep_link().register_all() {
+                tracing::warn!(error = %err, "deep link: scheme registration failed");
+            }
+
+            if let Ok(Some(urls)) = app.deep_link().get_current() {
+                handle_deep_links(&handle, urls);
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -69,6 +103,9 @@ fn main() {
             commands::anilist_shelf,
             commands::anilist_search,
             commands::anilist_detail,
+            commands::anilist_auth_start,
+            commands::anilist_auth_status,
+            commands::anilist_auth_logout,
             commands::library_list,
             commands::library_add,
             commands::library_remove,
