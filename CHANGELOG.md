@@ -4,7 +4,14 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.16.1 - 2026-11-09
+
+- Licenses: native libmpv license package with artifact hashes, texts and source offer, marked not bundled
 - Dev: embedded libmpv P0 spike behind the default-off `kaminari.libmpv` flag, with a dev harness and gitignored DLLs
+- Dev: libmpv requires the loopback proxy for headers and rejects comma header values
+- Dev: proxy scope stays MP4 and HLS; DASH and embed with headers point to external mpv
+- Docs: P1 readiness checklist and route-scoped transparency decision
+- Version: bump to 0.16.1
 
 ## 0.16.0 - 2026-11-08
 
