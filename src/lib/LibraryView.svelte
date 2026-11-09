@@ -286,6 +286,7 @@
             <article class="library-source-card">
               <button
                 class="library-source-art"
+                data-source-show={`${item.extensionId}|${item.showId}`}
                 onclick={() => onOpenSource(item)}
                 aria-label="Open {item.title} from {item.extensionName}"
               >

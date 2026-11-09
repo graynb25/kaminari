@@ -1,5 +1,5 @@
 ﻿<script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import Callout from "./Callout.svelte";
   import EmptyState from "./EmptyState.svelte";
   import Icon from "./Icon.svelte";
@@ -74,6 +74,7 @@
   let closeButton: HTMLButtonElement | null = $state(null);
   let previousFocus: HTMLElement | null = null;
   let autoPlayed = false;
+  let playbackEpisodeId: string | null = null;
   let progressSave: Promise<void> = Promise.resolve();
 
   const inSourceLibrary = $derived(
@@ -103,7 +104,19 @@
 
     return () => {
       delete document.body.dataset.overlay;
-      previousFocus?.focus?.();
+      requestAnimationFrame(() => {
+        if (previousFocus?.isConnected) {
+          previousFocus.focus();
+          return;
+        }
+        const showId = initialShow?.id ?? selected?.id ?? null;
+        if (!showId) return;
+        const key = `${extension.id}|${showId}`;
+        const target = Array.from(
+          document.querySelectorAll<HTMLButtonElement>("[data-source-show]"),
+        ).find((element) => element.dataset.sourceShow === key);
+        target?.focus();
+      });
     };
   });
 
@@ -259,7 +272,11 @@
 
   async function closePlayer() {
     const proxyId = activePlayback?.stream.proxyId ?? null;
+    const episodeId = activePlayback?.episode.id ?? playbackEpisodeId;
     activePlayback = null;
+    await tick();
+    focusEpisodePlay(episodeId);
+    playbackEpisodeId = null;
     await progressSave;
     if (proxyId) {
       try {
@@ -275,6 +292,17 @@
       // Keep the old progress on a read failure.
     }
     onLibraryChanged?.();
+  }
+
+  function focusEpisodePlay(episodeId: string | null) {
+    if (!episodeId) return;
+    const buttons = document.querySelectorAll<HTMLButtonElement>("[data-episode-play]");
+    for (const button of buttons) {
+      if (button.dataset.episodePlay === episodeId) {
+        button.focus();
+        return;
+      }
+    }
   }
 
   async function resolve(episode: JsEpisode): Promise<JsStream[]> {
@@ -356,6 +384,7 @@
       startSec: resumeFor(episode.id),
       backend,
     };
+    playbackEpisodeId = episode.id;
   }
 
   function fallbackToWebView(message: string) {
@@ -643,6 +672,7 @@
                   <div class="flex items-center gap-1.5 shrink-0">
                     <button
                       class="btn-primary px-3 py-1.5 text-[11px] shrink-0"
+                      data-episode-play={episode.id}
                       disabled={resolving === episode.id}
                       onclick={() => void playEpisode(episode)}
                       aria-label="{resolving === episode.id ? 'Resolving' : episodeAction(episode)} episode {episode.number}"

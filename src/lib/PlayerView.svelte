@@ -135,6 +135,7 @@
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         closePlayer();
         return;
       }
@@ -143,51 +144,69 @@
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       if (tag === "BUTTON" && (event.key === " " || event.key === "Enter")) return;
 
+      // Leave modified keys to the app level shortcuts, such as Ctrl K.
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+
       const key = event.key.toLowerCase();
       if (event.key === " " || key === "k") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         togglePlay();
       } else if (key === "j") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         seek(currentTime - 10);
       } else if (key === "l") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         seek(currentTime + 10);
       } else if (event.key === "ArrowLeft") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         seek(currentTime - (event.shiftKey ? 60 : 10));
       } else if (event.key === "ArrowRight") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         seek(currentTime + (event.shiftKey ? 60 : 10));
       } else if (event.key === "ArrowUp") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         changeVolume(Math.min(1, volume + 0.05));
       } else if (event.key === "ArrowDown") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         changeVolume(Math.max(0, volume - 0.05));
       } else if (key === "m") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         toggleMute();
       } else if (key === "f") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         void toggleFullscreen();
       } else if (key === "t") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         toggleFill();
       } else if (key === "v") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         cycleSubtitles();
       } else if (event.key === ",") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         stepSpeed(-1);
       } else if (event.key === ".") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         stepSpeed(1);
       } else if (event.key === "0") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         resetSpeed();
       } else if (key === "d") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         diagnostics = !diagnostics;
       }
     };
