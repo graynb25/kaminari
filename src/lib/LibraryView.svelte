@@ -309,7 +309,7 @@
                 <span class="absolute left-3 right-14 bottom-3 block">
                   <span class="block text-sm font-semibold leading-snug line-clamp-1">{item.title}</span>
                   <span class="block text-[10px] mt-0.5" style="color: var(--paper-300); font-family: var(--font-mono);">
-                    {item.watchedCount} watched{item.year ? ` Â· ${item.year}` : ""}
+                    {item.watchedCount} watched{item.year ? ` · ${item.year}` : ""}
                   </span>
                 </span>
                 {#if item.lastDuration && item.lastPosition && item.lastPosition < item.lastDuration * 0.95}
@@ -325,7 +325,7 @@
                       Episode {item.lastEpisode}
                       {#if item.lastDuration && item.lastPosition}
                         <span style="color: var(--paper-450); font-family: var(--font-mono);">
-                          Â· {formatTime(item.lastPosition)} / {formatTime(item.lastDuration)}
+                          · {formatTime(item.lastPosition)} / {formatTime(item.lastDuration)}
                         </span>
                       {/if}
                     </p>

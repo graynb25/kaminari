@@ -371,7 +371,7 @@
                 <span class="chip text-[9px] px-1.5 py-0.5">Source</span>
               </span>
               <span class="block text-xs mt-0.5 truncate" style="color: var(--paper-500);">
-                {row.item.extensionName}{row.item.year ? ` Â· ${row.item.year}` : ""}
+                {row.item.extensionName}{row.item.year ? ` · ${row.item.year}` : ""}
               </span>
             </span>
             <Icon name="chevronRight" size={14} class="shrink-0" />
@@ -401,7 +401,7 @@
                 {/if}
               </span>
               <span class="block text-xs mt-0.5 truncate" style="color: var(--paper-500);">
-                {row.kind === "lib" ? "In your library Â· " : "AniList Â· "}{metaOf(row.item)}
+                {row.kind === "lib" ? "In your library · " : "AniList · "}{metaOf(row.item)}
               </span>
             </span>
             {#if row.item.averageScore}
@@ -431,7 +431,7 @@
     </div>
   {/if}
   {#snippet footer()}
-    <span><b class="kbd mr-1">â†‘â†“</b> move</span>
+    <span><b class="kbd mr-1">↑↓</b> move</span>
     <span><b class="kbd mr-1">Enter</b> open</span>
     <span><b class="kbd mr-1">Shift</b><b class="kbd">Enter</b> play</span>
     <span><b class="kbd mr-1">Esc</b> close</span>

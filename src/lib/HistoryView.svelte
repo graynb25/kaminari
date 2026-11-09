@@ -188,7 +188,7 @@
                     <p class="text-sm font-semibold truncate">{row.item.title}</p>
                     <p class="text-xs mt-0.5 truncate" style="color: var(--paper-450);">
                       Episode {row.item.episodeNumber}
-                      {#if row.item.episodeTitle} Â· {row.item.episodeTitle}{/if}
+                      {#if row.item.episodeTitle} · {row.item.episodeTitle}{/if}
                       <span style="color: var(--paper-500);"> / {row.item.extensionName}</span>
                     </p>
                   </div>

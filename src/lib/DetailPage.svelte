@@ -135,7 +135,7 @@
       </div>
 
       <div class="pb-1 min-w-0 flex-1">
-        <p class="eyebrow">{media.format ?? "Title"} {media.status ? `Â· ${media.status.split("_").join(" ").toLowerCase()}` : ""}</p>
+        <p class="eyebrow">{media.format ?? "Title"} {media.status ? `· ${media.status.split("_").join(" ").toLowerCase()}` : ""}</p>
         <h1
           class="mt-1 leading-[1.02] line-clamp-2"
           style="font-family: var(--font-display); font-size: clamp(32px, 4vw, 54px); font-weight: 750; letter-spacing: -0.035em;"

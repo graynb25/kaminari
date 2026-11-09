@@ -568,7 +568,7 @@
       <div class="player-glass px-5 py-4 rounded-2xl flex flex-col items-center gap-2.5">
         <span class="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style="border-color: var(--volt-400); border-top-color: transparent;"></span>
         <span class="text-[10px] mono tracking-[0.12em]" style="color: var(--paper-300);">
-          {stream.type.toUpperCase()}{stream.quality ? ` Â· ${stream.quality}` : ""}
+          {stream.type.toUpperCase()}{stream.quality ? ` · ${stream.quality}` : ""}
         </span>
       </div>
     </div>

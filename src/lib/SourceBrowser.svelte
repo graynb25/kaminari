@@ -340,7 +340,7 @@
     try {
       const info = await playerPlay({
         url: stream.url,
-        title: `${selected?.title ?? "Kaminari"} Â· Episode ${episode.number}`,
+        title: `${selected?.title ?? "Kaminari"} · Episode ${episode.number}`,
         headers: stream.headers ?? undefined,
         subtitles: stream.subtitles ?? undefined,
       });
@@ -575,7 +575,7 @@
                       {/if}
                     </div>
                     <p class="text-[11px] mt-0.5" style="color: var(--paper-450); font-family: var(--font-mono);">
-                      EP {episode.number}{duration(episode.durationSec) ? ` Â· ${duration(episode.durationSec)}` : ""}
+                      EP {episode.number}{duration(episode.durationSec) ? ` · ${duration(episode.durationSec)}` : ""}
                     </p>
                     {#if saved}
                       <div class="h-0.5 rounded-full mt-1.5 overflow-hidden" style="background: var(--void-700);" aria-hidden="true">
@@ -731,7 +731,7 @@
                   </div>
                   <div class="poster-body">
                     <p class="poster-title">{item.title}</p>
-                    <p class="poster-meta">{item.year ?? "Source result"}{item.episodes ? ` Â· ${item.episodes} eps` : ""}</p>
+                    <p class="poster-meta">{item.year ?? "Source result"}{item.episodes ? ` · ${item.episodes} eps` : ""}</p>
                   </div>
                 </button>
               </div>
@@ -748,7 +748,7 @@
     stream={activePlayback.stream}
     title={selected?.title ?? "Source playback"}
     subtitle="Episode {activePlayback.episode.number}{activePlayback.episode.title
-      ? ` Â· ${activePlayback.episode.title}`
+      ? ` · ${activePlayback.episode.title}`
       : ''}"
     startSec={activePlayback.startSec}
     onProgress={(position, duration, watched) => {
