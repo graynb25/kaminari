@@ -316,7 +316,14 @@
   color-scheme: light;
 }
 
-html,
+html {
+  height: 100%;
+  background: transparent;
+  color: var(--paper-50);
+  font-family: var(--font-ui);
+  overflow: hidden;
+}
+
 body,
 #app {
   height: 100%;
@@ -1955,6 +1962,18 @@ body[data-player-open="true"] .toast-stack {
 /* Player */
 .player-shell {
   background: #000;
+}
+
+/* The libmpv spike draws video into the native window behind the WebView.
+   Only the player route goes transparent, and the app chrome is hidden so a
+   normal page never sits between the video and the glass controls. */
+body[data-player-open="true"],
+body[data-player-open="true"] #app {
+  background: transparent;
+}
+
+body[data-player-open="true"] .app-shell {
+  visibility: hidden;
 }
 
 .player-glass {

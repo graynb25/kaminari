@@ -15,6 +15,7 @@ import type {
   LegacyExtension,
   LibraryItem,
   Media,
+  MpvEmbedStatus,
   PlaybackInfo,
   PlaybackRequest,
   PlayerStatus,
@@ -166,6 +167,54 @@ export function playerStop(): Promise<void> {
 
 export function playerStatus(): Promise<PlayerStatus> {
   return invoke<PlayerStatus>("player_status");
+}
+
+export function mpvEmbedStatus(): Promise<MpvEmbedStatus> {
+  return invoke<MpvEmbedStatus>("mpv_embed_status");
+}
+
+export function mpvEmbedInit(windowLabel: string): Promise<string> {
+  return invoke<string>("mpv_embed_init", { windowLabel });
+}
+
+export function mpvEmbedLoad(
+  windowLabel: string,
+  url: string,
+  headers?: Record<string, string> | null,
+): Promise<void> {
+  return invoke<void>("mpv_embed_load", {
+    windowLabel,
+    url,
+    headers: headers ?? null,
+  });
+}
+
+export function mpvEmbedSet(
+  windowLabel: string,
+  name: string,
+  value: string | number | boolean,
+): Promise<void> {
+  return invoke<void>("mpv_embed_set", { windowLabel, name, value });
+}
+
+export function mpvEmbedSeek(
+  windowLabel: string,
+  seconds: number,
+  mode: "absolute" | "relative",
+): Promise<void> {
+  return invoke<void>("mpv_embed_seek", { windowLabel, seconds, mode });
+}
+
+export function mpvEmbedCycleSub(windowLabel: string): Promise<void> {
+  return invoke<void>("mpv_embed_cycle_sub", { windowLabel });
+}
+
+export function mpvEmbedGet(windowLabel: string, name: string): Promise<unknown> {
+  return invoke<unknown>("mpv_embed_get", { windowLabel, name });
+}
+
+export function mpvEmbedDestroy(windowLabel: string): Promise<void> {
+  return invoke<void>("mpv_embed_destroy", { windowLabel });
 }
 
 export function sourceLibraryList(): Promise<SourceLibraryItem[]> {

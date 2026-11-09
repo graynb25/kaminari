@@ -1,6 +1,6 @@
 # Plan: embedded libmpv playback
 
-Status: planning only. No code changed. This doc is the build spec. Read with `docs/PLAN-STREAM-PROXY.md`, `docs/DESIGN-SPEC.md` section VideoPlayer, and `docs/ENGINEERING-NOTES.md` player entries.
+Status: P0 spike complete on Windows. The embedded path is behind the default-off `kaminari.libmpv` flag, PlayerView is still the default, and no DLLs are committed or bundled. P1 is blocked on the license sign-off. This doc is the build spec. Read with `docs/PLAN-STREAM-PROXY.md`, `docs/DESIGN-SPEC.md` section VideoPlayer, and `docs/ENGINEERING-NOTES.md` player entries.
 
 Goal: play H.264, HEVC, AV1, HLS, ASS, and HDR inside Kaminari with custom controls, keep the loopback proxy for protected origins, keep external mpv as fallback.
 
@@ -222,6 +222,21 @@ Test matrix (manual QA per phase):
 
 P0: spike and decision (effort 3 to 5 days). Acceptance: transparent route proves video shows through under glass on the dev machine, `loadfile` plays sample MP4 and a local HEVC file, Svelte shortcuts work with mpv input disabled, `destroy` cleans handles, fallback to WebView works when DLLs are removed. Z-order gate: in windowed and fullscreen, the glass controls, buffering spinner, error panel, and diagnostics must be visible and readable over the video, and the video must not be hidden by an opaque WebView layer. If that gate fails, stop and choose a dedicated watch window or WebView fallback before P1. Records: first frame time, CPU and GPU during HEVC, installer size delta for the two DLLs. No license change yet, no bundle change.
 
+### P0 result, 2026-11-08
+
+Machine: Windows 11 Pro build 26300, i7-12700K, Radeon RX 6600 driver 32.0.21045.16010, WebView2 157.0.4341.42. Native artifact is the pinned `mpv-dev-lgpl` build from section 10.
+
+Dev entry: set `localStorage["kaminari.libmpv"]="true"` or add `?libmpv=1` to the app URL. The harness is `?mpvHarness=1&sample=popeye` or `&sample=short`, and `&file=<absolute path>` for a local sample. Copy both DLLs next to the debug exe, or into its `lib` folder, before the run.
+
+* Z-order gate: pass. In a 1280x800 window and at 2560x1440 fullscreen, the video stayed visible under the glass top bar, bottom bar, diagnostics, and the error panel. `html` must be transparent as well as `body` and `#app`; setting only the app root leaves a black page over the video. Fullscreen uses the Tauri window, not mpv exclusive fullscreen.
+* First frame: 1.82 s and 1.94 s for the archive.org Popeye MP4, 0.59 s for the 10 s Big Buck Bunny MP4, and 0.23 s for the local 1080p 10 bit HEVC file. Measured from `loadfile` to the first `time-pos` above zero.
+* HEVC: a local libx265 1920x1080 30 fps 10 bit sample played with `video-codec=hevc` and `hwdec-current=d3d11va`. Over 9.5 s: CPU 0.5 percent of the machine (9.1 percent of one core), GPU video decode 3.5 percent average and 10.6 percent peak, GPU 3D 1.4 percent average. HEVC was tested; no external HEVC file entered the repo.
+* Fallback: with both DLLs renamed, the SourceBrowser mounted PlayerView and the harness showed the toast `libmpv is unavailable: DLLs are missing. Using the WebView player.` The WebView video played, with no black route.
+* Lifecycle: two open and close cycles left `activeLabel` null and the mpv child window count at 0. A real SourceBrowser close did the same. A hard reload destroys the old handle before init. The wrapper also reports an `end-file` reason `quit` during teardown, so the new view ignores it.
+* Native payload: `libmpv-2.dll` is 101,853,696 bytes and `libmpv-wrapper.dll` is 391,680 bytes, uncompressed. Installer delta is not measured because P0 does not bundle them.
+* Blockers for P1: the wrapper rejects JSON arrays, so `http-header-fields` goes as one comma separated string and header values with commas are unsafe. Header protected HLS should use the proxy until the wrapper supports lists. The mpv `start` property is rejected at runtime, so resume seeks after `file-loaded`. The `mpv-dev-lgpl` archive carries no license text; texts and a source offer must be added before shipping, and the lawyer sign-off still applies.
+* P1 needs: a dedicated watch window or proven route scoped transparency on the main window, installer size measurement, the header path through the proxy, license texts and source offer, and clean install plus update tests.
+
 P1: Windows packaging and hardening (effort 1 to 2 weeks). Blocked on section 3 license sign off. Acceptance: pinned `mpv-dev-lgpl` plus wrapper hashes, `bundle.resources` set, clean install on a Windows 11 VM with WebView2 present plays HEVC plus ASS, signed installer notes SmartScreen behavior, Licenses dialog lists native DLLs with versions and texts, `mpv_embed_status` gates playback, all proxy tests still green. Records: exe size, installer size, cold start, time to first frame.
 
 P2: feature parity with `PlayerView` (effort 2 to 3 weeks). Acceptance: HLS master plus audio groups, track pickers, speed, volume, resume, progress, Up Next, diagnostics redaction, error and ended panels match spec, keyboard map complete, focus trap and focus return work, reduced motion stops zoom and shimmer over video. Tests: intent allowlist unit tests, URL scheme tests, event mapping tests, Vitest for control logic, no token in copied diagnostics.
@@ -230,13 +245,26 @@ P3: polish and ports (effort 3 to 4 weeks, macOS and Linux may split). Acceptanc
 
 Each phase updates this plan with measured numbers before moving on. No phase widens CSP beyond the 8 loopback ports. No phase ships a bundled binary before the license gate passes.
 
-## 10. Open questions for the user
+## 10. Decisions
 
-1. Windows first or all desktops at once. Windows embedding is tested upstream. Linux embedding is broken and macOS is untested. Ship Windows embedded while Linux and macOS stay on WebView plus external mpv, or hold embedded until all three prove out.
-2. LGPL artifact trust. `zhongfly/mpv-winbuild` marks the LGPL build as use at own risk. Accept that artifact with hash pinning and a lawyer check, or fund a self built LGPL libmpv with published scripts.
-3. Installer budget. The 15 MB budget predates libmpv. Keep 15 MB for the core plus a separate stated native payload, or raise the budget to include the DLLs.
-4. Transparency scope. Make only the watch route transparent, or the whole window. Route scope is safer for contrast. Full window transparency matches the plugin README but risks text legibility.
-5. HDR default. Prefer tone mapped SDR by default for consistency, or native HDR when the display reports it with an SDR toggle in Settings.
-6. ASS font bundling. Bundle one open font for ASS fallback, or rely on system fonts only.
-7. Updater channel for native libs. Ship DLL updates with every app update, or gate DLL changes behind a separate channel with rollback.
-8. Telemetry for fallback rate. Log local counters for embedded success, WebView fallback, and external opens to guide P3, or keep no counters beyond existing diagnostics.
+Approved on 2026-11-08. These replace the open questions.
+
+1. Platform order: Windows first. Linux and macOS stay on WebView plus external mpv until embedding proves out there.
+2. Native artifact: use the `zhongfly/mpv-winbuild` `mpv-dev-lgpl` x86_64 build, pinned by archive hash. A lawyer must sign off before any P1 bundle. Never ship the GPL `mpv-dev` artifact.
+3. Installer budget: keep the 15 MB core budget and add a separate native payload budget for the two DLLs.
+4. Transparency scope: only the watch route goes transparent. The rest of the window stays opaque.
+5. HDR default: tone-mapped SDR by default.
+6. ASS fonts: bundle one open fallback font at P1.
+7. Native updates: `libmpv-2.dll` and `libmpv-wrapper.dll` update with the app, not on a separate channel.
+8. Fallback telemetry: local counters only for embedded success, WebView fallback, and external opens. No upload.
+
+### P0 dev artifacts, not committed
+
+The spike keeps both DLLs in `src-tauri/lib/`, which is gitignored. Nothing is added to `bundle.resources` in P0.
+
+| Component | Version | URL | Archive SHA-256 | DLL SHA-256 | Size |
+|---|---|---|---|---|---|
+| libmpv-wrapper | v0.1.1, `libmpv-wrapper-windows-x86_64.zip` | https://github.com/nini22P/libmpv-wrapper/releases/download/v0.1.1/libmpv-wrapper-windows-x86_64.zip | `D2FF8B2EDCD34D2968E544ADAA915E5E5C48EB1A0995945005269C2AF119A492` | `0D5ADEAD5F175C55E0790A80924EC0A2636F72E3675C79A6D9D9568B2ED2384A` | 391,680 bytes |
+| libmpv | 2026-11-08, mpv git `8bc468896e`, `mpv-dev-lgpl-x86_64-20261108-git-8bc468896e.7z` | https://github.com/zhongfly/mpv-winbuild/releases/download/2026-11-08-8bc468896e/mpv-dev-lgpl-x86_64-20261108-git-8bc468896e.7z | `84BD684C848591356B55555001C114FC72AF9EDCE2D4EBB8B38CC7356A3C0BF5` | `2A287ECB1FE2BC5B6AB636CFEC0CACBB12FFEC05E4EB4E5C2CADE1752E2D15E6` | 101,853,696 bytes |
+
+The wrapper zip publishes a matching `sha256.txt`, and its local `LICENSE` is LGPL-2.1. The mpv-dev-lgpl archive contains `libmpv-2.dll`, the import library, and headers, but no license or copyright file. P1 must add the license texts and a source offer from the mpv and FFmpeg projects before shipping. `mpv-dev-lgpl` is still marked use at own risk by its author, so the lawyer sign-off stays a hard gate.

@@ -3,6 +3,7 @@
   import Callout from "./Callout.svelte";
   import EmptyState from "./EmptyState.svelte";
   import Icon from "./Icon.svelte";
+  import MpvView from "./MpvView.svelte";
   import PlayerView from "./PlayerView.svelte";
   import ProgressBar from "./ProgressBar.svelte";
   import {
@@ -10,6 +11,7 @@
     jsExtensionEpisodes,
     jsExtensionResolve,
     jsExtensionTest,
+    mpvEmbedStatus,
     playerPlay,
     proxyRegister,
     proxyRevoke,
@@ -19,6 +21,7 @@
     sourceProgressGet,
     sourceProgressSet,
   } from "./api";
+  import { libmpvEnabled } from "./libmpv";
   import { isHlsStream, proxyFlagEnabled, shouldProxy } from "./streamProxy";
   import type {
     JsEpisode,
@@ -59,7 +62,12 @@
   let streams = $state<Record<string, JsStream[]>>({});
   let resolving = $state<string | null>(null);
   let streamError = $state<string | null>(null);
-  let activePlayback = $state<{ stream: JsStream; episode: JsEpisode; startSec: number } | null>(null);
+  let activePlayback = $state<{
+    stream: JsStream;
+    episode: JsEpisode;
+    startSec: number;
+    backend: "mpv" | "web";
+  } | null>(null);
   let progress = $state<SourceProgress[]>([]);
   let searchInput: HTMLInputElement | null = $state(null);
   let dialog: HTMLDivElement | null = $state(null);
@@ -317,7 +325,35 @@
         notify("The protected stream could not be proxied. Trying it directly.", "info");
       }
     }
-    activePlayback = { stream: prepared, episode, startSec: resumeFor(episode.id) };
+    let backend: "mpv" | "web" = "web";
+    if (libmpvEnabled()) {
+      try {
+        const status = await mpvEmbedStatus();
+        if (status.available) {
+          backend = "mpv";
+        } else {
+          notify(
+            `libmpv is unavailable: ${status.lastError ?? "DLLs are missing"}. Using the WebView player.`,
+            "info",
+          );
+        }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        notify(`libmpv is unavailable: ${message}. Using the WebView player.`, "info");
+      }
+    }
+    activePlayback = {
+      stream: prepared,
+      episode,
+      startSec: resumeFor(episode.id),
+      backend,
+    };
+  }
+
+  function fallbackToWebView(message: string) {
+    if (!activePlayback) return;
+    notify(`libmpv could not play this stream: ${message}. Using the WebView player.`, "error");
+    activePlayback = { ...activePlayback, backend: "web" };
   }
 
   async function playEpisode(episode: JsEpisode) {
@@ -402,6 +438,7 @@
 <div
   bind:this={dialog}
   class="fixed inset-0 z-40 flex flex-col"
+  class:is-playing={activePlayback !== null}
   style="background: radial-gradient(900px 500px at 20% -10%, var(--accent-wash), transparent 60%), var(--void-950);"
   role="dialog"
   aria-modal="true"
@@ -744,24 +781,47 @@
 </div>
 
 {#if activePlayback}
-  <PlayerView
-    stream={activePlayback.stream}
-    title={selected?.title ?? "Source playback"}
-    subtitle="Episode {activePlayback.episode.number}{activePlayback.episode.title
-      ? ` · ${activePlayback.episode.title}`
-      : ''}"
-    startSec={activePlayback.startSec}
-    onProgress={(position, duration, watched) => {
-      progressSave = saveProgress(position, duration, watched);
-    }}
-    onClose={() => void closePlayer()}
-    onOpenExternal={() =>
-      void openExternal(activePlayback!.stream, activePlayback!.episode)}
-    {notify}
-  />
+  {#if activePlayback.backend === "mpv"}
+    <MpvView
+      stream={activePlayback.stream}
+      title={selected?.title ?? "Source playback"}
+      subtitle="Episode {activePlayback.episode.number}{activePlayback.episode.title
+        ? ` · ${activePlayback.episode.title}`
+        : ''}"
+      startSec={activePlayback.startSec}
+      onProgress={(position, duration, watched) => {
+        progressSave = saveProgress(position, duration, watched);
+      }}
+      onClose={() => void closePlayer()}
+      onOpenExternal={() =>
+        void openExternal(activePlayback!.stream, activePlayback!.episode)}
+      onFallback={fallbackToWebView}
+      {notify}
+    />
+  {:else}
+    <PlayerView
+      stream={activePlayback.stream}
+      title={selected?.title ?? "Source playback"}
+      subtitle="Episode {activePlayback.episode.number}{activePlayback.episode.title
+        ? ` · ${activePlayback.episode.title}`
+        : ''}"
+      startSec={activePlayback.startSec}
+      onProgress={(position, duration, watched) => {
+        progressSave = saveProgress(position, duration, watched);
+      }}
+      onClose={() => void closePlayer()}
+      onOpenExternal={() =>
+        void openExternal(activePlayback!.stream, activePlayback!.episode)}
+      {notify}
+    />
+  {/if}
 {/if}
 
 <style>
+  .is-playing {
+    visibility: hidden;
+  }
+
   .source-browser-head {
     border: 0;
     border-bottom: 1px solid var(--line);

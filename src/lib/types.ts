@@ -184,6 +184,16 @@ export type PlayerStatus = {
   version?: string | null;
 };
 
+export type MpvEmbedStatus = {
+  available: boolean;
+  wrapperPresent: boolean;
+  libmpvPresent: boolean;
+  dllDir?: string | null;
+  devDir?: string | null;
+  activeLabel?: string | null;
+  lastError?: string | null;
+};
+
 export type SourceExtensionRef = {
   id: string;
   name: string;

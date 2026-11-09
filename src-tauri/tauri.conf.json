@@ -19,7 +19,8 @@
         "minHeight": 640,
         "decorations": false,
         "fullscreen": false,
-        "resizable": true
+        "resizable": true,
+        "transparent": true
       }
     ],
     "security": {

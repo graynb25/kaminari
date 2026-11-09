@@ -7,6 +7,7 @@ mod commands;
 mod db;
 mod error;
 mod ext_host;
+mod mpv_embed;
 mod player;
 mod proxy;
 mod registry;
@@ -19,8 +20,10 @@ fn main() {
         .init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_libmpv::init())
         .manage(anilist::AniListClient::new())
         .manage(player::PlayerState::new())
+        .manage(mpv_embed::MpvEmbedState::default())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
@@ -88,6 +91,14 @@ fn main() {
             commands::player_play,
             commands::player_stop,
             commands::player_status,
+            mpv_embed::mpv_embed_status,
+            mpv_embed::mpv_embed_init,
+            mpv_embed::mpv_embed_load,
+            mpv_embed::mpv_embed_set,
+            mpv_embed::mpv_embed_seek,
+            mpv_embed::mpv_embed_cycle_sub,
+            mpv_embed::mpv_embed_get,
+            mpv_embed::mpv_embed_destroy,
             commands::source_library_list,
             commands::source_library_add,
             commands::source_library_remove,

@@ -14,6 +14,8 @@ char = chr(0x2014)
 roots = [pathlib.Path(p) for p in ["CONTRIBUTING.md","README.md","LICENSE","SECURITY.md","CHANGELOG.md","docs"]]
 roots += [pathlib.Path("src"), pathlib.Path("src-tauri")]
 skip = {".git", "node_modules", "target", "dist", "gen"}
+# Dev-only native payloads are binaries, not prose.
+skip_dirs = {pathlib.Path("src-tauri/lib")}
 found = []
 for r in roots:
     if not r.exists():
@@ -23,6 +25,8 @@ for r in roots:
     else:
         files = [p for p in r.rglob("*") if p.is_file() and not (set(p.parts) & skip)]
     for f in files:
+        if any(f == d or d in f.parents for d in skip_dirs):
+            continue
         try:
             if char in f.read_text(encoding="utf-8", errors="ignore"):
                 found.append(str(f))

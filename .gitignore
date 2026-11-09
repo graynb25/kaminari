@@ -4,6 +4,9 @@ dist/
 src-tauri/target/
 src-tauri/gen/
 
+# Dev-only libmpv DLLs, never committed
+src-tauri/lib/
+
 # Local data and logs
 *.sqlite
 *.sqlite-shm

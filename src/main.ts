@@ -5,6 +5,13 @@ import { initTheme } from "./lib/theme";
 
 initTheme();
 
-const app = mount(App, { target: document.getElementById("app")! });
+const target = document.getElementById("app")!;
+const harness = new URLSearchParams(location.search).get("mpvHarness") === "1";
 
-export default app;
+if (harness) {
+  void import("./lib/MpvHarness.svelte").then(({ default: MpvHarness }) => {
+    mount(MpvHarness, { target });
+  });
+} else {
+  mount(App, { target });
+}
