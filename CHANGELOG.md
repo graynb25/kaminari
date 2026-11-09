@@ -4,6 +4,15 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.13.0 - 2026-11-08
+
+- Player: HLS media playlists and segments proxy through loopback, including keys, init maps and byte ranges
+- Proxy: separate byte-range children on the same URL, playlist range wins
+- Artwork: shimmer, blur-up, cached image checks and broken image fallbacks across posters, cards, hero and detail
+- Artwork: broken hero and detail banners fall back to the blurred cover or void tile
+- Artwork: shimmer runs only near the viewport, so long shelves do not animate offscreen
+- Version: bump to 0.13.0
+
 ## 0.12.0 - 2026-11-08
 
 - Player: loopback proxy for header protected MP4, enabled from Settings and off by default

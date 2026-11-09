@@ -118,6 +118,26 @@ Context. The app is a player and extension host with no shipped content. The use
 
 What we wrote. `docs/TERMS.md` describes the app, the user's responsibility, third-party extensions, no warranty, liability limits and copyright complaints. `docs/PRIVACY.md` describes the local SQLite and WebView data, the direct AniList, registry, extension and stream requests, no telemetry, deletion paths and contact. Both link from the README.
 
+## 2026-11-08 HLS media playlist proxy
+
+Context. P0 handled MP4 with headers. HLS needed the manifest and segment URLs rewritten so hls.js never leaves loopback and never needs custom headers. Keys, init maps and byte ranges had to stay on the same loopback path.
+
+What we shipped. `/s/{id}/manifest.m3u8` and `/s/{id}/seg/{child}`. The parser rewrites segment URI lines, EXT-X-KEY, EXT-X-MAP, EXT-X-MEDIA, EXT-X-SESSION-KEY, EXT-X-PART, EXT-X-PRELOAD-HINT and EXT-X-SESSION-DATA, resolves relative URLs, substitutes EXT-X-DEFINE, keeps IV and BYTERANGE tags, and drops malformed or undefined URIs. Children are in memory, capped at 256, reused by upstream URL plus byte range, and carry their own content type and range. A playlist range is authoritative for that child, even if the client sends a different Range. Unranged children still forward the client Range. Playlist 2 MB, key 64 KB, subtitle 512 KB caps. Master playlists return 501 so the player falls back to mpv. CORS and token checks cover the new routes.
+
+What we measured. 49 Rust tests pass, 25 proxy tests. Coverage includes relative rewrites, child reuse, header and range forwarding, two byte ranges on one URL, key and subtitle caps, malformed URI drop, the 2 MB cap, master rejection and CORS. 31 Vitest tests pass. The artwork visual pass rebuilt the app cleanly.
+
+What we did not do. No master playlist rewrite, no cross-origin child allowlisting, no external `stream.subtitles` proxy, no cookie jar and no live playlist validation. Master and cross-origin children are P2; cookie jar and live are P3. An app-level HLS test still needs a real source whose manifest and CDN hosts are in the `.kext` allowlist.
+
+## 2026-11-08 Artwork loading lifecycle
+
+Context. Posters, continue cards, history thumbs, hero banners and the detail banner either showed a broken image icon or popped in without a reserved frame or loading state. The design spec asks for a blurhash promise that the app had not met.
+
+What we shipped. `Artwork.svelte` reserves the frame, paints a shimmer, fades the image from a 16px blur when it decodes, checks `complete` and `naturalWidth` for cached and broken files, and renders a fallback snippet on error. Poster, continue, source continue, history, hero and detail use it. A broken hero or detail banner cascades to the blurred cover, then the void tile. Reduced motion shows the image immediately with no blur or transform transition. The wrapper owns the size, so decode cannot shift layout.
+
+What we measured. 114 Artwork nodes rendered on Browse, 37 ready and 77 lazy below the fold. Loaded library and history images had no shimmer. A forced broken poster URL moved to `data-status="failed"`, removed the img and showed the initial letter. No horizontal overflow at 1024, 1600 or 2560. A full reload with a layout-shift observer measured CLS 0.0007 across one shift. After gating the shimmer to a 200px viewport margin, a 114-artwork harness dropped from 114 to 21 running shimmer animations, and the live Browse view showed zero at rest once images loaded. A synthetic 500-poster scroll averaged 7.6ms per frame, with one 111ms insertion frame. The artwork state machine has 10 Vitest tests.
+
+What we did not do. No blurhash pipeline; CSS blur-up is the interim. No server-side image cache change.
+
 ## 2026-11-08 Loopback proxy for protected MP4
 
 Context. MP4 streams that require `Referer`, `User-Agent` or a seed `Cookie` fail in the WebView because a `<video>` element cannot set request headers. External mpv already carries them through `--http-header-fields`. P0 adds a loopback path for the in-app player without widening the extension sandbox.

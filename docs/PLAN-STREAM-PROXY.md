@@ -435,18 +435,18 @@ Light theme check matters because player chrome uses dark tokens over video in b
 
 ## 12. Phased implementation
 
-P0, minimal proxy for MP4 headers (effort: 3 to 5 days):
+P0, minimal proxy for MP4 headers (effort: 3 to 5 days). Status: shipped.
 
 * axum server on `127.0.0.1` with the 8 port set, `/s/:id/file` plus `/healthz`, token check, header allowlist, range forward, streaming body, `proxy_register`, `proxy_revoke`, `proxy_status`.
 * Frontend: `shouldProxy` for MP4 with headers, `proxiedUrl` plumbing, revoke on close, diagnostics bit.
 * Acceptance: header protected MP4 plays in app. Direct sample MP4 unchanged. No HLS rewrite yet, HLS falls back to direct plus mpv. Bundle delta recorded. All existing tests green.
 
-P1, HLS media playlists (effort: 4 to 6 days):
+P1, HLS media playlists (effort: 4 to 6 days). Status: shipped. 49 Rust tests, 25 proxy tests. Child reuse keys on URL plus byte range, and a playlist range is authoritative for that child.
 
 * `/s/:id/manifest.m3u8` plus `/s/:id/seg/:child`, media playlist rewrite (segments, key, map, byterange), child reconcile, subtitle file proxy.
 * Acceptance: single variant HLS with relative segments and init map plays. Key rotation with two keys passes. Fixture tests green. Manual QA at 1280 and 1600.
 
-P2, master playlists and keys (effort: 3 to 5 days):
+P2, master playlists and keys (effort: 3 to 5 days). Status: next.
 
 * Master rewrite (stream inf, iframe, media audio and subtitles), nested variant fetch, depth cap, key handler with 64 KB cap, redirect recheck with final base URL.
 * Acceptance: master with two variants plus audio group plays. Variant switch works. Malicious playlist fixture (nested depth 6, `file:` URI) fails closed with player intact.

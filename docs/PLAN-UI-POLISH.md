@@ -1,6 +1,6 @@
 # UI polish plan
 
-Status: phase 1 shipped in 0.11.4. The phase 2 PageHeader atom shipped in 0.12.0. The remaining phase 2 atoms are open. Derived from a full read of Papyrus (one 1,136-line Tailwind 4 stylesheet, 86 Blade views) and Kaminari (24 Svelte components, 2,219 lines of `app.css`) on 2026-11-08. The conclusion is refinement, not a port. Kaminari already carries a close descendant of the same component grammar: poster card, hero, shelf, glass, toast, stat card, empty state, legal markdown, ranges and player surfaces.
+Status: phase 1 shipped in 0.11.4. The PageHeader atom and the artwork lifecycle shipped in the 0.12 and 0.13 line. The remaining phase 2 atoms are open. Derived from a full read of Papyrus (one 1,136-line Tailwind 4 stylesheet, 86 Blade views) and Kaminari (24 Svelte components, 2,219 lines of `app.css`) on 2026-11-08. The conclusion is refinement, not a port. Kaminari already carries a close descendant of the same component grammar: poster card, hero, shelf, glass, toast, stat card, empty state, legal markdown, ranges and player surfaces.
 
 The rule for this pass: finish the atoms and states, do not redesign the identity. Keep Sora, Inter, JetBrains Mono, the void/volt/paper palette, the 1440px container, the 12/16/20/24 radius scale and the 72px rail.
 
@@ -45,7 +45,7 @@ Gate: screenshots at 1024, 1280, 1600 and 2560 in Storm and Daylight, a keyboard
 
 ## Phase 2: atoms, 3 to 5 days
 
-PageHeader shipped in 0.12.0. The rest are open.
+PageHeader and the artwork lifecycle shipped. The remaining atoms are open.
 
 - `PageHeader.svelte` for eyebrow, title, subtitle, action content passed as `children`, and the soft glow. Replace the four repeated headers.
 - Artwork lifecycle in `PosterCard`: reserved frame, shimmer underlay, blur-up on decode, `complete` check for cache, and error fallback. Then reuse for continue cards, history thumbs, hero banners and detail banner.
