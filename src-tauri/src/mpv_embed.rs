@@ -106,6 +106,42 @@ fn redact(input: &str) -> String {
         .join(" ")
 }
 
+fn split_authority(url: &str) -> Option<(&str, Option<&str>)> {
+    let (scheme, rest) = url.split_once("://")?;
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return None;
+    }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if authority.is_empty() || authority.contains('@') {
+        return None;
+    }
+    if let Some(stripped) = authority.strip_prefix('[') {
+        let end = stripped.find(']')?;
+        let host = &authority[..end + 2];
+        let remainder = &stripped[end + 1..];
+        if remainder.is_empty() {
+            return Some((host, None));
+        }
+        return Some((host, Some(remainder.strip_prefix(':')?)));
+    }
+    match authority.rsplit_once(':') {
+        Some((host, port)) => Some((host, Some(port))),
+        None => Some((authority, None)),
+    }
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    matches!(host, "127.0.0.1" | "localhost" | "[::1]")
+}
+
+fn loopback_proxy_port(url: &str) -> Option<u16> {
+    let (host, port) = split_authority(url)?;
+    if !is_loopback_host(host) {
+        return None;
+    }
+    port?.parse::<u16>().ok()
+}
+
 fn validate_media_url(raw: &str) -> Result<String, String> {
     let url = raw.trim();
     if url.is_empty() {
@@ -113,18 +149,11 @@ fn validate_media_url(raw: &str) -> Result<String, String> {
     }
     let lower = url.to_ascii_lowercase();
     if lower.starts_with("http://") || lower.starts_with("https://") {
-        let authority = url
-            .split_once("://")
-            .and_then(|(_, rest)| rest.split('/').next())
-            .unwrap_or("");
-        let host = authority
-            .rsplit_once(':')
-            .map(|(host, _)| host)
-            .unwrap_or(authority);
-        if host == "127.0.0.1" || host == "localhost" || host == "[::1]" {
-            let port = authority
-                .rsplit_once(':')
-                .and_then(|(_, port)| port.parse::<u16>().ok());
+        let Some((host, port)) = split_authority(url) else {
+            return Err("Only http and https media URLs are allowed.".to_string());
+        };
+        if is_loopback_host(host) {
+            let port = port.and_then(|port| port.parse::<u16>().ok());
             if !matches!(port, Some(39321..=39328)) {
                 return Err("Loopback media is limited to the app proxy.".to_string());
             }
@@ -141,6 +170,38 @@ fn validate_media_url(raw: &str) -> Result<String, String> {
     }
 
     Err("Only http and https media URLs are allowed.".to_string())
+}
+
+fn validate_header_route(
+    url: &str,
+    headers: Option<&HashMap<String, String>>,
+) -> Result<(), String> {
+    let Some(headers) = headers else {
+        return Ok(());
+    };
+    let has_headers = headers
+        .iter()
+        .any(|(key, value)| !key.trim().is_empty() && !value.trim().is_empty());
+    if !has_headers {
+        return Ok(());
+    }
+    if headers.iter().any(|(key, value)| {
+        !key.trim().is_empty() && !value.trim().is_empty() && value.contains(',')
+    }) {
+        return Err(
+            "Header values cannot contain commas. Use the loopback proxy for this stream."
+                .to_string(),
+        );
+    }
+    if !url.to_ascii_lowercase().starts_with("http://")
+        || !matches!(loopback_proxy_port(url), Some(39321..=39328))
+    {
+        return Err(
+            "Header protected streams must use the loopback proxy. Direct headers are not supported."
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 fn sanitize_headers(headers: Option<&HashMap<String, String>>) -> Vec<String> {
@@ -325,6 +386,7 @@ pub async fn mpv_embed_load(
     headers: Option<HashMap<String, String>>,
 ) -> Result<(), String> {
     let media_url = validate_media_url(&url)?;
+    validate_header_route(&media_url, headers.as_ref())?;
     let fields = sanitize_headers(headers.as_ref());
     let load_app = app.clone();
     let load_label = window_label.clone();
@@ -501,6 +563,59 @@ mod tests {
         assert!(validate_media_url("http://127.0.0.1:39321/s/abc/file").is_ok());
         assert!(validate_media_url("http://127.0.0.1:8080/s/abc/file").is_err());
         assert!(validate_media_url("http://localhost:39324/s/abc/file").is_ok());
+    }
+
+    #[test]
+    fn rejects_headers_on_direct_streams() {
+        let headers = HashMap::from([("Referer".to_string(), "https://source.test/".to_string())]);
+        let error = validate_header_route("https://cdn.test/ep1.mp4", Some(&headers)).unwrap_err();
+        assert!(error.contains("loopback proxy"));
+        assert!(!error.contains("https://cdn.test"));
+    }
+
+    #[test]
+    fn allows_headers_on_the_app_proxy() {
+        let headers = HashMap::from([("Referer".to_string(), "https://source.test/".to_string())]);
+        assert!(validate_header_route(
+            "http://127.0.0.1:39321/s/abc/file?token=def",
+            Some(&headers)
+        )
+        .is_ok());
+        assert!(validate_header_route(
+            "http://localhost:39328/s/abc/manifest.m3u8?token=def",
+            Some(&headers)
+        )
+        .is_ok());
+        assert!(validate_header_route(
+            "http://127.0.0.1:39329/s/abc/file?token=def",
+            Some(&headers)
+        )
+        .is_err());
+        assert!(validate_header_route(
+            "https://127.0.0.1:39321/s/abc/file?token=def",
+            Some(&headers)
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn rejects_header_values_with_commas() {
+        let headers = HashMap::from([("Cookie".to_string(), "session=one,theme=dark".to_string())]);
+        let error = validate_header_route(
+            "http://127.0.0.1:39321/s/abc/file?token=def",
+            Some(&headers),
+        )
+        .unwrap_err();
+        assert!(error.contains("commas"));
+        assert!(error.contains("loopback proxy"));
+    }
+
+    #[test]
+    fn allows_calls_without_headers() {
+        assert!(validate_header_route("https://cdn.test/ep1.mp4", None).is_ok());
+        assert!(validate_header_route("https://cdn.test/ep1.mp4", Some(&HashMap::new())).is_ok());
+        let blank = HashMap::from([("Referer".to_string(), "   ".to_string())]);
+        assert!(validate_header_route("https://cdn.test/ep1.mp4", Some(&blank)).is_ok());
     }
 
     #[test]

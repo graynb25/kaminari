@@ -41,6 +41,17 @@ describe("shouldProxy", () => {
     expect(shouldProxy(hls)).toBe(true);
   });
 
+  it("proxies every kind of stream with headers", () => {
+    const dash = stream({
+      url: "https://cdn.example/show/manifest.mpd",
+      type: "dash",
+      headers: { Referer: "https://source.example/" },
+    });
+    expect(isHlsStream(dash)).toBe(false);
+    expect(isMp4Stream(dash)).toBe(false);
+    expect(shouldProxy(dash)).toBe(true);
+  });
+
   it("leaves headerless HLS on the direct path", () => {
     const hls = stream({ url: "https://cdn.example/show/index.m3u8", type: "hls" });
     expect(shouldProxy(hls)).toBe(false);

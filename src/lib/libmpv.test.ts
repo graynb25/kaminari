@@ -3,6 +3,7 @@ import {
   LIBMPV_FLAG_KEY,
   libmpvEnabled,
   libmpvFlagEnabled,
+  libmpvNeedsProxy,
   libmpvUrlEnabled,
   setLibmpvFlag,
 } from "./libmpv";
@@ -17,6 +18,36 @@ describe("libmpvFlagEnabled", () => {
     expect(libmpvFlagEnabled({ getItem: () => "true" })).toBe(true);
     expect(libmpvFlagEnabled({ getItem: () => "1" })).toBe(true);
     expect(libmpvFlagEnabled({ getItem: () => "false" })).toBe(false);
+  });
+});
+
+describe("libmpvNeedsProxy", () => {
+  it("is false without headers", () => {
+    expect(libmpvNeedsProxy({})).toBe(false);
+    expect(libmpvNeedsProxy({ headers: null })).toBe(false);
+    expect(libmpvNeedsProxy({ headers: {} })).toBe(false);
+    expect(libmpvNeedsProxy({ headers: { Referer: "  " } })).toBe(false);
+  });
+
+  it("is true when headers have no proxied URL", () => {
+    expect(
+      libmpvNeedsProxy({ headers: { Referer: "https://source.example/" } }),
+    ).toBe(true);
+    expect(
+      libmpvNeedsProxy({
+        headers: { Referer: "https://source.example/" },
+        proxiedUrl: "   ",
+      }),
+    ).toBe(true);
+  });
+
+  it("is false once the proxy has a URL", () => {
+    expect(
+      libmpvNeedsProxy({
+        headers: { Referer: "https://source.example/" },
+        proxiedUrl: "http://127.0.0.1:39321/s/abc/file?token=def",
+      }),
+    ).toBe(false);
   });
 });
 

@@ -1,12 +1,12 @@
 // Pure rules for the loopback proxy. Svelte components stay thin around these.
-// MP4 and HLS with headers go through the loopback proxy. Headerless media
+// Every stream with headers goes through the loopback proxy. Headerless media
 // stays direct so mpv and public sample URLs keep their current path.
 
 import type { JsStream } from "./types";
 
 export const PROXY_FLAG_KEY = "kaminari.proxy";
 
-export function hasStreamHeaders(stream: JsStream): boolean {
+export function hasStreamHeaders(stream: Pick<JsStream, "headers">): boolean {
   return Object.entries(stream.headers ?? {}).some(
     ([name, value]) => name.trim().length > 0 && value.trim().length > 0,
   );
@@ -27,7 +27,7 @@ export function isMp4Stream(stream: JsStream): boolean {
 }
 
 export function shouldProxy(stream: JsStream): boolean {
-  return hasStreamHeaders(stream) && (isMp4Stream(stream) || isHlsStream(stream));
+  return hasStreamHeaders(stream);
 }
 
 export function playbackUrl(stream: JsStream): string {

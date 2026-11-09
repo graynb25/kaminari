@@ -21,7 +21,7 @@
     sourceProgressGet,
     sourceProgressSet,
   } from "./api";
-  import { libmpvEnabled } from "./libmpv";
+  import { libmpvEnabled, libmpvNeedsProxy } from "./libmpv";
   import { isHlsStream, proxyFlagEnabled, shouldProxy } from "./streamProxy";
   import type {
     JsEpisode,
@@ -326,7 +326,13 @@
       }
     }
     let backend: "mpv" | "web" = "web";
-    if (libmpvEnabled()) {
+    const libmpvOn = libmpvEnabled();
+    if (libmpvOn && libmpvNeedsProxy(prepared)) {
+      notify(
+        "libmpv needs the loopback proxy for this stream's headers. Using the WebView player.",
+        "info",
+      );
+    } else if (libmpvOn) {
       try {
         const status = await mpvEmbedStatus();
         if (status.available) {

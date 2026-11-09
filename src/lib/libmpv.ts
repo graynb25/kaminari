@@ -1,7 +1,19 @@
 // Dev spike flag for embedded libmpv. Off unless a person opts in. PlayerView
 // stays the default path, so a missing flag keeps the shipped behavior.
 
+import { hasStreamHeaders } from "./streamProxy";
+import type { JsStream } from "./types";
+
 export const LIBMPV_FLAG_KEY = "kaminari.libmpv";
+
+export type LibmpvStream = Pick<JsStream, "headers" | "proxiedUrl">;
+
+// The wrapper joins header fields into one comma separated string, so headers
+// may only reach mpv through the loopback proxy. A stream with headers and no
+// proxied URL is not eligible for the embedded backend.
+export function libmpvNeedsProxy(stream: LibmpvStream): boolean {
+  return hasStreamHeaders(stream) && !stream.proxiedUrl?.trim();
+}
 
 type ReadOnlyStorage = Pick<Storage, "getItem">;
 
