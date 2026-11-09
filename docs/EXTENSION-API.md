@@ -127,6 +127,19 @@ Kaminari native registry entries add three fields the legacy shape lacks: `downl
 
 Revocation is a `revoked: [signature]` list. Client disables on next sync and toasts once per extension.
 
+## Start from the template
+
+`extensions/template` holds a working skeleton: `manifest.json`, `index.js`, `README.md`. Copy the folder, change `id`, `name`, `baseUrl` and `permissions.hosts`, then replace the four method bodies. Keep the methods synchronous and keep ids as strings.
+
+Zip from inside the folder so the files land at the zip root, and name the archive `<id>-<version>.kext`:
+
+```powershell
+Compress-Archive -Path manifest.json, index.js, README.md -DestinationPath pack.zip -Force
+Rename-Item pack.zip com.example.template-0.1.0.kext
+```
+
+Install it from the Sources page and run a search in the Sources test panel. `node --check index.js` catches syntax mistakes before you pack.
+
 ## Tooling
 
 ```bash

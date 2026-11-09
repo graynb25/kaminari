@@ -1,0 +1,15 @@
+{
+  "id": "com.example.template",
+  "name": "Example Template",
+  "version": "0.1.0",
+  "apiVersion": "0.1",
+  "entry": "index.js",
+  "lang": "en",
+  "baseUrl": "https://example.com",
+  "minHost": "0.14.0",
+  "nsfw": false,
+  "permissions": {
+    "hosts": ["https://example.com/*"],
+    "storageKb": 512
+  }
+}
