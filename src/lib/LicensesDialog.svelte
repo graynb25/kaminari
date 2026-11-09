@@ -9,11 +9,14 @@
     versions: string[];
     license: string;
     source?: string;
+    bundled?: boolean;
+    note?: string;
   };
 
   type LicenseGroup = {
     id: string;
     label: string;
+    note?: string;
     packages: LicensePackage[];
   };
 
@@ -62,6 +65,7 @@
             pkg.name.toLowerCase().includes(text) ||
             pkg.license.toLowerCase().includes(text) ||
             (pkg.source ?? "").toLowerCase().includes(text) ||
+            (pkg.note ?? "").toLowerCase().includes(text) ||
             pkg.versions.some((version) => version.toLowerCase().includes(text))
           );
         }),
@@ -218,6 +222,9 @@
                   <h3 class="text-sm font-semibold">{group.label}</h3>
                   <span class="shelf-count">{group.packages.length}</span>
                 </div>
+                {#if group.note}
+                  <p class="license-group-note">{group.note}</p>
+                {/if}
                 <div>
                   {#each group.packages as pkg (pkg.key)}
                     {@const text = textByLicense.get(pkg.license)}
@@ -231,6 +238,9 @@
                       </div>
                       {#if pkg.source}
                         <p class="license-source" title={pkg.source}>{pkg.source}</p>
+                      {/if}
+                      {#if pkg.note}
+                        <p class="license-note">{pkg.note}</p>
                       {/if}
                       <div class="license-actions">
                         {#if text}
@@ -359,6 +369,23 @@
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-4);
+  }
+
+  .license-group-note {
+    margin: 0;
+    padding: 8px 14px;
+    background: var(--tint-1);
+    border-bottom: 1px solid var(--line);
+    font-size: 10px;
+    line-height: 1.55;
+    color: var(--text-3);
+  }
+
+  .license-note {
+    margin-top: 4px;
+    font-size: 10px;
+    line-height: 1.55;
+    color: var(--text-3);
   }
 
   .license-actions {

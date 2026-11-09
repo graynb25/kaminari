@@ -269,6 +269,50 @@ const rustScan = scanRust();
 const rust = rustScan.packages;
 const javascript = scanNodeModules();
 
+function scanNative() {
+  const manifestPath = resolve(root, "licenses/native/native.json");
+  const raw = read(manifestPath);
+  if (!raw) return { label: "Native libraries (not bundled in this build)", note: "", packages: [] };
+  try {
+    const manifest = JSON.parse(raw);
+    const packages = Array.isArray(manifest.packages) ? manifest.packages : [];
+    return {
+      label: manifest.label || "Native libraries (not bundled in this build)",
+      note: manifest.note || "",
+      packages: packages
+        .filter((pkg) => pkg && pkg.name && pkg.license)
+        .map((pkg) => ({
+          name: pkg.name,
+          versions: Array.isArray(pkg.versions) ? pkg.versions : ["not bundled"],
+          license: pkg.license,
+          source: pkg.source || "",
+          bundled: pkg.bundled ?? false,
+          note: pkg.note || "",
+        })),
+    };
+  } catch {
+    return { label: "Native libraries (not bundled in this build)", note: "", packages: [] };
+  }
+}
+
+const nativeScan = scanNative();
+
+addLicenseText(
+  "LGPL-2.1",
+  read(resolve(root, "licenses/native/LGPL-2.1.txt")),
+  "native LGPL-2.1",
+);
+addLicenseText(
+  "LGPL-3.0",
+  read(resolve(root, "licenses/native/LGPL-3.0.txt")),
+  "native LGPL-3.0",
+);
+addLicenseText(
+  "MPL-2.0",
+  read(resolve(root, "licenses/native/MPL-2.0.txt")),
+  "native MPL-2.0",
+);
+
 function withKeys(group, packages) {
   return packages.map((pkg) => ({
     key: `${group}:${pkg.name}::${pkg.license}`,
@@ -281,6 +325,12 @@ const groups = [
     id: "bundled",
     label: "Bundled with this install",
     packages: withKeys("bundled", bundled),
+  },
+  {
+    id: "native",
+    label: nativeScan.label,
+    note: nativeScan.note,
+    packages: withKeys("native", nativeScan.packages),
   },
   {
     id: "rust",
@@ -323,6 +373,7 @@ const payload = {
     "Regenerate this file with `pnpm licenses:build` after dependency changes.",
     "AniList metadata is a service, not a bundled package. It is used under AniList's API terms.",
     "The built-in Public Domain Animation sample is project code, not a third-party source.",
+    "Native libraries are development artifacts only. No native DLLs are bundled in this build.",
   ],
 };
 
