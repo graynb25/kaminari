@@ -41,6 +41,13 @@ describe("redactSecrets", () => {
     expect(out).toContain("[redacted]");
   });
 
+  it("redacts a bare token assignment outside a URL", () => {
+    const out = redactSecrets("boot failed token=secret123 lang=en");
+    expect(out).toContain("token=[redacted]");
+    expect(out).toContain("lang=en");
+    expect(out).not.toContain("secret123");
+  });
+
   it("leaves a clean string alone", () => {
     expect(redactSecrets("mpv not found")).toBe("mpv not found");
   });
