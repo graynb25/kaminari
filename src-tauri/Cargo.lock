@@ -2012,6 +2012,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.3.4",
  "hex",
+ "httpdate",
  "keyring",
  "reqwest 0.12.28",
  "rquickjs",

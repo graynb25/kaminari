@@ -3,10 +3,10 @@
 // Rust keeps the upstream URL, the allowlisted headers, the per entry token
 // and the rewritten playlist children in memory only.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use axum::body::Body;
 use axum::extract::{Path, Query, Request, State};
@@ -34,6 +34,8 @@ pub const MAX_PLAYLIST_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_PLAYLIST_DEPTH: u8 = 4;
 pub const MAX_KEY_BYTES: usize = 64 * 1024;
 pub const MAX_SUBTITLE_BYTES: usize = 512 * 1024;
+pub const MAX_COOKIES: usize = 32;
+pub const MAX_COOKIE_BYTES: usize = 4 * 1024;
 pub const MAX_RANGE_SKIP: u64 = 16 * 1024 * 1024;
 pub const STREAM_CHUNK_BYTES: usize = 64 * 1024;
 pub const SWEEP_SECS: u64 = 60;
@@ -124,6 +126,346 @@ struct ChildSpec {
     depth: u8,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SameSite {
+    Strict,
+    Lax,
+    None,
+}
+
+#[derive(Debug, Clone)]
+struct JarCookie {
+    name: String,
+    value: String,
+    domain: String,
+    host_only: bool,
+    path: String,
+    expires_at: Option<SystemTime>,
+    secure: bool,
+    same_site: Option<SameSite>,
+    created_at: Instant,
+}
+
+#[derive(Debug, Clone)]
+struct SeedCookie {
+    name: String,
+    value: String,
+    host: String,
+    path: String,
+}
+
+#[derive(Debug, Default)]
+struct CookieJar {
+    cookies: Vec<JarCookie>,
+    seed: Vec<SeedCookie>,
+}
+
+impl JarCookie {
+    fn expired(&self, now: SystemTime) -> bool {
+        self.expires_at.is_some_and(|expires| expires <= now)
+    }
+}
+
+impl CookieJar {
+    fn seeded(url: &Url, values: &[String]) -> Self {
+        let mut jar = Self::default();
+        let Some(host) = url.host_str() else {
+            return jar;
+        };
+        let host = host.trim_end_matches('.').to_ascii_lowercase();
+        for value in values {
+            for pair in value.split(';') {
+                let Some((name, value)) = pair.split_once('=') else {
+                    continue;
+                };
+                let name = name.trim();
+                let value = value.trim();
+                if !valid_cookie_name(name) || name.len() + value.len() > MAX_COOKIE_BYTES {
+                    continue;
+                }
+                if jar.seed.iter().any(|cookie| cookie.name == name) {
+                    continue;
+                }
+                jar.seed.push(SeedCookie {
+                    name: name.to_string(),
+                    value: value.to_string(),
+                    host: host.clone(),
+                    path: "/".to_string(),
+                });
+            }
+        }
+        jar
+    }
+
+    fn capture(&mut self, headers: &HeaderMap, request_url: &Url) {
+        let now = SystemTime::now();
+        self.sweep(now);
+        for value in headers.get_all(header::SET_COOKIE).iter() {
+            let Ok(raw) = value.to_str() else {
+                continue;
+            };
+            let Some(cookie) = parse_set_cookie(raw, request_url, now) else {
+                continue;
+            };
+            self.store(cookie, now);
+        }
+    }
+
+    fn header_for(&mut self, url: &Url) -> Option<String> {
+        let now = SystemTime::now();
+        self.sweep(now);
+        let host = url.host_str()?.trim_end_matches('.').to_ascii_lowercase();
+        let request_path = url.path();
+        let secure = url.scheme() == "https";
+
+        let mut matched = self
+            .cookies
+            .iter()
+            .filter(|cookie| {
+                !cookie.expired(now)
+                    && domain_matches(&host, &cookie.domain, cookie.host_only)
+                    && path_matches(request_path, &cookie.path)
+                    && (!cookie.secure || secure)
+            })
+            .collect::<Vec<_>>();
+        matched.sort_by(|left, right| {
+            right
+                .path
+                .len()
+                .cmp(&left.path.len())
+                .then_with(|| left.created_at.cmp(&right.created_at))
+        });
+
+        let mut names = HashSet::new();
+        let mut parts = Vec::new();
+        for cookie in matched {
+            if names.insert(cookie.name.clone()) {
+                parts.push(format!("{}={}", cookie.name, cookie.value));
+            }
+        }
+        for cookie in &self.seed {
+            if cookie.host != host || !path_matches(request_path, &cookie.path) {
+                continue;
+            }
+            if self.cookies.iter().any(|jar| jar.name == cookie.name)
+                || !names.insert(cookie.name.clone())
+            {
+                continue;
+            }
+            parts.push(format!("{}={}", cookie.name, cookie.value));
+        }
+
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join("; "))
+        }
+    }
+
+    fn sweep(&mut self, now: SystemTime) {
+        self.cookies.retain(|cookie| !cookie.expired(now));
+    }
+
+    fn store(&mut self, cookie: JarCookie, now: SystemTime) {
+        self.cookies.retain(|existing| {
+            !(existing.name == cookie.name
+                && existing.domain == cookie.domain
+                && existing.path == cookie.path)
+        });
+        if cookie.expired(now) {
+            return;
+        }
+        tracing::debug!(
+            name = %cookie.name,
+            same_site = ?cookie.same_site,
+            "proxy: stored an upstream cookie"
+        );
+        self.cookies.push(cookie);
+        while self.cookies.len() > MAX_COOKIES {
+            if let Some(index) = self
+                .cookies
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, cookie)| cookie.created_at)
+                .map(|(index, _)| index)
+            {
+                let dropped = self.cookies.remove(index);
+                tracing::warn!(
+                    name = %dropped.name,
+                    limit = MAX_COOKIES,
+                    "proxy: cookie jar is full, dropped the oldest cookie"
+                );
+            } else {
+                break;
+            }
+        }
+    }
+}
+
+fn parse_set_cookie(raw: &str, request_url: &Url, now: SystemTime) -> Option<JarCookie> {
+    if raw.len() > MAX_COOKIE_BYTES {
+        tracing::debug!(
+            limit = MAX_COOKIE_BYTES,
+            "proxy: dropped an oversized cookie"
+        );
+        return None;
+    }
+    let mut parts = raw.split(';');
+    let pair = parts.next()?.trim();
+    let (name, value) = pair.split_once('=')?;
+    let name = name.trim();
+    let value = value.trim();
+    if !valid_cookie_name(name) || name.len() + value.len() > MAX_COOKIE_BYTES {
+        tracing::debug!("proxy: dropped a cookie with an invalid name or size");
+        return None;
+    }
+    let host = request_url
+        .host_str()?
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+
+    let mut domain_attr: Option<String> = None;
+    let mut path_attr: Option<String> = None;
+    let mut max_age: Option<i64> = None;
+    let mut expires: Option<SystemTime> = None;
+    let mut secure = false;
+    let mut same_site = None;
+
+    for part in parts {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let (key, attr) = match part.split_once('=') {
+            Some((key, attr)) => (key.trim(), attr.trim()),
+            None => (part, ""),
+        };
+        if key.eq_ignore_ascii_case("domain") && !attr.is_empty() {
+            domain_attr = Some(attr.to_string());
+        } else if key.eq_ignore_ascii_case("path") && attr.starts_with('/') {
+            path_attr = Some(attr.to_string());
+        } else if key.eq_ignore_ascii_case("max-age") {
+            if let Ok(seconds) = attr.parse::<i64>() {
+                max_age = Some(seconds);
+            }
+        } else if key.eq_ignore_ascii_case("expires") {
+            expires = httpdate::parse_http_date(attr).ok();
+        } else if key.eq_ignore_ascii_case("secure") {
+            secure = true;
+        } else if key.eq_ignore_ascii_case("samesite") {
+            if attr.eq_ignore_ascii_case("strict") {
+                same_site = Some(SameSite::Strict);
+            } else if attr.eq_ignore_ascii_case("lax") {
+                same_site = Some(SameSite::Lax);
+            } else if attr.eq_ignore_ascii_case("none") {
+                same_site = Some(SameSite::None);
+            }
+        }
+    }
+
+    if same_site == Some(SameSite::None) && !secure {
+        tracing::warn!(
+            name = %name,
+            "proxy: dropped SameSite=None cookie without Secure"
+        );
+        return None;
+    }
+
+    let (domain, host_only) = match domain_attr {
+        Some(attr) => {
+            // RFC 6265 subset. A public suffix list is deferred, so the
+            // embedded dot check only blocks single label supercookies such
+            // as Domain=com. A domain cookie must still sit on a label
+            // boundary of the request host, never match as a substring.
+            let Some(domain) = normalize_cookie_domain(&attr) else {
+                tracing::debug!(domain = %attr, "proxy: dropped a cookie with an invalid domain");
+                return None;
+            };
+            if !domain_matches(&host, &domain, false) {
+                tracing::debug!(
+                    domain = %domain,
+                    host = %host,
+                    "proxy: dropped a cookie whose domain does not match the request host"
+                );
+                return None;
+            }
+            (domain, false)
+        }
+        None => (host, true),
+    };
+
+    let path = path_attr.unwrap_or_else(|| default_cookie_path(request_url));
+    let expires_at = match max_age {
+        Some(seconds) if seconds <= 0 => now
+            .checked_sub(Duration::from_secs(1))
+            .or(Some(SystemTime::UNIX_EPOCH)),
+        Some(seconds) => now
+            .checked_add(Duration::from_secs(seconds as u64))
+            .or_else(|| now.checked_add(Duration::from_secs(60 * 60 * 24 * 365 * 100))),
+        None => expires,
+    };
+
+    Some(JarCookie {
+        name: name.to_string(),
+        value: value.to_string(),
+        domain,
+        host_only,
+        path,
+        expires_at,
+        secure,
+        same_site,
+        created_at: Instant::now(),
+    })
+}
+
+fn valid_cookie_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte > 0x20 && byte < 0x7f && !matches!(byte, b';' | b'=' | b','))
+}
+
+fn normalize_cookie_domain(attr: &str) -> Option<String> {
+    let domain = attr.trim().trim_start_matches('.').to_ascii_lowercase();
+    if domain.is_empty()
+        || domain.starts_with('.')
+        || domain.ends_with('.')
+        || !domain.contains('.')
+        || domain.split('.').any(str::is_empty)
+    {
+        return None;
+    }
+    Some(domain)
+}
+
+fn domain_matches(host: &str, cookie_domain: &str, host_only: bool) -> bool {
+    if host_only {
+        return host == cookie_domain;
+    }
+    host == cookie_domain || host.ends_with(&format!(".{cookie_domain}"))
+}
+
+fn path_matches(request_path: &str, cookie_path: &str) -> bool {
+    if request_path == cookie_path {
+        return true;
+    }
+    if !request_path.starts_with(cookie_path) {
+        return false;
+    }
+    cookie_path.ends_with('/') || request_path.as_bytes().get(cookie_path.len()) == Some(&b'/')
+}
+
+fn default_cookie_path(url: &Url) -> String {
+    let path = url.path();
+    if !path.starts_with('/') || path == "/" {
+        return "/".to_string();
+    }
+    match path.rfind('/') {
+        Some(0) | None => "/".to_string(),
+        Some(index) => path[..index].to_string(),
+    }
+}
+
 #[derive(Clone)]
 struct ProxyEntry {
     opaque_id: String,
@@ -132,11 +474,24 @@ struct ProxyEntry {
     upstream_url: String,
     kind: String,
     headers: Vec<(HeaderName, HeaderValue)>,
+    jar: Arc<Mutex<CookieJar>>,
     allowed: Option<Vec<HostRule>>,
     allow_private: bool,
     created_at: Instant,
     last_used: Instant,
     children: HashMap<String, ChildEntry>,
+}
+
+impl ProxyEntry {
+    fn cookie_header(&self, url: &Url) -> Option<String> {
+        self.jar.lock().ok().and_then(|mut jar| jar.header_for(url))
+    }
+
+    fn capture_cookies(&self, headers: &HeaderMap, url: &Url) {
+        if let Ok(mut jar) = self.jar.lock() {
+            jar.capture(headers, url);
+        }
+    }
 }
 
 struct StoreState {
@@ -330,7 +685,14 @@ impl ProxyStore {
             }
         }
 
-        let headers = sanitize_headers(stream.headers.as_ref())?;
+        let mut headers = sanitize_headers(stream.headers.as_ref())?;
+        let seed = headers
+            .iter()
+            .filter(|(name, _)| *name == header::COOKIE)
+            .filter_map(|(_, value)| value.to_str().ok().map(str::to_string))
+            .collect::<Vec<_>>();
+        headers.retain(|(name, _)| *name != header::COOKIE);
+        let jar = CookieJar::seeded(&url, &seed);
         let allow_private = allow_private || store_allows_private;
         resolve_checked(&url, allow_private).await?;
 
@@ -345,6 +707,7 @@ impl ProxyStore {
             upstream_url: url.to_string(),
             kind: kind.clone(),
             headers,
+            jar: Arc::new(Mutex::new(jar)),
             allowed,
             allow_private,
             created_at: now,
@@ -664,6 +1027,9 @@ async fn manifest_handler(
             Ok(fetched) => fetched,
             Err(err) => return proxy_error_response(err),
         };
+    // A live playlist (no EXT-X-ENDLIST) must be fetched again on every
+    // request. There is no playlist cache. Child ids are reconciled below by
+    // upstream URL plus byte range, so overlapping live windows keep their ids.
     if !upstream.status().is_success() {
         tracing::debug!(
             id = %id_prefix(&entry.opaque_id),
@@ -980,10 +1346,18 @@ async fn fetch_upstream_from(
         let mut request = client.request(method.clone(), current.clone());
         let same_origin = current.origin() == original.origin();
         for (name, value) in &entry.headers {
-            if !same_origin && (*name == header::AUTHORIZATION || *name == header::COOKIE) {
+            if *name == header::COOKIE {
+                // The extension cookie was seeded into the jar once at
+                // register. It is never forwarded raw on each request.
+                continue;
+            }
+            if !same_origin && *name == header::AUTHORIZATION {
                 continue;
             }
             request = request.header(name, value);
+        }
+        if let Some(value) = entry.cookie_header(&current) {
+            request = request.header(header::COOKIE, value);
         }
         if let Some(value) = range {
             request = request.header(header::RANGE, value);
@@ -993,6 +1367,10 @@ async fn fetch_upstream_from(
             .await
             .map_err(|_| ProxyError::Timeout)?
             .map_err(|_| ProxyError::Upstream("send"))?;
+
+        // Capture before the redirect check so a Set-Cookie on a 3xx is not
+        // lost. The jar scopes it to the request that set it.
+        entry.capture_cookies(response.headers(), &current);
 
         if !response.status().is_redirection() {
             return Ok((response, current));
@@ -1819,6 +2197,7 @@ mod tests {
     use axum::routing::get as test_get;
     use axum::Router;
     use serde_json::Value;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex as StdMutex;
     use tokio::net::TcpListener as TestListener;
 
@@ -1970,6 +2349,15 @@ mod tests {
                 .rev()
                 .find(|(uri, _)| uri.contains(needle))
                 .map(|(_, headers)| headers.clone())
+        }
+
+        fn requests(&self, needle: &str) -> usize {
+            self.seen
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(uri, _)| uri.contains(needle))
+                .count()
         }
     }
 
@@ -2185,6 +2573,34 @@ seg1.ts\n\
                 Vec::<u8>::new(),
             )
         };
+        let live_hits = Arc::new(AtomicUsize::new(0));
+        let live = {
+            let hits = live_hits.clone();
+            move || {
+                let hits = hits.clone();
+                async move {
+                    let window = hits.fetch_add(1, Ordering::SeqCst);
+                    let body = format!(
+                        "#EXTM3U\n\
+#EXT-X-TARGETDURATION:4\n\
+#EXT-X-MEDIA-SEQUENCE:{window}\n\
+live/seg{}.ts\n\
+live/seg{}.ts\n\
+live/seg{}.ts\n",
+                        window + 1,
+                        window + 2,
+                        window + 3
+                    );
+                    (
+                        [(
+                            header::CONTENT_TYPE,
+                            "application/vnd.apple.mpegurl".to_string(),
+                        )],
+                        body,
+                    )
+                }
+            }
+        };
 
         let seg1_body = Arc::new(
             (0..2000)
@@ -2251,6 +2667,7 @@ seg1.ts\n\
                 test_get(playlist(NESTED_BASE_PLAYLIST)),
             )
             .route("/hls/deep/{n}/master.m3u8", test_get(deep_playlist))
+            .route("/hls/live.m3u8", test_get(live))
             .route("/hls/large.m3u8", test_get(large_playlist))
             .route("/hls/bigkey.m3u8", test_get(playlist(BIG_KEY_PLAYLIST)))
             .route(
@@ -2272,6 +2689,112 @@ seg1.ts\n\
             axum::serve(listener, router).await.unwrap();
         });
         HlsFixture {
+            base: format!("http://127.0.0.1:{port}"),
+            seen,
+            _handle: handle,
+        }
+    }
+
+    struct CookieFixture {
+        base: String,
+        seen: SeenLog,
+        _handle: tokio::task::JoinHandle<()>,
+    }
+
+    impl CookieFixture {
+        fn cookie_values(&self, needle: &str) -> Vec<String> {
+            self.seen
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(uri, _)| uri.contains(needle))
+                .flat_map(|(_, headers)| headers.get_all(header::COOKIE).iter())
+                .filter_map(|value| value.to_str().ok().map(str::to_string))
+                .collect()
+        }
+    }
+
+    fn append_set_cookie(response: &mut Response, value: &str) {
+        if let Ok(value) = HeaderValue::from_str(value) {
+            response.headers_mut().append(header::SET_COOKIE, value);
+        }
+    }
+
+    async fn cookie_playlist(Path(name): Path<String>) -> Response {
+        let mut response = Response::new(Body::from(format!(
+            "#EXTM3U\n#EXT-X-TARGETDURATION:4\n/cookies/seg/{name}.ts\n#EXT-X-ENDLIST\n"
+        )));
+        response.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static(PLAYLIST_CONTENT_TYPE),
+        );
+        match name.as_str() {
+            "session" => append_set_cookie(&mut response, "sess=playlist; Path=/"),
+            "expired" => {
+                append_set_cookie(&mut response, "dead=1; Max-Age=0; Path=/");
+                append_set_cookie(
+                    &mut response,
+                    "past=1; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/",
+                );
+                append_set_cookie(&mut response, "live=1; Max-Age=60; Path=/");
+                append_set_cookie(
+                    &mut response,
+                    "mixed=1; Max-Age=60; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/",
+                );
+            }
+            "secure" => {
+                append_set_cookie(&mut response, "sec=1; Secure; Path=/");
+                append_set_cookie(&mut response, "plain=1; Path=/");
+            }
+            "seed" => append_set_cookie(&mut response, "seed=server; Path=/"),
+            "dup" => append_set_cookie(&mut response, "dup=server; Path=/"),
+            "a" => append_set_cookie(&mut response, "a=1; Path=/"),
+            "b" => append_set_cookie(&mut response, "b=1; Path=/"),
+            "cap" => {
+                for index in 0..=MAX_COOKIES {
+                    append_set_cookie(&mut response, &format!("c{index}=1; Path=/"));
+                }
+            }
+            "big" => {
+                append_set_cookie(
+                    &mut response,
+                    &format!("big={}; Path=/", "x".repeat(MAX_COOKIE_BYTES + 1)),
+                );
+                append_set_cookie(&mut response, "small=1; Path=/");
+            }
+            _ => {}
+        }
+        response
+    }
+
+    async fn cookie_redirect() -> Response {
+        let mut response = Response::new(Body::empty());
+        *response.status_mut() = StatusCode::FOUND;
+        response.headers_mut().insert(
+            header::LOCATION,
+            HeaderValue::from_static("/cookies/list/session/media.m3u8"),
+        );
+        append_set_cookie(&mut response, "redirect=1; Path=/");
+        response
+    }
+
+    async fn cookie_segment() -> impl IntoResponse {
+        ([(header::CONTENT_TYPE, "video/mp2t")], vec![7u8; 32])
+    }
+
+    async fn cookie_fixture() -> CookieFixture {
+        let seen: SeenLog = Arc::new(StdMutex::new(Vec::new()));
+        let router = Router::new()
+            .route("/cookies/list/{name}/media.m3u8", test_get(cookie_playlist))
+            .route("/cookies/redirect.m3u8", test_get(cookie_redirect))
+            .route("/cookies/seg/{name}", test_get(cookie_segment))
+            .layer(middleware::from_fn_with_state(seen.clone(), record_hls));
+        let listener = TestListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        CookieFixture {
             base: format!("http://127.0.0.1:{port}"),
             seen,
             _handle: handle,
@@ -2473,6 +2996,247 @@ seg1.ts\n\
         assert_eq!(seen.get("authorization").unwrap(), "Bearer secret");
         assert!(seen.get("x-secret").is_none());
         assert!(seen.get("host").is_some());
+    }
+
+    async fn register_cookie_hls(
+        store: &ProxyStore,
+        fixture: &CookieFixture,
+        name: &str,
+        headers: Option<HashMap<String, String>>,
+    ) -> ProxyUrl {
+        store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/cookies/list/{name}/media.m3u8", fixture.base),
+                "hls",
+                headers,
+            )
+            .await
+            .unwrap()
+    }
+
+    async fn fetch_cookie_manifest(
+        client: &reqwest::Client,
+        base: &str,
+        registered: &ProxyUrl,
+    ) -> String {
+        let response = client
+            .get(hls_proxy_url(base, registered))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        response.text().await.unwrap()
+    }
+
+    async fn fetch_cookie_segment(client: &reqwest::Client, base: &str, manifest: &str) {
+        let segments = seg_paths(manifest);
+        assert_eq!(segments.len(), 1, "{manifest}");
+        let response = client
+            .get(format!("{base}{}", segments[0]))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let _ = response.bytes().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn captures_playlist_cookie_and_sends_it_to_a_segment() {
+        let fixture = cookie_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = register_cookie_hls(&store, &fixture, "session", None).await;
+        let client = reqwest::Client::new();
+
+        let manifest = fetch_cookie_manifest(&client, &base, &registered).await;
+        fetch_cookie_segment(&client, &base, &manifest).await;
+
+        assert_eq!(
+            fixture.cookie_values("/cookies/seg/session.ts"),
+            vec!["sess=playlist".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn captures_cookie_from_a_redirect() {
+        let fixture = cookie_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/cookies/redirect.m3u8", fixture.base),
+                "hls",
+                None,
+            )
+            .await
+            .unwrap();
+        let client = reqwest::Client::new();
+
+        let manifest = fetch_cookie_manifest(&client, &base, &registered).await;
+        fetch_cookie_segment(&client, &base, &manifest).await;
+
+        assert_eq!(
+            fixture.cookie_values("/cookies/seg/session.ts"),
+            vec!["redirect=1; sess=playlist".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn expired_cookies_are_dropped_and_max_age_wins() {
+        let fixture = cookie_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = register_cookie_hls(&store, &fixture, "expired", None).await;
+        let client = reqwest::Client::new();
+
+        let manifest = fetch_cookie_manifest(&client, &base, &registered).await;
+        fetch_cookie_segment(&client, &base, &manifest).await;
+
+        let values = fixture.cookie_values("/cookies/seg/expired.ts");
+        assert_eq!(values.len(), 1, "{values:?}");
+        let cookie = &values[0];
+        assert!(cookie.contains("live=1"), "{cookie}");
+        assert!(cookie.contains("mixed=1"), "{cookie}");
+        assert!(!cookie.contains("dead=1"), "{cookie}");
+        assert!(!cookie.contains("past=1"), "{cookie}");
+    }
+
+    #[tokio::test]
+    async fn secure_cookie_is_not_sent_over_http() {
+        let fixture = cookie_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = register_cookie_hls(&store, &fixture, "secure", None).await;
+        let client = reqwest::Client::new();
+
+        let manifest = fetch_cookie_manifest(&client, &base, &registered).await;
+        fetch_cookie_segment(&client, &base, &manifest).await;
+
+        let values = fixture.cookie_values("/cookies/seg/secure.ts");
+        assert_eq!(values, vec!["plain=1".to_string()], "{values:?}");
+    }
+
+    #[tokio::test]
+    async fn cookie_jars_do_not_leak_across_entries() {
+        let fixture = cookie_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let client = reqwest::Client::new();
+        let first = register_cookie_hls(&store, &fixture, "a", None).await;
+        let second = register_cookie_hls(&store, &fixture, "b", None).await;
+
+        let first_manifest = fetch_cookie_manifest(&client, &base, &first).await;
+        let second_manifest = fetch_cookie_manifest(&client, &base, &second).await;
+        fetch_cookie_segment(&client, &base, &first_manifest).await;
+        fetch_cookie_segment(&client, &base, &second_manifest).await;
+
+        assert_eq!(
+            fixture.cookie_values("/cookies/seg/a.ts"),
+            vec!["a=1".to_string()]
+        );
+        assert_eq!(
+            fixture.cookie_values("/cookies/seg/b.ts"),
+            vec!["b=1".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn extension_cookie_seeds_once_and_a_captured_value_replaces_it() {
+        let fixture = cookie_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let seed = HashMap::from([("Cookie".to_string(), "seed=ext; other=ext2".to_string())]);
+        let registered = register_cookie_hls(&store, &fixture, "seed", Some(seed)).await;
+        let client = reqwest::Client::new();
+
+        let manifest = fetch_cookie_manifest(&client, &base, &registered).await;
+        assert_eq!(
+            fixture.cookie_values("/cookies/list/seed/media.m3u8"),
+            vec!["seed=ext; other=ext2".to_string()]
+        );
+
+        fetch_cookie_segment(&client, &base, &manifest).await;
+        let values = fixture.cookie_values("/cookies/seg/seed.ts");
+        assert_eq!(values, vec!["seed=server; other=ext2".to_string()]);
+        assert_eq!(values[0].matches("seed=").count(), 1, "{values:?}");
+    }
+
+    #[tokio::test]
+    async fn duplicate_cookie_names_are_sent_once() {
+        let fixture = cookie_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let seed = HashMap::from([("Cookie".to_string(), "dup=ext; dup=ext2".to_string())]);
+        let registered = register_cookie_hls(&store, &fixture, "dup", Some(seed)).await;
+        let client = reqwest::Client::new();
+
+        let manifest = fetch_cookie_manifest(&client, &base, &registered).await;
+        assert_eq!(
+            fixture.cookie_values("/cookies/list/dup/media.m3u8"),
+            vec!["dup=ext".to_string()]
+        );
+
+        fetch_cookie_segment(&client, &base, &manifest).await;
+        let values = fixture.cookie_values("/cookies/seg/dup.ts");
+        assert_eq!(values, vec!["dup=server".to_string()]);
+        assert_eq!(values[0].matches("dup=").count(), 1, "{values:?}");
+    }
+
+    #[tokio::test]
+    async fn revoke_drops_the_entry_and_its_cookie_jar() {
+        let fixture = cookie_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = register_cookie_hls(&store, &fixture, "session", None).await;
+        let client = reqwest::Client::new();
+
+        let manifest = fetch_cookie_manifest(&client, &base, &registered).await;
+        fetch_cookie_segment(&client, &base, &manifest).await;
+        assert_eq!(store.status().entries, 1);
+
+        store.revoke(&registered.opaque_id).unwrap();
+        assert_eq!(store.status().entries, 0);
+
+        let response = client
+            .get(format!("{base}{}", seg_paths(&manifest)[0]))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let fresh = register_cookie_hls(&store, &fixture, "none", None).await;
+        let fresh_manifest = fetch_cookie_manifest(&client, &base, &fresh).await;
+        assert!(!fresh_manifest.is_empty());
+        assert!(
+            fixture
+                .cookie_values("/cookies/list/none/media.m3u8")
+                .is_empty(),
+            "the old jar survived revoke"
+        );
+    }
+
+    #[tokio::test]
+    async fn cookie_jar_caps_count_and_per_cookie_size() {
+        let fixture = cookie_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let client = reqwest::Client::new();
+
+        let registered = register_cookie_hls(&store, &fixture, "cap", None).await;
+        let manifest = fetch_cookie_manifest(&client, &base, &registered).await;
+        assert!(!manifest.is_empty());
+        {
+            let state = store.inner.lock().unwrap();
+            let entry = state.entries.get(&registered.opaque_id).unwrap();
+            let jar = entry.jar.lock().unwrap();
+            assert_eq!(jar.cookies.len(), MAX_COOKIES);
+            assert!(!jar.cookies.iter().any(|cookie| cookie.name == "c0"));
+            assert!(jar.cookies.iter().any(|cookie| cookie.name == "c32"));
+        }
+
+        let big = register_cookie_hls(&store, &fixture, "big", None).await;
+        let manifest = fetch_cookie_manifest(&client, &base, &big).await;
+        assert!(!manifest.is_empty());
+        {
+            let state = store.inner.lock().unwrap();
+            let entry = state.entries.get(&big.opaque_id).unwrap();
+            let jar = entry.jar.lock().unwrap();
+            assert_eq!(jar.cookies.len(), 1);
+            assert_eq!(jar.cookies[0].name, "small");
+        }
     }
 
     #[tokio::test]
@@ -2889,6 +3653,87 @@ seg1.ts\n\
             .children
             .len();
         assert_eq!(children, 4);
+    }
+
+    fn child_id_from_path(path: &str) -> String {
+        path.split('/')
+            .nth(4)
+            .and_then(|rest| rest.split('?').next())
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    #[tokio::test]
+    async fn live_playlist_refreshes_keep_overlapping_child_ids() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/live.m3u8", fixture.base),
+                "hls",
+                None,
+            )
+            .await
+            .unwrap();
+        let client = reqwest::Client::new();
+
+        let mut windows = Vec::new();
+        for _ in 0..3 {
+            let response = client
+                .get(hls_proxy_url(&base, &registered))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response.headers().get(header::CACHE_CONTROL).unwrap(),
+                "no-store"
+            );
+            let text = response.text().await.unwrap();
+            assert!(!text.contains("#EXT-X-ENDLIST"), "{text}");
+            let ids = seg_paths(&text)
+                .iter()
+                .map(|path| child_id_from_path(path))
+                .collect::<Vec<_>>();
+            assert_eq!(ids.len(), 3, "{text}");
+            windows.push(ids);
+        }
+
+        assert_eq!(fixture.requests("/hls/live.m3u8"), 3, "playlist was cached");
+        assert_eq!(
+            windows[0][1], windows[1][0],
+            "overlapping segment changed id"
+        );
+        assert_eq!(
+            windows[0][2], windows[1][1],
+            "overlapping segment changed id"
+        );
+        assert_eq!(
+            windows[1][1], windows[2][0],
+            "overlapping segment changed id"
+        );
+        assert_eq!(
+            windows[1][2], windows[2][1],
+            "overlapping segment changed id"
+        );
+        assert_ne!(windows[0][0], windows[1][2], "new segment reused an id");
+        assert_ne!(windows[1][0], windows[2][2], "new segment reused an id");
+        assert!(
+            !windows[0].contains(&windows[2][2]),
+            "new segment reused an id"
+        );
+
+        let children = store
+            .inner
+            .lock()
+            .unwrap()
+            .entries
+            .get(&registered.opaque_id)
+            .unwrap()
+            .children
+            .len();
+        assert_eq!(children, 5, "live child registry grew beyond unique URLs");
     }
 
     #[tokio::test]
@@ -3633,6 +4478,7 @@ https://other.example/hls/high.m3u8\n";
             upstream_url: "https://cdn.example/hls/media.m3u8".to_string(),
             kind: "hls".to_string(),
             headers: Vec::new(),
+            jar: Arc::new(Mutex::new(CookieJar::default())),
             allowed: None,
             allow_private: true,
             created_at: now,
@@ -3691,6 +4537,36 @@ https://other.example/hls/high.m3u8\n";
         let kept = sanitize_headers(Some(&dropped)).unwrap();
         assert_eq!(kept.len(), 1);
         assert_eq!(kept[0].0, header::USER_AGENT);
+    }
+
+    #[test]
+    fn cookie_domains_use_the_embedded_dot_rule() {
+        let url = Url::parse("https://cdn.example.com/hls/media.m3u8").unwrap();
+        let now = SystemTime::now();
+        assert!(parse_set_cookie("a=1; Domain=example.com; Path=/", &url, now).is_some());
+        assert!(parse_set_cookie("a=1; Domain=.example.com; Path=/", &url, now).is_some());
+        assert!(parse_set_cookie("a=1; Domain=com; Path=/", &url, now).is_none());
+        assert!(parse_set_cookie("a=1; Domain=ample.com; Path=/", &url, now).is_none());
+        assert!(parse_set_cookie("a=1; Domain=other.com; Path=/", &url, now).is_none());
+        assert!(parse_set_cookie("a=1; SameSite=None; Path=/", &url, now).is_none());
+        assert!(parse_set_cookie("a=1; SameSite=None; Secure; Path=/", &url, now).is_some());
+    }
+
+    #[test]
+    fn cookie_jar_is_shared_by_entry_clones() {
+        let entry = test_entry();
+        let clone = entry.clone();
+        let url = Url::parse("https://cdn.example/hls/media.m3u8").unwrap();
+        let headers = HeaderMap::from_iter([(
+            header::SET_COOKIE,
+            HeaderValue::from_static("shared=1; Path=/"),
+        )]);
+        entry.capture_cookies(&headers, &url);
+        assert_eq!(
+            clone.cookie_header(&url),
+            Some("shared=1".to_string()),
+            "a clone kept a separate jar"
+        );
     }
 
     #[test]

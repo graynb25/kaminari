@@ -10,6 +10,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
 getrandom = "0.3"
+httpdate = "1"
 tauri = { version = "2", features = [] }
 tauri-plugin-libmpv = "0.3"
 serde = { version = "1", features = ["derive"] }
