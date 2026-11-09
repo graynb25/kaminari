@@ -4,6 +4,13 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.15.0 - 2026-11-08
+
+- Player: per-entry cookie jar for protected HLS, capturing Set-Cookie on playlists, keys, maps, segments and redirects
+- Player: live playlists refetch while child ids stay stable across sliding windows
+- Docs: extension template with a synchronous source skeleton, packaging and install steps
+- Version: bump to 0.15.0
+
 ## 0.14.0 - 2026-11-08
 
 - Player: HLS master playlists, variant switching, audio and subtitle groups, session keys and data

@@ -118,6 +118,16 @@ Context. The app is a player and extension host with no shipped content. The use
 
 What we wrote. `docs/TERMS.md` describes the app, the user's responsibility, third-party extensions, no warranty, liability limits and copyright complaints. `docs/PRIVACY.md` describes the local SQLite and WebView data, the direct AniList, registry, extension and stream requests, no telemetry, deletion paths and contact. Both link from the README.
 
+## 2026-11-08 Proxy cookie jar and live refresh
+
+Context. Some sources set a session cookie on the playlist fetch that segments and keys then need. hls.js cannot see or forward those cookies, and the earlier proxy only forwarded the extension seed Cookie header.
+
+What we shipped. A per-entry `Arc<Mutex<CookieJar>>`, memory only. It captures `Set-Cookie` on every upstream response, including redirects, playlists, keys, maps, segments and subtitles. It parses Domain, Path, Max-Age, Expires, Secure and SameSite, sends matching cookies on every request and redirect, and never sends Secure cookies over http. The cap is 32 cookies with 4 KB per cookie; the oldest is dropped first. The extension supplied Cookie seeds the jar once and is stripped from repeated request headers. The embedded dot domain rule is in place with a warning that a public suffix list is deferred. Revoke drops the entry and jar. Live playlists refetch on every request and keep child ids stable by URL plus byte range across sliding windows.
+
+What we measured. 67 Rust tests pass, 43 proxy tests. Coverage includes a playlist cookie sent to a segment, expiry, Secure over http, cross-entry isolation, seed once, duplicate names, the cap, revoke, and three refreshes of a live sliding window. `httpdate` is now a direct dependency but was already in the lock.
+
+What we did not do. No public suffix list, no browser SameSite enforcement, and no real cookie-gated live source yet. Manual QA with a real source remains.
+
 ## 2026-11-08 Phase 2 atoms
 
 Context. Phase 2 had PageHeader and the artwork lifecycle. The remaining atoms were BrandMark, staggered grids, a static theme preview and a segmented control with an honest use.

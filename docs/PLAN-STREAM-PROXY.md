@@ -451,7 +451,7 @@ P2, master playlists and keys (effort: 3 to 5 days). Status: shipped. 55 Rust te
 * Master rewrite (stream inf, iframe, media audio and subtitles), nested variant fetch, depth cap, key handler with 64 KB cap, redirect recheck with final base URL.
 * Acceptance: master with two variants plus audio group plays. Variant switch works. Malicious playlist fixture (nested depth 6, `file:` URI) fails closed with player intact.
 
-P3, cookie jar and live playlists (effort: 4 to 6 days):
+P3, cookie jar and live playlists (effort: 4 to 6 days). Status: shipped. 67 Rust tests, 43 proxy tests. Three-refresh sliding window, per-entry jar, seed once, revoke clearing.
 
 * Per entry jar with capture, scope, expiry, clearing. Live no cache path with child reuse. `SameSite` and supercookie rules with the embedded dot check plus a warning comment. No public suffix list in P3 by default.
 * Acceptance: fixture requiring cookie from playlist on segments plays. Live playlist advances across 3 refreshes without child explosion. Jar cleared on close verified by `proxy_status` plus a segment fetch returning 403 after revoke.
