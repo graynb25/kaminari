@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-09 Keyboard path and focus
+
+Context. The no-mouse path from Library to the source browser, player and back worked, but Escape in the player closed both overlays and focus fell to the body. The source library card also had no visible focus ring because the card clips its own overflow.
+
+What we shipped. PlayerView stops immediate propagation for every key it handles, so Escape, Space, K, J, L, arrows, M, F, T, V, comma, period, 0 and D stay inside the player while Ctrl K and other app shortcuts still pass through. SourceBrowser focuses the played episode after the player closes, and restores the library source card on close, with a `data-source-show` fallback when the original element is gone. Source library cards get a card-level focus ring. Episode Play buttons and source cards carry stable data attributes for the restore.
+
+What we measured. Library to source card by Tab took 21 stops. Enter opened the source browser, 4 more Tabs reached Play episode 1, and Enter opened the player. Space paused and resumed, L moved 2.75s to 12.98s, K paused, and 1 did not change the Library nav while playing. Escape left the source browser open and focused Resume episode 1; a second Escape closed it and focused the source card. 47 Vitest tests pass and no page errors were logged.
+
+What we did not do. No automated DOM test for the path; the verification is manual through CDP.
+
 ## 2026-11-09 System tray menu
 
 Context. The app could only be reached through its window. Windows users expect a tray icon that can bring a background app back or quit it without hunting for the window.

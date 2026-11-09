@@ -4,6 +4,12 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.18.1 - 2026-11-09
+
+- Keyboard: Escape in the player closes only the player, handled keys stay scoped, and focus returns to the episode and source card
+- Library: source cards show a focus ring that the card overflow was clipping
+- Version: bump to 0.18.1
+
 ## 0.18.0 - 2026-11-09
 
 - App: system tray icon with Show Kaminari and Quit, left click toggles the main window

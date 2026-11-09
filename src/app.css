@@ -2299,6 +2299,12 @@ button:disabled {
   outline-offset: 3px;
 }
 
+/* The source card clips its own overflow, so the ring lives on the article. */
+.library-source-card:has(.library-source-art:focus-visible) {
+  outline: 2px solid var(--volt-400);
+  outline-offset: 3px;
+}
+
 /* Overlay lock must beat the overflow-y-auto utility on #content. */
 body[data-overlay] #content {
   overflow: hidden;
