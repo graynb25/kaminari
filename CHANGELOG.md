@@ -4,7 +4,11 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.18.0 - 2026-11-09
+
+- App: system tray icon with Show Kaminari and Quit, left click toggles the main window
 - Docs: real build screenshots in `assets/screenshots/`, plus accurate player, extension and release claims in the README
+- Version: bump to 0.18.0
 
 ## 0.17.1 - 2026-11-09
 

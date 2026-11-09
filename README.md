@@ -38,7 +38,7 @@ If you already know React, the Rust side does not care. The contract stays the s
 
 ## Status
 
-Working today: cinematic browse with five AniList rails, Top 10 Today, Ctrl K palette, detail pages, a local AniList library, watched episode tracking, Continue Watching, an Aniyomi registry reader that stores source metadata, a native JavaScript extension host with a source browser, details, episodes and stream resolve, an in-app player for MP4 and HLS, a loopback stream proxy for headers, cookies, HLS media and master playlists, a source library with resumable playback progress, source Continue Watching and merged history, System, Dark and Light themes, and an in-app license list generated from the build.
+Working today: cinematic browse with five AniList rails, Top 10 Today, Ctrl K palette, detail pages, a local AniList library, watched episode tracking, Continue Watching, an Aniyomi registry reader that stores source metadata, a native JavaScript extension host with a source browser, details, episodes and stream resolve, an in-app player for MP4 and HLS, a loopback stream proxy for headers, cookies, HLS media and master playlists, a source library with resumable playback progress, source Continue Watching and merged history, System, Dark and Light themes, a Windows tray menu with show and quit, and an in-app license list generated from the build.
 
 Next: embedded libmpv packaging for HEVC, ASS and HDR, blocked on lawyer sign-off for the LGPL artifacts. The dev spike passes z-order, HEVC and fallback on Windows. A 2026-11-08 review confirmed Suwayomi is manga-only and cannot run Aniyomi/yuzono anime extensions, so native `.kext` stays the bundled source model. The app does not download APKs or run package code from the Aniyomi registry.
 

@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-09 System tray menu
+
+Context. The app could only be reached through its window. Windows users expect a tray icon that can bring a background app back or quit it without hunting for the window.
+
+What we shipped. A `tray.rs` module using Tauri's `TrayIconBuilder`, a native menu with Show Kaminari and Quit, and a left click that hides a visible window or shows and focuses a hidden one. The icon uses `default_window_icon`; the handle is stored in managed state. Tray setup failures log a warning and do not block startup. Window close still exits.
+
+What we measured. The icon appeared in the Windows 11 overflow as a `SystemTray.NormalButton` named `Kaminari`. A UI Automation invoke hid the main window and a second invoke showed it again. The native menu opened at 2284,1177 with a 177 by 59 rect; the app exited during the menu probe, consistent with the Quit item. The popup exposes no UI Automation children, so the Show item was not invoked directly. Tooltip rendering, right-click at other DPI scales, and multi-monitor placement are not asserted.
+
+What we did not do. No close-to-tray, no tray badges or playback controls, and no macOS or Linux tray check.
+
 ## 2026-11-09 Cascade layers
 
 Context. `src/app.css` was unlayered, so base element rules and component classes silently beat Tailwind utilities. `hidden lg:inline-flex` never hid the online pill, `truncate` never truncated, and `text-xs` never set a button size.
