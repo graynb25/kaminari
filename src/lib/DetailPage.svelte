@@ -1,6 +1,7 @@
 ﻿<script lang="ts">
   import Artwork from "./Artwork.svelte";
   import Icon from "./Icon.svelte";
+  import ProgressBar from "./ProgressBar.svelte";
   import { coverOf, cleanHtml, displayTitle, metaOf, scoreLabel, scoreOutOfTen } from "./format";
   import type { Media } from "./types";
 
@@ -284,17 +285,13 @@
                   </p>
                 </div>
               </div>
-              <div
-                class="h-1 rounded-full mt-3 overflow-hidden"
-                style="background: var(--void-800);"
-                role="progressbar"
-                aria-label="Episodes watched"
-                aria-valuemin={0}
-                aria-valuemax={episodeCount}
-                aria-valuenow={watchedCount}
-              >
-                <div class="h-full" style="width: {percent}%; background: var(--volt-400); box-shadow: 0 0 10px var(--volt-400);"></div>
-              </div>
+              <ProgressBar
+                label="Episodes watched"
+                value={watchedCount}
+                max={episodeCount}
+                size="md"
+                class="mt-3"
+              />
             </div>
 
             <ol class="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 xl:grid-cols-12 gap-1.5" aria-label="Episodes">

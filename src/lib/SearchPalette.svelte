@@ -1,5 +1,7 @@
 ﻿<script lang="ts">
+  import Callout from "./Callout.svelte";
   import Icon from "./Icon.svelte";
+  import Modal from "./Modal.svelte";
   import { searchAniList } from "./api";
   import { coverOf, displayTitle, metaOf, scoreOutOfTen } from "./format";
   import type { LibraryItem, Media, SourceLibraryItem, View } from "./types";
@@ -45,7 +47,6 @@
   let requestId = $state(0);
   let recent = $state<string[]>(loadRecent());
   let active = $state(0);
-  let input: HTMLInputElement | null = $state(null);
   let dialog: HTMLDivElement | null = $state(null);
 
   type Row =
@@ -142,11 +143,10 @@
     active = 0;
   }
 
-  // Focus the input whenever the palette opens. Parent restores focus on close.
+  // Reset the query whenever the palette opens. Modal handles focus and restore.
   $effect(() => {
     if (open) {
       reset();
-      requestAnimationFrame(() => input?.focus());
     }
   });
 
@@ -196,24 +196,6 @@
     return () => window.clearTimeout(timer);
   });
 
-  // Keep Tab cycling inside the dialog. Esc always closes.
-  function trapTab(event: KeyboardEvent) {
-    if (event.key !== "Tab" || !dialog) return;
-    const items = [...dialog.querySelectorAll("button, input")].filter(
-      (el) => (el as HTMLElement).tabIndex >= 0,
-    ) as HTMLElement[];
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-
   function choose(row: Row | undefined) {
     if (!row) return;
     if (row.kind === "action") {
@@ -254,231 +236,208 @@
       event.preventDefault();
       if (event.shiftKey) play(flatRows[active]);
       else choose(flatRows[active]);
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
     }
   }
 </script>
 
-{#if open}
-  <div
-    class="fixed inset-0 z-[60] flex justify-center px-4 overlay-backdrop overlay-in"
-    style="padding-top: 12vh;"
-    onclick={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}
-    role="presentation"
-  >
-    <div
-      bind:this={dialog}
-      onkeydown={trapTab}
-      tabindex={-1}
-      class="modal-in glass-strong w-full max-w-[680px] h-fit rounded-[22px] overflow-hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Search Kaminari"
-    >
-      <div class="palette-input-row flex items-center gap-3 px-4 h-14" style="border-bottom: 1px solid var(--line);">
-        <Icon name="search" size={18} class="shrink-0" />
-        <input
-          bind:this={input}
-          bind:value={query}
-          onkeydown={onKeys}
-          placeholder="Search AniList, library, sources, actions"
-          class="palette-input flex-1 h-full bg-transparent text-[15px] outline-none"
-          style="color: var(--paper-50);"
-          aria-label="Search AniList, library, sources and actions"
-          autocomplete="off"
-          spellcheck={false}
-        />
-        {#if searching}
-          <span class="w-3.5 h-3.5 rounded-full border-2 border-t-transparent animate-spin shrink-0" style="border-color: var(--volt-400); border-top-color: transparent;" aria-label="Searching"></span>
-        {/if}
-        <button class="kbd" onclick={onClose} aria-label="Close search">Esc</button>
-      </div>
-
-      <div class="max-h-[56vh] overflow-y-auto p-2">
-        <p class="sr-only" aria-live="polite">
-          {searching ? "Searching AniList" : `${flatRows.length} results`}
-        </p>
-
-        {#if rateLimited}
-          <div
-            class="m-2 px-3 py-2 rounded-lg text-sm flex items-start gap-2"
-            style="background: var(--warning-wash); border: 1px solid var(--warning-line); color: var(--text-1);"
-            role="status"
-          >
-            <Icon name="alert" size={14} class="mt-0.5 shrink-0" />
-            AniList is rate limiting. Showing the last good results. Try again in a few seconds.
-          </div>
-        {:else if error}
-          <div
-            class="m-2 px-3 py-2 rounded-lg text-sm flex items-start gap-2"
-            style="background: var(--void-800); border: 1px solid var(--line); color: var(--text-2);"
-            role="alert"
-          >
-            <Icon name="xCircle" size={14} class="mt-0.5 shrink-0" />
-            Search failed: {error}
-          </div>
-        {/if}
-
-        {#if term.length < 2}
-          {#if recent.length > 0}
-            <div class="flex items-center gap-2 px-3 pt-2 pb-1">
-              <p class="text-[10px] font-semibold uppercase tracking-[0.18em]" style="color: var(--paper-500);">Recent</p>
-              <span class="flex-1"></span>
-              <button class="text-[10px]" style="color: var(--paper-500);" onclick={clearRecent}>Clear</button>
-            </div>
-            <div class="flex flex-wrap gap-1.5 px-3 pb-2">
-              {#each recent as value}
-                <button
-                  class="chip text-[11px] px-2.5 py-1 hover:border-[var(--line-volt)]"
-                  onclick={() => {
-                    query = value;
-                  }}
-                >
-                  <Icon name="clock" size={11} />
-                  {value}
-                </button>
-              {/each}
-            </div>
-          {:else}
-            <p class="px-3 py-3 text-sm" style="color: var(--paper-500);">
-              Type two or more characters. Library matches show first, AniList next.
-            </p>
-          {/if}
-        {/if}
-
-        {#if flatRows.length === 0 && !searching}
-          <div class="px-4 py-8 text-center">
-            <div class="empty-icon mx-auto" aria-hidden="true">
-              <Icon name="search" size={24} />
-            </div>
-            <p class="text-sm font-semibold">No results for "{query.trim()}"</p>
-            <p class="text-xs mt-1" style="color: var(--paper-500);">Try romaji, a shorter title, or check spelling.</p>
-          </div>
-        {/if}
-
-        {#each groups as group (group.label)}
-          <div class="mb-1">
-            <div class="flex items-center gap-2 px-3 pt-2 pb-1">
-              <p class="text-[10px] font-semibold uppercase tracking-[0.18em]" style="color: var(--paper-500);">{group.label}</p>
-              <span class="text-[10px]" style="color: var(--paper-500); font-family: var(--font-mono);">{group.rows.length}</span>
-            </div>
-            {#each group.rows as row (row.kind + (row.kind === "action" ? row.id : row.kind === "source" ? row.item.showId : row.item.id))}
-              {@const index = flatRows.indexOf(row)}
-              {@const isActive = index === active}
-              {#if row.kind === "action"}
-                <button
-                  class="palette-row {isActive ? 'is-active' : ''}"
-                  data-palette-index={index}
-                  onmouseenter={() => (active = index)}
-                  onclick={() => choose(row)}
-                  aria-current={isActive ? "true" : undefined}
-                >
-                  <span class="palette-row-icon">
-                    <Icon name={row.icon} size={15} />
-                  </span>
-                  <span class="flex-1 text-sm font-medium">{row.label}</span>
-                  <kbd class="kbd">{row.hint}</kbd>
-                </button>
-              {:else if row.kind === "source"}
-                <button
-                  class="palette-row {isActive ? 'is-active' : ''}"
-                  data-palette-index={index}
-                  onmouseenter={() => (active = index)}
-                  onclick={() => choose(row)}
-                  aria-current={isActive ? "true" : undefined}
-                  aria-label="Open {row.item.title} from {row.item.extensionName}"
-                >
-                  <span class="palette-cover">
-                    {#if row.item.cover}
-                      <img src={row.item.cover} alt="" loading="lazy" decoding="async" />
-                    {:else}
-                      <Icon name="package" size={16} />
-                    {/if}
-                  </span>
-                  <span class="min-w-0 flex-1">
-                    <span class="flex items-center gap-2">
-                      <span class="block text-sm font-semibold truncate">{row.item.title}</span>
-                      <span class="chip text-[9px] px-1.5 py-0.5">Source</span>
-                    </span>
-                    <span class="block text-xs mt-0.5 truncate" style="color: var(--paper-500);">
-                      {row.item.extensionName}{row.item.year ? ` Â· ${row.item.year}` : ""}
-                    </span>
-                  </span>
-                  <Icon name="chevronRight" size={14} class="shrink-0" />
-                </button>
-              {:else}
-                {@const art = coverOf(row.item)}
-                <button
-                  class="palette-row {isActive ? 'is-active' : ''}"
-                  data-palette-index={index}
-                  onmouseenter={() => (active = index)}
-                  onclick={() => choose(row)}
-                  aria-current={isActive ? "true" : undefined}
-                  aria-label="Open {displayTitle(row.item)}"
-                >
-                  <span class="palette-cover" style="background: {row.item.coverImage?.color ?? 'var(--void-700)'};">
-                    {#if art}
-                      <img src={art} alt="" loading="lazy" decoding="async" />
-                    {:else}
-                      <Icon name="film" size={16} />
-                    {/if}
-                  </span>
-                  <span class="min-w-0 flex-1">
-                    <span class="flex items-center gap-2">
-                      <span class="block text-sm font-semibold truncate">{displayTitle(row.item)}</span>
-                      {#if row.kind === "lib"}
-                        <span class="chip chip-volt text-[9px] px-1.5 py-0.5">Library</span>
-                      {/if}
-                    </span>
-                    <span class="block text-xs mt-0.5 truncate" style="color: var(--paper-500);">
-                      {row.kind === "lib" ? "In your library Â· " : "AniList Â· "}{metaOf(row.item)}
-                    </span>
-                  </span>
-                  {#if row.item.averageScore}
-                    <span class="inline-flex items-center gap-1 text-[10px]" style="color: var(--volt-300); font-family: var(--font-mono);">
-                      <Icon name="star" size={9} />
-                      {scoreOutOfTen(row.item.averageScore)}
-                    </span>
-                  {/if}
-                  <Icon name="chevronRight" size={14} class="shrink-0" />
-                </button>
-              {/if}
-            {/each}
-          </div>
-        {/each}
-
-        {#if searching && flatRows.length === 0}
-          <div class="space-y-1.5 px-2 py-2" aria-hidden="true">
-            {#each Array(3) as _}
-              <div class="flex items-center gap-3 p-2">
-                <div class="shimmer w-9 h-[52px] rounded-md"></div>
-                <div class="flex-1 space-y-2">
-                  <div class="shimmer h-3 w-1/2 rounded"></div>
-                  <div class="shimmer h-2 w-1/3 rounded"></div>
-                </div>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
-      <div
-        class="flex flex-wrap gap-4 px-4 py-2.5 text-[10px]"
-        style="border-top: 1px solid var(--line); color: var(--paper-500);"
-      >
-        <span><b class="kbd mr-1">â†‘â†“</b> move</span>
-        <span><b class="kbd mr-1">Enter</b> open</span>
-        <span><b class="kbd mr-1">Shift</b><b class="kbd">Enter</b> play</span>
-        <span><b class="kbd mr-1">Esc</b> close</span>
-        <span class="ml-auto hidden sm:inline">Kaminari search</span>
-      </div>
+<Modal
+  {open}
+  size="sm"
+  placement="top"
+  maxHeight={null}
+  bodyMaxHeight="56vh"
+  zIndex={60}
+  overlayName="palette"
+  label="Search Kaminari"
+  onClose={onClose}
+  bind:panel={dialog}
+  bodyClass="p-2"
+  footerClass="flex flex-wrap gap-4 px-4 py-2.5 text-[10px]"
+>
+  {#snippet header()}
+    <div class="palette-input-row flex items-center gap-3 px-4 h-14">
+      <Icon name="search" size={18} class="shrink-0" />
+      <input
+        bind:value={query}
+        onkeydown={onKeys}
+        placeholder="Search AniList, library, sources, actions"
+        class="palette-input flex-1 h-full bg-transparent text-[15px] outline-none"
+        style="color: var(--paper-50);"
+        aria-label="Search AniList, library, sources and actions"
+        autocomplete="off"
+        spellcheck={false}
+        data-autofocus
+      />
+      {#if searching}
+        <span class="w-3.5 h-3.5 rounded-full border-2 border-t-transparent animate-spin shrink-0" style="border-color: var(--volt-400); border-top-color: transparent;" aria-label="Searching"></span>
+      {/if}
+      <button class="kbd" onclick={onClose} aria-label="Close search">Esc</button>
     </div>
-  </div>
-{/if}
+  {/snippet}
+
+  <p class="sr-only" aria-live="polite">
+    {searching ? "Searching AniList" : `${flatRows.length} results`}
+  </p>
+
+  {#if rateLimited}
+    <Callout tone="warning" class="m-2">
+      AniList is rate limiting. Showing the last good results. Try again in a few seconds.
+    </Callout>
+  {:else if error}
+    <Callout tone="danger" icon="xCircle" class="m-2">
+      Search failed: {error}
+    </Callout>
+  {/if}
+
+  {#if term.length < 2}
+    {#if recent.length > 0}
+      <div class="flex items-center gap-2 px-3 pt-2 pb-1">
+        <p class="text-[10px] font-semibold uppercase tracking-[0.18em]" style="color: var(--paper-500);">Recent</p>
+        <span class="flex-1"></span>
+        <button class="text-[10px]" style="color: var(--paper-500);" onclick={clearRecent}>Clear</button>
+      </div>
+      <div class="flex flex-wrap gap-1.5 px-3 pb-2">
+        {#each recent as value}
+          <button
+            class="chip text-[11px] px-2.5 py-1 hover:border-[var(--line-volt)]"
+            onclick={() => {
+              query = value;
+            }}
+          >
+            <Icon name="clock" size={11} />
+            {value}
+          </button>
+        {/each}
+      </div>
+    {:else}
+      <p class="px-3 py-3 text-sm" style="color: var(--paper-500);">
+        Type two or more characters. Library matches show first, AniList next.
+      </p>
+    {/if}
+  {/if}
+
+  {#if flatRows.length === 0 && !searching}
+    <div class="px-4 py-8 text-center">
+      <div class="empty-icon mx-auto" aria-hidden="true">
+        <Icon name="search" size={24} />
+      </div>
+      <p class="text-sm font-semibold">No results for "{query.trim()}"</p>
+      <p class="text-xs mt-1" style="color: var(--paper-500);">Try romaji, a shorter title, or check spelling.</p>
+    </div>
+  {/if}
+
+  {#each groups as group (group.label)}
+    <div class="mb-1">
+      <div class="flex items-center gap-2 px-3 pt-2 pb-1">
+        <p class="text-[10px] font-semibold uppercase tracking-[0.18em]" style="color: var(--paper-500);">{group.label}</p>
+        <span class="text-[10px]" style="color: var(--paper-500); font-family: var(--font-mono);">{group.rows.length}</span>
+      </div>
+      {#each group.rows as row (row.kind + (row.kind === "action" ? row.id : row.kind === "source" ? row.item.showId : row.item.id))}
+        {@const index = flatRows.indexOf(row)}
+        {@const isActive = index === active}
+        {#if row.kind === "action"}
+          <button
+            class="palette-row {isActive ? 'is-active' : ''}"
+            data-palette-index={index}
+            onmouseenter={() => (active = index)}
+            onclick={() => choose(row)}
+            aria-current={isActive ? "true" : undefined}
+          >
+            <span class="palette-row-icon">
+              <Icon name={row.icon} size={15} />
+            </span>
+            <span class="flex-1 text-sm font-medium">{row.label}</span>
+            <kbd class="kbd">{row.hint}</kbd>
+          </button>
+        {:else if row.kind === "source"}
+          <button
+            class="palette-row {isActive ? 'is-active' : ''}"
+            data-palette-index={index}
+            onmouseenter={() => (active = index)}
+            onclick={() => choose(row)}
+            aria-current={isActive ? "true" : undefined}
+            aria-label="Open {row.item.title} from {row.item.extensionName}"
+          >
+            <span class="palette-cover">
+              {#if row.item.cover}
+                <img src={row.item.cover} alt="" loading="lazy" decoding="async" />
+              {:else}
+                <Icon name="package" size={16} />
+              {/if}
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class="flex items-center gap-2">
+                <span class="block text-sm font-semibold truncate">{row.item.title}</span>
+                <span class="chip text-[9px] px-1.5 py-0.5">Source</span>
+              </span>
+              <span class="block text-xs mt-0.5 truncate" style="color: var(--paper-500);">
+                {row.item.extensionName}{row.item.year ? ` Â· ${row.item.year}` : ""}
+              </span>
+            </span>
+            <Icon name="chevronRight" size={14} class="shrink-0" />
+          </button>
+        {:else}
+          {@const art = coverOf(row.item)}
+          <button
+            class="palette-row {isActive ? 'is-active' : ''}"
+            data-palette-index={index}
+            onmouseenter={() => (active = index)}
+            onclick={() => choose(row)}
+            aria-current={isActive ? "true" : undefined}
+            aria-label="Open {displayTitle(row.item)}"
+          >
+            <span class="palette-cover" style="background: {row.item.coverImage?.color ?? 'var(--void-700)'};">
+              {#if art}
+                <img src={art} alt="" loading="lazy" decoding="async" />
+              {:else}
+                <Icon name="film" size={16} />
+              {/if}
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class="flex items-center gap-2">
+                <span class="block text-sm font-semibold truncate">{displayTitle(row.item)}</span>
+                {#if row.kind === "lib"}
+                  <span class="chip chip-volt text-[9px] px-1.5 py-0.5">Library</span>
+                {/if}
+              </span>
+              <span class="block text-xs mt-0.5 truncate" style="color: var(--paper-500);">
+                {row.kind === "lib" ? "In your library Â· " : "AniList Â· "}{metaOf(row.item)}
+              </span>
+            </span>
+            {#if row.item.averageScore}
+              <span class="inline-flex items-center gap-1 text-[10px]" style="color: var(--volt-300); font-family: var(--font-mono);">
+                <Icon name="star" size={9} />
+                {scoreOutOfTen(row.item.averageScore)}
+              </span>
+            {/if}
+            <Icon name="chevronRight" size={14} class="shrink-0" />
+          </button>
+        {/if}
+      {/each}
+    </div>
+  {/each}
+
+  {#if searching && flatRows.length === 0}
+    <div class="space-y-1.5 px-2 py-2" aria-hidden="true">
+      {#each Array(3) as _}
+        <div class="flex items-center gap-3 p-2">
+          <div class="shimmer w-9 h-[52px] rounded-md"></div>
+          <div class="flex-1 space-y-2">
+            <div class="shimmer h-3 w-1/2 rounded"></div>
+            <div class="shimmer h-2 w-1/3 rounded"></div>
+          </div>
+        </div>
+      {/each}
+    </div>
+  {/if}
+  {#snippet footer()}
+    <span><b class="kbd mr-1">â†‘â†“</b> move</span>
+    <span><b class="kbd mr-1">Enter</b> open</span>
+    <span><b class="kbd mr-1">Shift</b><b class="kbd">Enter</b> play</span>
+    <span><b class="kbd mr-1">Esc</b> close</span>
+    <span class="ml-auto hidden sm:inline">Kaminari search</span>
+  {/snippet}
+</Modal>
 
 <style>
   .palette-input-row {

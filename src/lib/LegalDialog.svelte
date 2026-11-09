@@ -1,6 +1,6 @@
 ﻿<script lang="ts">
-  import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
+  import Modal from "./Modal.svelte";
   import SegmentedControl from "./SegmentedControl.svelte";
   import terms from "../../docs/TERMS.md?raw";
   import privacy from "../../docs/PRIVACY.md?raw";
@@ -15,10 +15,7 @@
 
   const docs = { terms, privacy } as const;
   let active = $state<"terms" | "privacy">(initial);
-  let dialog = $state<HTMLDivElement | null>(null);
   let contentEl = $state<HTMLDivElement | null>(null);
-  let closeButton = $state<HTMLButtonElement | null>(null);
-  let previousFocus: HTMLElement | null = null;
 
   const html = $derived(renderMarkdown(docs[active]));
 
@@ -118,110 +115,60 @@
       if (contentEl) contentEl.scrollTop = 0;
     });
   }
-
-  function trapTab(event: KeyboardEvent) {
-    if (event.key !== "Tab" || !dialog) return;
-    const items = [...dialog.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, [tabindex='0']")].filter(
-      (el) => el.tabIndex >= 0 && el.offsetParent !== null,
-    );
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-
-  onMount(() => {
-    previousFocus = document.activeElement as HTMLElement | null;
-    document.body.dataset.overlay = "legal";
-    requestAnimationFrame(() => closeButton?.focus());
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      delete document.body.dataset.overlay;
-      previousFocus?.focus?.();
-    };
-  });
 </script>
 
-<div
-  class="legal-backdrop fixed inset-0 z-[80] flex items-center justify-center p-4 overlay-backdrop overlay-in"
-  role="presentation"
-  onclick={(event) => {
-    if (event.target === event.currentTarget) onClose();
-  }}
-  onwheel={(event) => {
-    if (event.target === event.currentTarget) event.preventDefault();
-  }}
+<Modal
+  size="lg"
+  maxHeight="86vh"
+  overlayName="legal"
+  label="Legal documents"
+  onClose={onClose}
+  bind:body={contentEl}
+  bodyClass="px-5 py-5 md:px-7"
+  headerClass="flex flex-wrap items-center gap-3 px-5 py-3.5"
 >
-  <div
-    bind:this={dialog}
-    tabindex={-1}
-    class="legal-panel modal-in glass-strong w-full max-w-[860px] max-h-[86vh] rounded-[22px] overflow-hidden flex flex-col"
-    role="dialog"
-    aria-modal="true"
-    aria-label="Legal documents"
-    onkeydown={trapTab}
-  >
-    <div
-      class="shrink-0 flex flex-wrap items-center gap-3 px-5 py-3.5"
-      style="border-bottom: 1px solid var(--line);"
+  {#snippet header()}
+    <span
+      class="w-9 h-9 grid place-items-center rounded-xl shrink-0"
+      style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);"
     >
-      <span
-        class="w-9 h-9 grid place-items-center rounded-xl shrink-0"
-        style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);"
-      >
-        <Icon name="shield" size={17} />
-      </span>
-      <div class="min-w-0 flex-1">
-        <h2 class="text-base font-semibold">Legal</h2>
-        <p class="text-[11px]" style="color: var(--text-4);">
-          Kaminari ships no content and no sources.
-        </p>
-      </div>
-      <SegmentedControl
-        options={[
-          { id: "terms", label: "Terms" },
-          { id: "privacy", label: "Privacy" },
-        ]}
-        value={active}
-        onChange={(id) => switchDoc(id as "terms" | "privacy")}
-        ariaLabel="Legal documents"
-        idPrefix="legal"
-      />
-      <button
-        bind:this={closeButton}
-        class="btn-ghost px-2.5 py-1.5 text-xs"
-        onclick={onClose}
-        aria-label="Close legal documents"
-      >
-        <Icon name="close" size={14} />
-      </button>
+      <Icon name="shield" size={17} />
+    </span>
+    <div class="min-w-0 flex-1">
+      <h2 class="text-base font-semibold">Legal</h2>
+      <p class="text-[11px]" style="color: var(--text-4);">
+        Kaminari ships no content and no sources.
+      </p>
     </div>
+    <SegmentedControl
+      options={[
+        { id: "terms", label: "Terms" },
+        { id: "privacy", label: "Privacy" },
+      ]}
+      value={active}
+      onChange={(id) => switchDoc(id as "terms" | "privacy")}
+      ariaLabel="Legal documents"
+      idPrefix="legal"
+    />
+    <button
+      class="btn-ghost px-2.5 py-1.5 text-xs"
+      onclick={onClose}
+      aria-label="Close legal documents"
+      data-autofocus
+    >
+      <Icon name="close" size={14} />
+    </button>
+  {/snippet}
 
-    <div
-      bind:this={contentEl}
-      class="flex-1 overflow-y-auto px-5 py-5 md:px-7"
-      style="overscroll-behavior: contain;"
-      role="tabpanel"
-      id="legal-panel"
-      aria-labelledby={active === "terms" ? "legal-tab-terms" : "legal-tab-privacy"}
-      tabindex="0"
-    >
-      <div class="legal-draft">
-        Draft policy. Contact, jurisdiction and repository placeholders are pending legal review.
-      </div>
-      <div class="legal-markdown">{@html html}</div>
+  <div
+    role="tabpanel"
+    id="legal-panel"
+    aria-labelledby={active === "terms" ? "legal-tab-terms" : "legal-tab-privacy"}
+    tabindex="0"
+  >
+    <div class="legal-draft">
+      Draft policy. Contact, jurisdiction and repository placeholders are pending legal review.
     </div>
+    <div class="legal-markdown">{@html html}</div>
   </div>
-</div>
+</Modal>

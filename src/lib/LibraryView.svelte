@@ -1,14 +1,17 @@
 ﻿<script lang="ts">
+  import Callout from "./Callout.svelte";
   import EmptyState from "./EmptyState.svelte";
   import Icon from "./Icon.svelte";
   import PageHeader from "./PageHeader.svelte";
   import PosterCard from "./PosterCard.svelte";
+  import ProgressBar from "./ProgressBar.svelte";
   import { displayTitle } from "./format";
   import type { LibraryItem, Media, SourceLibraryItem } from "./types";
 
   let {
     items,
     sourceItems,
+    loading = false,
     error = null,
     onRetry,
     onOpen,
@@ -23,6 +26,7 @@
   }: {
     items: LibraryItem[];
     sourceItems: SourceLibraryItem[];
+    loading?: boolean;
     error?: string | null;
     onRetry?: () => void;
     onOpen: (item: Media) => void;
@@ -119,31 +123,32 @@
     {/if}
   </PageHeader>
 
+  {#if loading}
+    <ProgressBar label="Refreshing library" indeterminate class="mb-4" />
+  {/if}
+
   {#if error && totalTitles > 0}
-    <div class="surface px-4 py-3 mb-4 flex flex-col sm:flex-row sm:items-center gap-2 text-sm" role="alert" style="color: var(--paper-300);">
-      <Icon name="alert" size={15} />
-      <span class="flex-1">Library refresh failed: {error}</span>
-      {#if onRetry}
-        <button class="btn-ghost px-3 py-1.5 text-xs shrink-0" onclick={onRetry}>Retry</button>
-      {/if}
-    </div>
+    <Callout
+      tone="warning"
+      role="alert"
+      class="mb-4"
+      actionLabel={onRetry ? "Retry" : undefined}
+      onAction={onRetry}
+    >
+      Library refresh failed: {error}
+    </Callout>
   {/if}
 
   {#if error && totalTitles === 0}
-    <div class="surface p-5 max-w-xl">
-      <div class="flex items-start gap-3">
-        <span class="w-9 h-9 grid place-items-center rounded-lg shrink-0" style="background: var(--danger-wash); color: var(--danger);">
-          <Icon name="alert" size={17} />
-        </span>
-        <div class="min-w-0 flex-1">
-          <h2 class="text-sm font-semibold">Library did not load</h2>
-          <p class="text-xs mt-1 leading-relaxed" style="color: var(--paper-300);">{error}</p>
-        </div>
-        {#if onRetry}
-          <button class="btn-ghost px-3 py-1.5 text-xs shrink-0" onclick={onRetry}>Retry</button>
-        {/if}
-      </div>
-    </div>
+    <Callout
+      tone="danger"
+      title="Library did not load"
+      class="max-w-xl"
+      actionLabel={onRetry ? "Retry" : undefined}
+      onAction={onRetry}
+    >
+      {error}
+    </Callout>
   {:else if totalTitles === 0}
     <EmptyState
       icon="library"

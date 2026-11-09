@@ -1,7 +1,9 @@
 ﻿<script lang="ts">
   import { onMount } from "svelte";
+  import Callout from "./Callout.svelte";
   import Icon from "./Icon.svelte";
   import PageHeader from "./PageHeader.svelte";
+  import ProgressBar from "./ProgressBar.svelte";
   import {
     jsExtensionInstallPath,
     jsExtensionInstallSample,
@@ -332,6 +334,17 @@
         No registry yet. Every package shows its hosts and trust level. Unsigned packages are
         sideloaded and stay local.
       </p>
+      {#if jsBusy}
+        <ProgressBar
+          label={jsBusy === "sample"
+            ? "Installing sample extension"
+            : jsBusy === "path"
+              ? "Installing package"
+              : "Updating extension"}
+          indeterminate
+          class="mt-3"
+        />
+      {/if}
     </div>
 
     {#if jsLoading}
@@ -416,15 +429,15 @@
             {#if jsTestId === extension.id}
               <div class="mt-3 rounded-xl p-3" style="background: var(--well-bg); border: 1px solid var(--line);" aria-live="polite">
                 {#if jsTestLoading}
-                  <p class="text-xs flex items-center gap-2" style="color: var(--paper-450);">
-                    <span class="w-3 h-3 rounded-full border-2 border-t-transparent animate-spin" style="border-color: var(--volt-400); border-top-color: transparent;"></span>
-                    Running a fresh QuickJS runtime.
-                  </p>
-                {:else if jsTestError}
-                  <div class="rounded-lg px-3 py-2 text-xs flex items-start gap-2" style="background: var(--danger-wash); border: 1px solid var(--danger-line); color: var(--text-1);" role="alert">
-                    <Icon name="alert" size={14} class="mt-0.5 shrink-0" />
-                    {jsTestError}
+                  <div class="space-y-2">
+                    <p class="text-xs flex items-center gap-2" style="color: var(--paper-450);">
+                      <span class="w-3 h-3 rounded-full border-2 border-t-transparent animate-spin" style="border-color: var(--volt-400); border-top-color: transparent;"></span>
+                      Running a fresh QuickJS runtime.
+                    </p>
+                    <ProgressBar label="Running extension test" indeterminate />
                   </div>
+                {:else if jsTestError}
+                  <Callout tone="danger">{jsTestError}</Callout>
                 {:else}
                   <div class="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
                     {#each jsTestItems as item (item.id)}
@@ -502,16 +515,24 @@
       Legacy entries are unsigned metadata, shown as sideloaded. NSFW and torrent packages carry a
       badge and stay out of the way until you choose them.
     </p>
+    {#if loading}
+      <ProgressBar label="Loading registry" indeterminate class="mt-3" />
+    {/if}
   </div>
 
   {#if error}
-    <div class="surface px-4 py-3 mb-6 flex flex-col sm:flex-row sm:items-center gap-3 text-sm" role="alert">
-      <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: var(--danger-wash); color: var(--danger);">
-        <Icon name="alert" size={16} />
-      </span>
-      <p class="flex-1" style="color: var(--paper-300);">{error}</p>
-      <button class="btn-ghost px-3 py-1.5 text-xs shrink-0" onclick={() => void loadRegistry()}>Retry</button>
-    </div>
+    <Callout
+      tone="danger"
+      class="mb-6"
+      actionLabel="Retry"
+      onAction={() => void loadRegistry()}
+    >
+      {error}
+    </Callout>
+  {/if}
+
+  {#if busy}
+    <ProgressBar label="Updating source" indeterminate class="mb-6" />
   {/if}
 
   {#if installed.length > 0}

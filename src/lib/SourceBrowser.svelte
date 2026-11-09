@@ -1,8 +1,10 @@
 ﻿<script lang="ts">
   import { onMount } from "svelte";
+  import Callout from "./Callout.svelte";
   import EmptyState from "./EmptyState.svelte";
   import Icon from "./Icon.svelte";
   import PlayerView from "./PlayerView.svelte";
+  import ProgressBar from "./ProgressBar.svelte";
   import {
     jsExtensionDetail,
     jsExtensionEpisodes,
@@ -511,10 +513,7 @@
         </div>
 
         {#if showError}
-          <div class="mt-4 surface px-4 py-3 text-sm flex items-start gap-2.5" role="alert" style="color: var(--paper-300);">
-            <Icon name="alert" size={15} class="mt-0.5 shrink-0" />
-            {showError}
-          </div>
+          <Callout tone="danger" class="mt-4">{showError}</Callout>
         {/if}
 
         <div class="flex items-baseline gap-3 mt-8 mb-3">
@@ -617,6 +616,11 @@
                     </button>
                   </div>
                 </div>
+                {#if resolving === episode.id}
+                  <div class="px-3 pb-3">
+                    <ProgressBar label="Resolving episode" indeterminate size="xs" />
+                  </div>
+                {/if}
                 {#if streams[episode.id]}
                   <div class="px-3 pb-3 space-y-1.5" style="border-top: 1px solid var(--line); padding-top: 10px;">
                     {#each streams[episode.id] as stream}
@@ -649,10 +653,7 @@
             {/each}
           </div>
           {#if streamError}
-            <div class="mt-3 rounded-lg px-3 py-2 text-xs flex items-start gap-2" style="background: var(--danger-wash); border: 1px solid var(--danger-line);" role="alert">
-              <Icon name="alert" size={13} class="mt-0.5 shrink-0" />
-              {streamError}
-            </div>
+            <Callout tone="danger" class="mt-3">{streamError}</Callout>
           {/if}
           <p class="text-xs mt-3" style="color: var(--paper-450);">
             Play starts the first stream in the in-app player. Streams lists every quality, with Copy
@@ -674,6 +675,7 @@
         </div>
 
         {#if loading}
+          <ProgressBar label="Searching source" indeterminate class="mb-4" />
           <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
             {#each Array(12) as _}
               <div class="space-y-2">

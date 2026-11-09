@@ -1,5 +1,6 @@
 ﻿<script lang="ts">
   import { onMount } from "svelte";
+  import Callout from "./lib/Callout.svelte";
   import ContinueCard from "./lib/ContinueCard.svelte";
   import DetailPage from "./lib/DetailPage.svelte";
   import EmptyState from "./lib/EmptyState.svelte";
@@ -100,7 +101,6 @@
   let licensesOpen = $state(false);
   let toasts = $state<Toast[]>([]);
   let toastSeq = $state(0);
-  let lastFocus = $state<HTMLElement | null>(null);
   let mainEl = $state<HTMLElement | null>(null);
   let online = $state(typeof navigator !== "undefined" ? navigator.onLine : true);
   let detailRequest = 0;
@@ -139,13 +139,11 @@
   }
 
   function openPalette() {
-    lastFocus = document.activeElement as HTMLElement | null;
     paletteOpen = true;
   }
 
   function closePalette() {
     paletteOpen = false;
-    lastFocus?.focus?.();
   }
 
   function goView(next: View) {
@@ -217,6 +215,7 @@
   }
 
   async function refreshLibrary() {
+    libraryLoading = true;
     try {
       library = await listLibrary();
       libraryError = null;
@@ -463,14 +462,8 @@
   // Global keys. Palette input handles its own list keys.
   $effect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (document.body.dataset.playerOpen === "true" || document.body.dataset.overlay) return;
-      if (shortcutsOpen) {
-        if (event.key === "Escape" || event.key === "?") {
-          event.preventDefault();
-          shortcutsOpen = false;
-        }
-        return;
-      }
+      const overlayOpen = Boolean(document.body.dataset.overlay);
+      if (document.body.dataset.playerOpen === "true" || (overlayOpen && !paletteOpen)) return;
       const mod = event.ctrlKey || event.metaKey;
       if (mod && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -486,8 +479,7 @@
         event.preventDefault();
         openPalette();
       } else if (event.key === "Escape") {
-        if (shortcutsOpen) shortcutsOpen = false;
-        else if (detail) closeDetail();
+        if (detail) closeDetail();
       } else if (event.key >= "1" && event.key <= "5") {
         const next: View[] = ["browse", "library", "history", "sources", "settings"];
         const pick = next[Number(event.key) - 1];
@@ -519,14 +511,9 @@
     <main id="content" bind:this={mainEl} class="ambient flex-1 overflow-y-auto min-w-0" tabindex={-1}>
       <div class="min-h-full flex flex-col">
       {#if !online}
-        <div
-          class="px-4 py-2 text-xs flex items-center justify-center gap-2"
-          style="background: var(--warning-wash); border-bottom: 1px solid var(--warning-line); color: var(--paper-100);"
-          role="status"
-        >
-          <Icon name="wifiOff" size={14} />
+        <Callout tone="warning" icon="wifiOff" class="mx-4 mt-3 md:mx-6">
           You are offline. Showing cached titles. Search and detail refresh will fail until you reconnect.
-        </div>
+        </Callout>
       {/if}
 
       {#key detail ? `detail-${detail.id}` : view}
@@ -738,6 +725,7 @@
               <LibraryView
                 items={library}
                 sourceItems={sourceLibraryItems}
+                loading={libraryLoading}
                 error={libraryError}
                 onRetry={() => void refreshLibrary()}
                 onOpen={(item) => void openDetail(item)}

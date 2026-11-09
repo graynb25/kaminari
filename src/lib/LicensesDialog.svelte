@@ -1,6 +1,7 @@
 ﻿<script lang="ts">
   import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
+  import Modal from "./Modal.svelte";
 
   type LicensePackage = {
     key: string;
@@ -44,10 +45,6 @@
   let error = $state<string | null>(null);
   let query = $state("");
   let openKey = $state<string | null>(null);
-  let dialog = $state<HTMLDivElement | null>(null);
-  let searchInput = $state<HTMLInputElement | null>(null);
-  let closeButton = $state<HTMLButtonElement | null>(null);
-  let previousFocus: HTMLElement | null = null;
 
   const term = $derived(query.trim().toLowerCase());
   const textByLicense = $derived(
@@ -95,116 +92,73 @@
     openKey = openKey === key ? null : key;
   }
 
-  function trapTab(event: KeyboardEvent) {
-    if (event.key !== "Tab" || !dialog) return;
-    const items = [...dialog.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, [tabindex='0']")].filter(
-      (el) => el.tabIndex >= 0 && el.offsetParent !== null,
-    );
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-
   onMount(() => {
-    previousFocus = document.activeElement as HTMLElement | null;
-    document.body.dataset.overlay = "licenses";
     void load();
-    requestAnimationFrame(() => searchInput?.focus());
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      delete document.body.dataset.overlay;
-      previousFocus?.focus?.();
-    };
   });
 </script>
 
-<div
-  class="fixed inset-0 z-[80] flex items-center justify-center p-4 overlay-backdrop overlay-in"
-  role="presentation"
-  onclick={(event) => {
-    if (event.target === event.currentTarget) onClose();
-  }}
-  onwheel={(event) => {
-    if (event.target === event.currentTarget) event.preventDefault();
-  }}
+<Modal
+  size="xl"
+  maxHeight="88vh"
+  overlayName="licenses"
+  label="Licenses"
+  onClose={onClose}
+  bodyClass="px-4 py-4 md:px-5"
+  headerClass="px-5 py-4"
 >
-  <div
-    bind:this={dialog}
-    tabindex={-1}
-    class="modal-in glass-strong w-full max-w-[980px] max-h-[88vh] rounded-[22px] overflow-hidden flex flex-col"
-    role="dialog"
-    aria-modal="true"
-    aria-label="Licenses"
-    onkeydown={trapTab}
-  >
-    <div class="shrink-0 px-5 py-4" style="border-bottom: 1px solid var(--line);">
-      <div class="flex items-center gap-3">
-        <span
-          class="w-9 h-9 grid place-items-center rounded-xl shrink-0"
-          style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);"
-        >
-          <Icon name="package" size={17} />
-        </span>
-        <div class="min-w-0 flex-1">
-          <h2 class="text-base font-semibold">Licenses</h2>
-          <p class="text-[11px]" style="color: var(--text-4);">
-            Every package in this build and the license it declares.
-          </p>
-        </div>
-        <button
-          bind:this={closeButton}
-          class="btn-ghost px-2.5 py-1.5 text-xs"
-          onclick={onClose}
-          aria-label="Close licenses"
-        >
-          <Icon name="close" size={14} />
-        </button>
+  {#snippet header()}
+    <div class="flex items-center gap-3">
+      <span
+        class="w-9 h-9 grid place-items-center rounded-xl shrink-0"
+        style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);"
+      >
+        <Icon name="package" size={17} />
+      </span>
+      <div class="min-w-0 flex-1">
+        <h2 class="text-base font-semibold">Licenses</h2>
+        <p class="text-[11px]" style="color: var(--text-4);">
+          Every package in this build and the license it declares.
+        </p>
       </div>
-
-      <div class="flex flex-wrap items-center gap-2.5 mt-3">
-        <label class="license-search flex-1 min-w-[220px] max-w-[520px]">
-          <span class="sr-only">Search licenses</span>
-          <span class="absolute left-3 top-1/2 -translate-y-1/2" style="color: var(--text-4);">
-            <Icon name="search" size={13} />
-          </span>
-          <input
-            bind:this={searchInput}
-            bind:value={query}
-            placeholder="Search packages, licenses or sources"
-            class="w-full h-8 rounded-lg pl-8 pr-3 text-sm outline-none"
-            style="background: var(--input-bg); border: 1px solid var(--line); color: var(--text-1);"
-            aria-label="Search licenses"
-            autocomplete="off"
-            spellcheck={false}
-          />
-        </label>
-        {#if data}
-          <div class="license-summary">
-            <span>{term ? `${filteredCount} of ${data.summary.packages}` : data.summary.packages} packages</span>
-            <span class="license-summary-sep" aria-hidden="true"></span>
-            <span>{data.summary.licenses} licenses</span>
-            <span class="license-summary-sep" aria-hidden="true"></span>
-            <span>Generated {data.generatedAt}</span>
-          </div>
-        {/if}
-      </div>
+      <button
+        class="btn-ghost px-2.5 py-1.5 text-xs"
+        onclick={onClose}
+        aria-label="Close licenses"
+      >
+        <Icon name="close" size={14} />
+      </button>
     </div>
 
-    <div class="flex-1 overflow-y-auto px-4 py-4 md:px-5" style="overscroll-behavior: contain;">
-      {#if loading && !data}
+    <div class="flex flex-wrap items-center gap-2.5 mt-3">
+      <label class="license-search flex-1 min-w-[220px] max-w-[520px]">
+        <span class="sr-only">Search licenses</span>
+        <span class="absolute left-3 top-1/2 -translate-y-1/2" style="color: var(--text-4);">
+          <Icon name="search" size={13} />
+        </span>
+        <input
+          bind:value={query}
+          placeholder="Search packages, licenses or sources"
+          class="w-full h-8 rounded-lg pl-8 pr-3 text-sm outline-none"
+          style="background: var(--input-bg); border: 1px solid var(--line); color: var(--text-1);"
+          aria-label="Search licenses"
+          autocomplete="off"
+          spellcheck={false}
+          data-autofocus
+        />
+      </label>
+      {#if data}
+        <div class="license-summary">
+          <span>{term ? `${filteredCount} of ${data.summary.packages}` : data.summary.packages} packages</span>
+          <span class="license-summary-sep" aria-hidden="true"></span>
+          <span>{data.summary.licenses} licenses</span>
+          <span class="license-summary-sep" aria-hidden="true"></span>
+          <span>Generated {data.generatedAt}</span>
+        </div>
+      {/if}
+    </div>
+  {/snippet}
+
+  {#if loading && !data}
         <div class="space-y-2" aria-label="Loading licenses">
           {#each Array(6) as _}
             <div class="surface p-3 flex items-center gap-3">
@@ -315,9 +269,7 @@
           <p>Kaminari {data.appVersion}. The list is not a substitute for the license texts themselves.</p>
         </div>
       {/if}
-    </div>
-  </div>
-</div>
+</Modal>
 
 <style>
   .license-search {
