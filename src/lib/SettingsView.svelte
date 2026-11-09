@@ -173,7 +173,7 @@
       </div>
     </div>
     <div class="theme-preview" aria-hidden="true">
-      <div class="theme-mini">
+      <div class="theme-mini theme-dark">
         <p class="theme-mini-label">Storm</p>
         <div class="theme-mini-swatches">
           <span class="theme-swatch is-a"></span>
@@ -181,7 +181,7 @@
           <span class="theme-swatch is-c"></span>
         </div>
       </div>
-      <div class="theme-mini">
+      <div class="theme-mini theme-light">
         <p class="theme-mini-label">Daylight</p>
         <div class="theme-mini-swatches">
           <span class="theme-swatch is-c"></span>
@@ -326,9 +326,6 @@
         Anime desktop. Tauri 2, Svelte 5 Runes, QuickJS host, local SQLite library.
       </p>
     </div>
-    <span class="chip text-[10px] px-2.5 py-1" style="font-family: var(--font-mono);">
-      {__APP_VERSION__}
-    </span>
   </div>
 </div>
 

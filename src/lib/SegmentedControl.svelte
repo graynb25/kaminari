@@ -13,18 +13,31 @@
     idPrefix?: string;
   } = $props();
 
+  let tabEls = $state<Array<HTMLButtonElement | null>>([]);
+
+  function focusTab(index: number) {
+    tabEls[index]?.focus();
+  }
+
   function onKeys(event: KeyboardEvent, index: number) {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    let next: number | null = null;
+    if (event.key === "ArrowRight") next = (index + 1) % options.length;
+    else if (event.key === "ArrowLeft") next = (index - 1 + options.length) % options.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = options.length - 1;
+    else return;
     event.preventDefault();
-    const delta = event.key === "ArrowRight" ? 1 : -1;
-    const next = options[(index + delta + options.length) % options.length];
-    if (next) onChange(next.id);
+    const option = options[next];
+    if (!option) return;
+    if (option.id !== value) onChange(option.id);
+    focusTab(next);
   }
 </script>
 
 <div class="segmented" role="tablist" aria-label={ariaLabel}>
   {#each options as option, index (option.id)}
     <button
+      bind:this={tabEls[index]}
       id="{idPrefix}-tab-{option.id}"
       role="tab"
       aria-selected={value === option.id}

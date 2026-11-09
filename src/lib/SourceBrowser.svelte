@@ -704,33 +704,35 @@
         {:else}
           <div class="stagger-grid grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
             {#each results as item (item.id)}
-              <button
-                class="poster-card group block w-full text-left"
-                onclick={() => void openShow(item)}
-                aria-label="Open {item.title}"
-              >
-                <div class="poster-art aspect-[2/3]">
-                  {#if item.cover}
-                    <img src={item.cover} alt="" loading="lazy" decoding="async" class="w-full h-full object-cover" />
-                  {:else}
-                    <div class="w-full h-full grid place-items-center" style="background: radial-gradient(circle at 30% 20%, var(--accent-wash-strong), transparent 60%), var(--void-800);">
-                      <span class="text-3xl font-bold" style="color: var(--paper-450); font-family: var(--font-display);">{item.title.slice(0, 1)}</span>
-                    </div>
-                  {/if}
-                  <span class="poster-scrim" aria-hidden="true"></span>
-                  <span class="poster-badge">Source</span>
-                  {#if item.score}
-                    <span class="poster-score">
-                      <Icon name="star" size={9} />
-                      {(item.score / 10).toFixed(1)}
-                    </span>
-                  {/if}
-                </div>
-                <div class="poster-body">
-                  <p class="poster-title">{item.title}</p>
-                  <p class="poster-meta">{item.year ?? "Source result"}{item.episodes ? ` Â· ${item.episodes} eps` : ""}</p>
-                </div>
-              </button>
+              <div>
+                <button
+                  class="poster-card group block w-full text-left"
+                  onclick={() => void openShow(item)}
+                  aria-label="Open {item.title}"
+                >
+                  <div class="poster-art aspect-[2/3]">
+                    {#if item.cover}
+                      <img src={item.cover} alt="" loading="lazy" decoding="async" class="w-full h-full object-cover" />
+                    {:else}
+                      <div class="w-full h-full grid place-items-center" style="background: radial-gradient(circle at 30% 20%, var(--accent-wash-strong), transparent 60%), var(--void-800);">
+                        <span class="text-3xl font-bold" style="color: var(--paper-450); font-family: var(--font-display);">{item.title.slice(0, 1)}</span>
+                      </div>
+                    {/if}
+                    <span class="poster-scrim" aria-hidden="true"></span>
+                    <span class="poster-badge">Source</span>
+                    {#if item.score}
+                      <span class="poster-score">
+                        <Icon name="star" size={9} />
+                        {(item.score / 10).toFixed(1)}
+                      </span>
+                    {/if}
+                  </div>
+                  <div class="poster-body">
+                    <p class="poster-title">{item.title}</p>
+                    <p class="poster-meta">{item.year ?? "Source result"}{item.episodes ? ` Â· ${item.episodes} eps` : ""}</p>
+                  </div>
+                </button>
+              </div>
             {/each}
           </div>
         {/if}

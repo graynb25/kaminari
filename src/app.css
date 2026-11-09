@@ -205,7 +205,8 @@
 }
 
 /* Daylight: porcelain and ink, with the same violet current running through. */
-[data-theme="light"] {
+[data-theme="light"],
+.theme-light {
   --void-975: #eef0f8;
   --void-950: #f6f7fc;
   --void-925: #f2f3fa;

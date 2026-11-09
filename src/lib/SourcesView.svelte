@@ -522,7 +522,8 @@
       </div>
       <div class="stagger-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {#each installed as entry (entry.id)}
-          <article class="surface surface-hover p-4 flex items-start gap-3" style="opacity: {entry.enabled ? 1 : 0.62};">
+          <div>
+            <article class="surface surface-hover p-4 flex items-start gap-3" style="opacity: {entry.enabled ? 1 : 0.62};">
             <div class="source-tile" aria-hidden="true">{initial(entry.name)}</div>
             <div class="min-w-0 flex-1">
               <h3 class="text-sm font-semibold truncate">{shortName(entry.name)}</h3>
@@ -554,7 +555,8 @@
                 Remove
               </button>
             </div>
-          </article>
+            </article>
+          </div>
         {/each}
       </div>
     </section>
@@ -620,7 +622,8 @@
         {#each shown as entry (entry.pkg)}
           {@const added = installedIds.has(entry.pkg)}
           {@const name = shortName(entry.name)}
-          <article class="surface surface-hover p-4 flex flex-col">
+          <div>
+            <article class="surface surface-hover p-4 flex flex-col">
             <div class="flex items-start gap-3">
               <div class="source-tile" aria-hidden="true">{initial(entry.name)}</div>
               <div class="min-w-0 flex-1">
@@ -657,7 +660,8 @@
                 {entry.sources.length} sources
               </span>
             </div>
-          </article>
+            </article>
+          </div>
         {/each}
       </div>
       {#if filtered.length > shown.length}

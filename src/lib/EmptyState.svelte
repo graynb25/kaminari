@@ -48,10 +48,11 @@
       <div class="flex justify-center mb-4">
         <BrandMark size={48} />
       </div>
+    {:else}
+      <div class="empty-icon">
+        <Icon name={iconName} size={26} strokeWidth={1.5} />
+      </div>
     {/if}
-    <div class="empty-icon">
-      <Icon name={iconName} size={26} strokeWidth={1.5} />
-    </div>
     <h2 class="text-xl font-semibold" style="font-family: var(--font-display);">{title}</h2>
     <p class="text-sm mt-2 leading-relaxed" style="color: var(--paper-300);">{body}</p>
     {#if (actionLabel && onAction) || (secondaryLabel && onSecondary)}
