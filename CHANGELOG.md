@@ -10,6 +10,7 @@ Every visible change gets a line here. Keep lines short and specific.
 - Build: `pnpm check:libmpv` verifies the pinned DLL hashes before a Tauri bundle
 - Licenses: Native libraries group now bundled, with versions, hashes, source URLs, texts and the source offer
 - Docs: lawyer review draft, P1 packaging checklist and README build notes
+- Dev: 500-item grid perf harness at `?perfHarness=1`, gate passes without virtualization
 - Version: bump to 0.19.0
 
 ## 0.18.1 - 2026-11-09

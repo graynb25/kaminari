@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-09 500-item grid gate
+
+Context. The P2 plan asked for a 500-item grid check before deciding whether the library grid needs virtualization.
+
+What we shipped. A dev route at `?perfHarness=1` that mounts 500 real `PosterCard` components in the library grid with cached data-URL covers, no network images. It reports its mount time and exposes a scroll container for the measurement script.
+
+What we measured. The harness mounted 500 cards in 68.5 to 76.4 ms. Scrolling the full grid height over 5 seconds at 1280, 1440 and 2560 held 169.2, 179.8 and 177.6 fps on an AMD Radeon RX 6600, with no frame over 20 ms at 1280 and 1440. At 2560 the p99 was 11.0 ms, the max was 22.2 ms, and the longest over-20 ms streak was one frame. A software-rendering pass on Microsoft Basic Render Driver at 1280 held 167.2 fps, p95 11.1 ms, max 11.2 ms and no frame over 20 ms. No run had a three-frame streak.
+
+What we did not do. No integrated GPU laptop run. Software rendering is a conservative proxy, not the same hardware class. Virtualization is deferred because the gate passed without it.
+
 ## 2026-11-09 P1 packaging with bundled libmpv
 
 Context. The maintainer allowed local bundling and a draft counsel packet. The installer now ships the two LGPL DLLs from the gitignored `src-tauri/lib` payload.
