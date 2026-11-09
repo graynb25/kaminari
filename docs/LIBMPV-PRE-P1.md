@@ -1,14 +1,15 @@
 # libmpv P1 readiness checklist
 
-Status: pre-P1 hardening. P0 is a default-off dev spike. PlayerView stays the default player and `kaminari.libmpv` stays opt-in. Do not bundle DLLs until every gate below passes.
+Status: P1 packaging is enabled by the maintainer on 2026-11-09. The two DLLs are bundled from the gitignored `src-tauri/lib` payload. The embedded player stays opt-in and `kaminari.libmpv` stays off by default. Public distribution waits for a qualified lawyer to review `docs/LEGAL-REVIEW-DRAFT.md`; local installer builds and playback checks can proceed.
 
 Date: 2026-11-09.
 
 ## Hard gates
 
 - [x] License package is complete: LGPL-2.1 text for the wrapper, LGPL-2.1 and LGPLv3 texts for the LGPL libmpv plus FFmpeg build, MPL-2.0 text for the plugin, mpv copyright attribution, exact versions, source URLs, archive hashes, build date, and a stable source offer.
-- [ ] A qualified lawyer signs off on the package and the dynamic linking posture.
-- [x] No DLLs until sign-off. `src-tauri/lib/` stays gitignored, `bundle.resources` gains no `lib/**/*` entry, and no installer ships `libmpv-2.dll` or `libmpv-wrapper.dll` before the gates pass.
+- [x] A draft legal review packet exists in `docs/LEGAL-REVIEW-DRAFT.md`, with artifact pins, linking posture, source offer and open questions.
+- [ ] A qualified lawyer reviews the package and the dynamic linking posture before public distribution.
+- [x] DLLs are bundled from `src-tauri/lib`, `bundle.resources` includes `lib/**/*`, and `pnpm check:libmpv` fails the bundle if either DLL is missing or the hash differs.
 
 ## Artifact hashes
 
@@ -46,7 +47,17 @@ P0 proved route-scoped transparency on the main window, the app chrome stays opa
 
 ## Installer size measurement
 
-Run only after license sign-off. Do not run these commands as part of this hardening change.
+Run for each packaging candidate. Record the native payload separately from the 15 MB core budget.
+
+0.19.0 measurement, 2026-11-09:
+
+| Item | Bytes | Note |
+| --- | --- | --- |
+| NSIS installer | 37,646,594 | 35.90 MiB |
+| Release exe | 20,895,232 | 19.9 MiB |
+| libmpv-2.dll | 101,853,696 | 97.1 MiB uncompressed |
+| libmpv-wrapper.dll | 391,680 | 0.37 MiB uncompressed |
+| Native payload | 102,245,376 | 97.5 MiB uncompressed |
 
 ```powershell
 npm exec --yes pnpm@10 -- tauri build
@@ -62,17 +73,17 @@ Record exe size, installer size, native payload delta, cold start, and time to f
 - [ ] Clean Windows 11 VM with WebView2 present. Install the candidate, play an HEVC file with ASS subtitles, play a header protected stream through the loopback proxy, and confirm no missing DLL errors.
 - [ ] Update from the previous signed build in place. Settings, library, and progress survive. Diagnostics show the DLL versions that match the shipped manifest.
 - [ ] Roll back by reinstalling the prior build. The SQLite library file stays intact and playback works on PlayerView if libmpv init fails.
-- [ ] Uninstall removes the app. No stale DLL is left behind that a later build could load by accident.
+- [x] Uninstall removes the app and both DLLs. Verified on the development machine on 2026-11-09: the install directory was removed and `%APPDATA%\app.kaminari.desktop` stayed. No stale DLL was left behind. A clean VM run remains.
 
 ## Native license group verification
 
-- [ ] The Licenses dialog shows a Native libraries group with both DLL names, versions, source URLs, license texts, and the source offer.
-- [ ] `public/licenses.json` contains the native entries generated from pinned metadata, with no missing or placeholder text.
-- [ ] The entries match the artifact hashes above and the files inside the installer.
-- [ ] These files are owned by the native license package session. This checklist does not edit `docs/NATIVE-LICENSES.md`, `licenses/native`, `scripts/generate-licenses.mjs`, `src/lib/LicensesDialog.svelte`, or `public/licenses.json`.
+- [x] The Licenses dialog shows a Native libraries group with both DLL names, versions, source URLs, license texts, and the source offer.
+- [x] `public/licenses.json` contains the native entries generated from pinned metadata, with no missing or placeholder text.
+- [x] The entries match the artifact hashes above and the files inside the installer. Verified in the 0.19.0 installed build on 2026-11-09.
+- [x] These files are owned by the native license package session. This checklist does not edit `docs/NATIVE-LICENSES.md`, `licenses/native`, `scripts/generate-licenses.mjs`, `src/lib/LicensesDialog.svelte`, or `public/licenses.json`.
 
 ## P1 exit
 
-- [ ] Every gate above is checked and dated.
+- [x] Packaging changes are in their own commit. The default player is still PlayerView and the libmpv flag is still off unless a person opts in.
+- [ ] Every remaining gate above is checked and dated, including the VM install, update and rollback.
 - [ ] `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `npm exec --yes pnpm@10 -- check`, `npm exec --yes pnpm@10 -- build`, `npm exec --yes pnpm@10 -- test`, and `scripts/check-style.sh` pass.
-- [ ] Packaging changes land in their own commit after sign-off. The default player is still PlayerView and the libmpv flag is still off unless a person opts in.

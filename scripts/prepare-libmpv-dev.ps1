@@ -1,6 +1,7 @@
-# Copy the dev-only libmpv DLLs into the debug target, where the plugin
-# searches for them. Re-run after cargo clean or a fresh target directory.
-# The DLLs stay gitignored and are never bundled.
+# Copy the libmpv DLLs into the debug target, where the plugin searches for
+# them. Re-run after cargo clean or a fresh target directory. The DLLs stay
+# gitignored and are bundled from src-tauri/lib by bundle.resources when a
+# Tauri bundle runs. pnpm check:libmpv verifies the pinned hashes first.
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot

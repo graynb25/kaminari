@@ -4,6 +4,14 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.19.0 - 2026-11-09
+
+- Player: bundle `libmpv-2.dll` and `libmpv-wrapper.dll` in the installer, opt-in behind `kaminari.libmpv`
+- Build: `pnpm check:libmpv` verifies the pinned DLL hashes before a Tauri bundle
+- Licenses: Native libraries group now bundled, with versions, hashes, source URLs, texts and the source offer
+- Docs: lawyer review draft, P1 packaging checklist and README build notes
+- Version: bump to 0.19.0
+
 ## 0.18.1 - 2026-11-09
 
 - Keyboard: Escape in the player closes only the player, handled keys stay scoped, and focus returns to the episode and source card

@@ -10,7 +10,7 @@ A desktop anime app for Windows first, with care in every pixel. Fast startup. K
 
 | Library | Search | Player | Extensions |
 |---|---|---|---|
-| Watching and planning with progress and history | Ctrl K palette, live plus cached offline | In-app MP4 and HLS, external mpv fallback, J L K keys, diagnostics with D | Sandboxed QuickJS, local .kext, explicit host allowlists |
+| Watching and planning with progress and history | Ctrl K palette, live plus cached offline | In-app MP4 and HLS, optional embedded libmpv, external mpv fallback, J L K keys, diagnostics with D | Sandboxed QuickJS, local .kext, explicit host allowlists |
 
 Screenshots are captured from the current Windows build in the Storm theme and live in `assets/screenshots/`. Every PR that changes UI updates one screenshot.
 
@@ -40,7 +40,7 @@ If you already know React, the Rust side does not care. The contract stays the s
 
 Working today: cinematic browse with five AniList rails, Top 10 Today, Ctrl K palette, detail pages, a local AniList library, watched episode tracking, Continue Watching, an Aniyomi registry reader that stores source metadata, a native JavaScript extension host with a source browser, details, episodes and stream resolve, an in-app player for MP4 and HLS, a loopback stream proxy for headers, cookies, HLS media and master playlists, a source library with resumable playback progress, source Continue Watching and merged history, System, Dark and Light themes, a Windows tray menu with show and quit, and an in-app license list generated from the build.
 
-Next: embedded libmpv packaging for HEVC, ASS and HDR, blocked on lawyer sign-off for the LGPL artifacts. The dev spike passes z-order, HEVC and fallback on Windows. A 2026-11-08 review confirmed Suwayomi is manga-only and cannot run Aniyomi/yuzono anime extensions, so native `.kext` stays the bundled source model. The app does not download APKs or run package code from the Aniyomi registry.
+Embedded libmpv is bundled behind the default-off `kaminari.libmpv` flag. Set `localStorage["kaminari.libmpv"]="true"` or add `?libmpv=1` to the app URL to opt in. The default player stays the WebView player with external mpv fallback. Public distribution waits for counsel review of `docs/LEGAL-REVIEW-DRAFT.md`; the dev spike passes z-order, HEVC and fallback on Windows. A 2026-11-08 review confirmed Suwayomi is manga-only and cannot run Aniyomi/yuzono anime extensions, so native `.kext` stays the bundled source model. The app does not download APKs or run package code from the Aniyomi registry.
 
 Windows is the first target. macOS and Linux come later.
 
@@ -51,7 +51,7 @@ pnpm install
 pnpm tauri dev
 ```
 
-Builds are produced locally with `pnpm tauri build`; GitHub Releases will follow the first public build. No telemetry, no ads, no account needed to browse.
+Builds are produced locally with `pnpm tauri build`; the build verifies the pinned libmpv DLLs with `pnpm check:libmpv` before packaging. GitHub Releases will follow the first public build. No telemetry, no ads, no account needed to browse.
 
 ## Versioning
 
@@ -59,7 +59,7 @@ The root `VERSION` file is the only version source. `pnpm build` and `pnpm tauri
 
 ## Licenses
 
-Settings, and the footer, open a generated list of every Rust crate, npm package, font and built-in sample in this build. The rows carry versions, license identifiers, sources and full license texts where the installed package includes one. Native libmpv artifacts are listed separately and marked not bundled until lawyer sign-off. Run `pnpm licenses:build` after dependency changes; it regenerates `public/licenses.json` from `Cargo.lock` and the installed node_modules.
+Settings, and the footer, open a generated list of every Rust crate, npm package, font and built-in sample in this build. The rows carry versions, license identifiers, sources and full license texts where the installed package includes one. Native libmpv artifacts are bundled and listed under Native libraries with their hashes, source URLs and the source offer. Run `pnpm licenses:build` after dependency changes; it regenerates `public/licenses.json` from `Cargo.lock` and the installed node_modules.
 
 ## Principles
 
@@ -74,6 +74,7 @@ Settings, and the footer, open a generated list of every Rust crate, npm package
 - `docs/DESIGN-SPEC.md`: tokens, components, motion
 - `docs/EXTENSION-API.md`: public contract for extension authors, plus Aniyomi registry mapping
 - `docs/PLAN-JS-EXTENSIONS.md`: native host decisions, API, milestones and tests
+- `docs/LEGAL-REVIEW-DRAFT.md`: draft counsel packet for the bundled libmpv artifacts
 - `docs/ENGINEERING-NOTES.md`: measured numbers and decisions that reversed
 - `docs/ROADMAP.md`: what comes next and what done means
 - `docs/TERMS.md`: terms of service for distributed builds

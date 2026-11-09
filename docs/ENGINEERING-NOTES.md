@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-09 P1 packaging with bundled libmpv
+
+Context. The maintainer allowed local bundling and a draft counsel packet. The installer now ships the two LGPL DLLs from the gitignored `src-tauri/lib` payload.
+
+What we shipped. `bundle.resources` is `["lib/**/*"]`, `pnpm check:libmpv` verifies both pinned hashes, `beforeBuildCommand` runs the gate, the Native libraries group is marked bundled with hashes and the source offer, and `docs/LEGAL-REVIEW-DRAFT.md` holds the counsel packet.
+
+What we measured. The 0.19.0 NSIS installer is 37,646,594 bytes (35.90 MiB). The release exe is 20,895,232 bytes. The native payload is 102,245,376 bytes uncompressed (101,853,696 plus 391,680). The installer installed per-user to `%LOCALAPPDATA%\Kaminari`; both DLL hashes in `lib` matched the pins. `mpv_embed_status` reported available true, dllDir the install `lib`, devDir null and lastError null. With `kaminari.libmpv` on, Popeye episode 1 played through the installed DLLs: 0:14 of 7:36, activeLabel main, no fallback toast. After close, activeLabel was null. Silent uninstall removed the install directory and both DLLs; the app data directory and SQLite file stayed.
+
+What we did not do. No clean Windows 11 VM, update in place, rollback, code signing or SmartScreen pass. Public distribution waits for counsel review of the draft.
+
 ## 2026-11-09 Keyboard path and focus
 
 Context. The no-mouse path from Library to the source browser, player and back worked, but Escape in the player closed both overlays and focus fell to the body. The source library card also had no visible focus ring because the card clips its own overflow.

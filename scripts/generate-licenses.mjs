@@ -272,12 +272,12 @@ const javascript = scanNodeModules();
 function scanNative() {
   const manifestPath = resolve(root, "licenses/native/native.json");
   const raw = read(manifestPath);
-  if (!raw) return { label: "Native libraries (not bundled in this build)", note: "", packages: [] };
+  if (!raw) return { label: "Native libraries", note: "", packages: [] };
   try {
     const manifest = JSON.parse(raw);
     const packages = Array.isArray(manifest.packages) ? manifest.packages : [];
     return {
-      label: manifest.label || "Native libraries (not bundled in this build)",
+      label: manifest.label || "Native libraries",
       note: manifest.note || "",
       packages: packages
         .filter((pkg) => pkg && pkg.name && pkg.license)
@@ -291,7 +291,7 @@ function scanNative() {
         })),
     };
   } catch {
-    return { label: "Native libraries (not bundled in this build)", note: "", packages: [] };
+    return { label: "Native libraries", note: "", packages: [] };
   }
 }
 
@@ -373,7 +373,7 @@ const payload = {
     "Regenerate this file with `pnpm licenses:build` after dependency changes.",
     "AniList metadata is a service, not a bundled package. It is used under AniList's API terms.",
     "The built-in Public Domain Animation sample is project code, not a third-party source.",
-    "Native libraries are development artifacts only. No native DLLs are bundled in this build.",
+    "Native libraries are bundled as separate DLLs. Their license texts and source offer are listed in this dialog and in licenses/native/README.md.",
   ],
 };
 

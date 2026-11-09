@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-11-09",
-  "appVersion": "0.18.1",
+  "appVersion": "0.19.0",
   "platform": "x86_64-pc-windows-msvc",
   "summary": {
     "packages": 440,
@@ -17,7 +17,7 @@
           "key": "bundled:Kaminari::MIT",
           "name": "Kaminari",
           "versions": [
-            "0.18.1"
+            "0.19.0"
           ],
           "license": "MIT",
           "source": "https://github.com/graynb25/kaminari"
@@ -62,43 +62,44 @@
     },
     {
       "id": "native",
-      "label": "Native libraries (not bundled in this build)",
-      "note": "No native DLLs are bundled in this build. The entries below are development artifacts only, kept out of the installer until P1 packaging and lawyer sign-off.",
+      "label": "Native libraries",
+      "note": "Bundled with this installer as separate DLLs. Kaminari does not modify these libraries. Source offer: Kaminari provides the complete corresponding source for these LGPL components on request, valid for at least three years. Source URLs are on each row; the full offer and license texts are in licenses/native/README.md in the source repository.",
       "packages": [
         {
           "key": "native:libmpv::LGPL-2.1",
           "name": "libmpv",
           "versions": [
             "v0.42.0-11-g8bc468896e",
-            "not bundled"
+            "bundled"
           ],
           "license": "LGPL-2.1",
           "source": "https://github.com/mpv-player/mpv/commit/8bc468896ec711cc5a3ac33dae9cbc0e266bcfa4",
-          "bundled": false,
-          "note": "Development artifact in src-tauri/lib, not in this installer. LGPL-mode dev build, mpv v0.42.0-11-g8bc468896e. Licensing notice: licenses/native/mpv-Copyright-8bc468896e.txt."
+          "bundled": true,
+          "note": "LGPL-mode build, mpv v0.42.0-11-g8bc468896e. Loaded dynamically from the lib folder. DLL SHA-256 2A287ECB1FE2BC5B6AB636CFEC0CACBB12FFEC05E4EB4E5C2CADE1752E2D15E6. Licensing notice: licenses/native/mpv-Copyright-8bc468896e.txt."
         },
         {
           "key": "native:FFmpeg (statically linked into the LGPL libmpv build)::LGPL-3.0",
           "name": "FFmpeg (statically linked into the LGPL libmpv build)",
           "versions": [
             "cc583787b",
-            "not bundled"
+            "bundled"
           ],
           "license": "LGPL-3.0",
           "source": "https://github.com/FFmpeg/FFmpeg/commit/cc583787bbecd4914fee7c2bf7f09463113822fe",
-          "bundled": false,
-          "note": "Development artifact, not in this installer. FFmpeg commit cc583787b (full cc583787bbecd4914fee7c2bf7f09463113822fe) is verified from the Build MPV (64, true) log on 2026-11-08. The same job produced the LGPL libmpv archive. See licenses/native/README.md."
+          "bundled": true,
+          "note": "FFmpeg commit cc583787b (full cc583787bbecd4914fee7c2bf7f09463113822fe) is verified from the Build MPV (64, true) log on 2026-11-08. The same job produced the LGPL libmpv archive. See licenses/native/README.md."
         },
         {
           "key": "native:libmpv-wrapper::LGPL-2.1",
           "name": "libmpv-wrapper",
           "versions": [
-            "not bundled"
+            "v0.1.1",
+            "bundled"
           ],
           "license": "LGPL-2.1",
           "source": "https://github.com/nini22P/libmpv-wrapper",
-          "bundled": false,
-          "note": "Development artifact in src-tauri/lib, not in this installer. C bridge between tauri-plugin-libmpv and libmpv. License text is the pinned wrapper LICENSE, copied byte for byte."
+          "bundled": true,
+          "note": "C bridge between tauri-plugin-libmpv and libmpv. Loaded dynamically from the lib folder. DLL SHA-256 0D5ADEAD5F175C55E0790A80924EC0A2636F72E3675C79A6D9D9568B2ED2384A. License text is the pinned wrapper LICENSE, copied byte for byte."
         }
       ]
     },
@@ -4162,6 +4163,6 @@
     "Regenerate this file with `pnpm licenses:build` after dependency changes.",
     "AniList metadata is a service, not a bundled package. It is used under AniList's API terms.",
     "The built-in Public Domain Animation sample is project code, not a third-party source.",
-    "Native libraries are development artifacts only. No native DLLs are bundled in this build."
+    "Native libraries are bundled as separate DLLs. Their license texts and source offer are listed in this dialog and in licenses/native/README.md."
   ]
 }

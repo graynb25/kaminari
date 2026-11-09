@@ -1,6 +1,6 @@
 # Plan: embedded libmpv playback
 
-Status: P0 spike complete on Windows. The embedded path is behind the default-off `kaminari.libmpv` flag, PlayerView is still the default, and no DLLs are committed or bundled. P1 is blocked on the license sign-off. This doc is the build spec. Read with `docs/PLAN-STREAM-PROXY.md`, `docs/DESIGN-SPEC.md` section VideoPlayer, and `docs/ENGINEERING-NOTES.md` player entries.
+Status: P0 spike complete on Windows. The DLLs are bundled from the gitignored `src-tauri/lib` payload, the embedded path is behind the default-off `kaminari.libmpv` flag, and PlayerView is still the default. A draft legal review packet exists in `docs/LEGAL-REVIEW-DRAFT.md`; public distribution waits for counsel review. This doc is the build spec. Read with `docs/PLAN-STREAM-PROXY.md`, `docs/DESIGN-SPEC.md` section VideoPlayer, and `docs/ENGINEERING-NOTES.md` player entries.
 
 Goal: play H.264, HEVC, AV1, HLS, ASS, and HDR inside Kaminari with custom controls, keep the loopback proxy for protected origins, keep external mpv as fallback.
 
@@ -42,7 +42,7 @@ Event loop: mpv runs its own thread inside `libmpv-2.dll`. The wrapper posts JSO
 
 Maturity: version 0.3.2 in the local registry. CHANGELOG shows 0.0.1 first release, 0.2.0 moved to `tauri-plugin-libmpv` and LGPL-2.1, 0.3.0 replaced custom bindings with the wrapper library and relicensed to MPL-2.0, 0.3.1 added setup script. GitHub shows 23 stars and 4 forks on 2026-11-08. Small single maintainer. Risk is abandonment, not complexity.
 
-Packaging: two DLLs on Windows, `libmpv-wrapper.dll` plus `libmpv-2.dll`, copied into `src-tauri/lib/` and declared under `bundle.resources` as `lib/**/*`. The plugin searches exe dir then exe `lib` dir at runtime (`get_wrapper` in `desktop.rs`). The README setup script downloads the wrapper from `nini22P/libmpv-wrapper` releases and libmpv from `zhongfly/mpv-winbuild` releases. Manual setup is documented for all three OSes.
+Packaging: two DLLs on Windows, `libmpv-wrapper.dll` plus `libmpv-2.dll`, live in `src-tauri/lib/` and are bundled through `bundle.resources` as `lib/**/*`. The DLLs stay gitignored, and `pnpm check:libmpv` verifies their pinned hashes before a Tauri bundle. The plugin searches exe dir then exe `lib` dir at runtime (`get_wrapper` in `desktop.rs`). The README setup script downloads the wrapper from `nini22P/libmpv-wrapper` releases and libmpv from `zhongfly/mpv-winbuild` releases. Manual setup is documented for all three OSes.
 
 Cross platform: README platform table on 2026-11-08 says Windows fully tested, Linux experimental with window embedding not working, macOS not tested. `utils.rs` returns an explicit error on Wayland because `--wid` embedding is unsupported there. X11 works in theory. macOS passes NSView but has no test report.
 
@@ -77,15 +77,15 @@ What this means for Kaminari:
 * An LGPL build is possible. Use only the `mpv-dev-lgpl` artifact for `libmpv-2.dll`. Never ship the default GPL `mpv-dev` artifact. A GPL libmpv linked into the app distribution would require the whole combined work to be offered under GPL, which conflicts with the MIT distribution posture and the current docs.
 * Dynamic linking matters. Ship `libmpv-2.dll` and `libmpv-wrapper.dll` as separate side by side DLLs. Do not static link libmpv into `kaminari.exe`. Dynamic DLLs keep the LGPL relink right practical: a user can drop in a replacement DLL.
 * The distributed app must disclose and offer source:
-  1. Ship the LGPLv2.1 text, the LGPLv3 text for the bundled FFmpeg, the MPL-2.0 text for the plugin, and the mpv `Copyright` attribution. Add a Native libraries group to the Licenses dialog (`public/licenses.json` plus `scripts/generate-licenses.mjs`). Current generation covers Bundled, Rust, and JavaScript only. Native DLLs are missing today.
+  1. Ship the LGPLv2.1 text, the LGPLv3 text for the bundled FFmpeg, the MPL-2.0 text for the plugin, and the mpv `Copyright` attribution. The Native libraries group in the Licenses dialog (`public/licenses.json` plus `scripts/generate-licenses.mjs`) lists both DLLs, their versions, hashes, source URLs and texts.
   2. State version, origin URL, archive hash, and build date for the exact `libmpv-2.dll` and `libmpv-wrapper.dll` in use. Pin the 7z and zip hashes in the repo. Record them in `docs/ENGINEERING-NOTES.md` at integration time.
   3. Provide or link the corresponding source plus build scripts for that exact libmpv build (mpv commit, winbuild scripts, FFmpeg config). A link to the release plus commit hash satisfies LGPL only if it stays valid for at least three years. Prefer vendoring a source offer page in the repo docs with permanent URLs.
   4. Allow reverse engineering and relinking for debugging the LGPL parts. Do not block DLL replacement with signature checks that refuse to start.
   5. Keep proprietary Kaminari code in separate files. No mpv headers pasted into MIT files without preserving their license headers.
-* Open verification before ship: the FFmpeg commit `cc583787b` is now verified from the Build MPV (64, true) log, the zhongfly patch removes `--enable-gpl` and the GPL-only packages, and the enabled features contain no GPL-only VO. The native license texts and source offer are in `licenses/native/`. Remaining: lawyer sign-off and the P1 installer checks. If any check fails, stop. Do not ship a bundled binary on hope.
+* Open verification before ship: the FFmpeg commit `cc583787b` is verified from the Build MPV (64, true) log, the zhongfly patch removes `--enable-gpl` and the GPL-only packages, and the enabled features contain no GPL-only VO. The native license texts and source offer are in `licenses/native/`, and the draft legal review is in `docs/LEGAL-REVIEW-DRAFT.md`. Remaining: counsel review for public distribution and the VM installer checks. If any check fails, stop. Do not ship a bundled binary on hope.
 * Signing and updates do not change the license duty. A signed NSIS installer that bundles LGPL DLLs still owes source offer and license texts. The updater `latest.json` notes should name the native library versions.
 
-Bottom line: MPL-2.0 plugin verified locally, LGPL-2.1 wrapper verified from the pinned release zip, the chosen `libmpv-2.dll` is the `mpv-dev-lgpl` artifact, and the FFmpeg commit is verified from the build log. MIT plus dynamically linked LGPL libmpv is shippable with attribution, license texts, and a source offer. The remaining gate is lawyer sign-off and the P1 installer checks. GPL libmpv is not shippable under the current posture.
+Bottom line: MPL-2.0 plugin verified locally, LGPL-2.1 wrapper verified from the pinned release zip, the chosen `libmpv-2.dll` is the `mpv-dev-lgpl` artifact, and the FFmpeg commit is verified from the build log. MIT plus dynamically linked LGPL libmpv is shippable with attribution, license texts, and a source offer. The remaining gate is counsel review for public distribution and the VM installer checks. GPL libmpv is not shippable under the current posture.
 
 ## 4. Architecture
 
@@ -140,8 +140,8 @@ Diagnostics panel adds: `Backend: libmpv`, `DLLs: ok or missing`, `VO: gpu-next`
 
 ## 5. Windows packaging
 
-* Files: `src-tauri/lib/libmpv-wrapper.dll` plus `src-tauri/lib/libmpv-2.dll` (x86_64 first, aarch64 later). Dev run needs the same two files next to the debug exe or in `src-tauri/lib`. CI must fail if either is missing at bundle time.
-* `tauri.conf.json`: add `bundle.resources: ["lib/**/*"]`, set `app.windows[].transparent: true` for the player surface (see architecture note), keep `targets: nsis`. Do not bundle `mpv.exe`. The fallback still uses system mpv, it is not bundled.
+* Files: `src-tauri/lib/libmpv-wrapper.dll` plus `src-tauri/lib/libmpv-2.dll` (x86_64 first, aarch64 later). Dev run needs the same two files next to the debug exe or in `src-tauri/lib`. `pnpm check:libmpv` fails the bundle if either is missing or does not match the pinned hash.
+* `tauri.conf.json`: `bundle.resources` is `["lib/**/*"]`, `app.windows[].transparent` is `true` for the player surface (see architecture note), and `targets` is `nsis`. Do not bundle `mpv.exe`. The fallback still uses system mpv, it is not bundled.
 * Installer size: budget in `docs/DESIGN-SPEC.md` says installer under 15 MB before libmpv resources, CI fails past it. libmpv plus wrapper plus deps add roughly 25 to 45 MB compressed based on zhongfly artifact sizes (measure at integration, do not copy this as fact). Record exe size, installer size, and cold start in `docs/ENGINEERING-NOTES.md`. Expect SmartScreen warnings on unsigned builds. Document them per `docs/ARCHITECTURE.md`. Sign the installer with the same cert as the exe when signing exists.
 * Updates: updater ships full installer, not DLL patches. `latest.json` notes must list libmpv and wrapper versions. Rollback is reinstall prior exe, library SQLite file stays intact. If a new DLL breaks playback, the app must detect init failure and offer WebView plus external mpv without requiring an update.
 * Fallback chain at runtime: check DLL presence, call `init`, on failure show reason in diagnostics and mount `PlayerView` (WebView plus proxy) with a toast, keep Open in mpv button. Never leave a black route with no action.
@@ -184,7 +184,7 @@ Scale: S means systemic, affects all installs or the machine. H means serious bu
 
 | # | Risk | S | Likelihood | Impact | Mitigation and fallback |
 |---|---|---|---|---|---|
-| 1 | License breach by bundling GPL libmpv or missing source offer | S | M | Forced source release of combined work, store or host takedown, rework | Ship only `mpv-dev-lgpl` artifact, pin hashes, add Native group to Licenses dialog, publish source offer, lawyer review before ship. Gate P1 packaging on this. |
+| 1 | License breach by bundling GPL libmpv or missing source offer | S | M | Forced source release of combined work, store or host takedown, rework | Ship only `mpv-dev-lgpl` artifact, pin hashes, list the Native group in the Licenses dialog, publish the source offer, and get counsel review before public distribution. Local P1 packaging is enabled. |
 | 2 | Plugin abandonment or break on Tauri and WebView2 updates | S | M | Embedded path rots, every release needs a fork | Pin plugin plus wrapper versions, wrap all calls behind `mpv_embed.rs` intents, keep WebView and external mpv green in CI, budget a direct FFI fork path. |
 | 3 | Transparent window plus `wid` compositing fails on some GPUs | H | M | Black video, controls over void, readability loss | Dedicated watch surface, GPU allowlist logging, auto fallback to WebView when first frame times out, diagnostics with `vo` and `hwdec-current`. |
 | 4 | Linux Wayland and macOS embedding gaps | H | H on those OSes | No video on Linux Wayland, untested macOS | Windows first, Linux and macOS stay on WebView plus external mpv until proven. Explicit error, not silent black. |
@@ -233,11 +233,15 @@ Dev entry: set `localStorage["kaminari.libmpv"]="true"` or add `?libmpv=1` to th
 * HEVC: a local libx265 1920x1080 30 fps 10 bit sample played with `video-codec=hevc` and `hwdec-current=d3d11va`. Over 9.5 s: CPU 0.5 percent of the machine (9.1 percent of one core), GPU video decode 3.5 percent average and 10.6 percent peak, GPU 3D 1.4 percent average. HEVC was tested; no external HEVC file entered the repo.
 * Fallback: with both DLLs renamed, the SourceBrowser mounted PlayerView and the harness showed the toast `libmpv is unavailable: DLLs are missing. Using the WebView player.` The WebView video played, with no black route.
 * Lifecycle: two open and close cycles left `activeLabel` null and the mpv child window count at 0. A real SourceBrowser close did the same. A hard reload destroys the old handle before init. The wrapper also reports an `end-file` reason `quit` during teardown, so the new view ignores it.
-* Native payload: `libmpv-2.dll` is 101,853,696 bytes and `libmpv-wrapper.dll` is 391,680 bytes, uncompressed. Installer delta is not measured because P0 does not bundle them.
-* Blockers for P1: the wrapper rejects JSON arrays, so `http-header-fields` goes as one comma separated string and header values with commas are unsafe. Header protected MP4 and HLS must use the proxy until the wrapper supports lists. The mpv `start` property is rejected at runtime, so resume seeks after `file-loaded`. The native license texts and source offer now live in `licenses/native/`, the FFmpeg commit is verified from the build log, and the lawyer sign-off remains.
-* P1 needs: a dedicated watch window or proven route scoped transparency on the main window, installer size measurement, the header path through the proxy, lawyer sign-off, and clean install plus update tests.
+* Native payload: `libmpv-2.dll` is 101,853,696 bytes and `libmpv-wrapper.dll` is 391,680 bytes, uncompressed. The bundled installer measurement is recorded in `docs/ENGINEERING-NOTES.md`.
+* Blockers for P1: the wrapper rejects JSON arrays, so `http-header-fields` goes as one comma separated string and header values with commas are unsafe. Header protected MP4 and HLS must use the proxy until the wrapper supports lists. The mpv `start` property is rejected at runtime, so resume seeks after `file-loaded`. The native license texts and source offer are in `licenses/native/`, the FFmpeg commit is verified from the build log, and counsel review is the remaining gate for public distribution.
+* P1 needs: a dedicated watch window or proven route scoped transparency on the main window, installer size measurement, the header path through the proxy, counsel review, and clean install plus update tests.
 
-P1: Windows packaging and hardening (effort 1 to 2 weeks). Blocked on section 3 license sign off. Pre-P1 evidence lives in `licenses/native/README.md` (texts, hashes, source offer) and `docs/LIBMPV-PRE-P1.md` (header rule, transparency decision, installer checklist). Acceptance: pinned `mpv-dev-lgpl` plus wrapper hashes, `bundle.resources` set, clean install on a Windows 11 VM with WebView2 present plays HEVC plus ASS, signed installer notes SmartScreen behavior, Licenses dialog lists native DLLs with versions and texts, `mpv_embed_status` gates playback, all proxy tests still green. Records: exe size, installer size, cold start, time to first frame.
+P1: Windows packaging and hardening (effort 1 to 2 weeks). Local packaging is enabled. Public distribution waits on section 3 counsel review. Pre-P1 evidence lives in `licenses/native/README.md` (texts, hashes, source offer), `docs/LEGAL-REVIEW-DRAFT.md` (review packet), and `docs/LIBMPV-PRE-P1.md` (header rule, transparency decision, installer checklist). Acceptance: pinned `mpv-dev-lgpl` plus wrapper hashes, `bundle.resources` set, clean install on a Windows 11 VM with WebView2 present plays HEVC plus ASS, signed installer notes SmartScreen behavior, Licenses dialog lists native DLLs with versions and texts, `mpv_embed_status` gates playback, all proxy tests still green. Records: exe size, installer size, cold start, time to first frame.
+
+### P1 packaging result, 2026-11-09
+
+The 0.19.0 NSIS installer is 37,646,594 bytes (35.90 MiB). The release exe is 20,895,232 bytes. The native payload is 102,245,376 bytes uncompressed. It installed per-user to `%LOCALAPPDATA%\Kaminari`, the two DLLs matched the pinned hashes in `lib`, `mpv_embed_status` reported available true with the install lib path, and Popeye episode 1 played through the installed libmpv at 0:14 of 7:36 with activeLabel main and no fallback. Silent uninstall removed the install directory and DLLs and left the SQLite data. The VM clean install, update, rollback, signing and SmartScreen checks remain.
 
 P2: feature parity with `PlayerView` (effort 2 to 3 weeks). Acceptance: HLS master plus audio groups, track pickers, speed, volume, resume, progress, Up Next, diagnostics redaction, error and ended panels match spec, keyboard map complete, focus trap and focus return work, reduced motion stops zoom and shimmer over video. Tests: intent allowlist unit tests, URL scheme tests, event mapping tests, Vitest for control logic, no token in copied diagnostics.
 
@@ -250,7 +254,7 @@ Each phase updates this plan with measured numbers before moving on. No phase wi
 Approved on 2026-11-08. These replace the open questions.
 
 1. Platform order: Windows first. Linux and macOS stay on WebView plus external mpv until embedding proves out there.
-2. Native artifact: use the `zhongfly/mpv-winbuild` `mpv-dev-lgpl` x86_64 build, pinned by archive hash. A lawyer must sign off before any P1 bundle. Never ship the GPL `mpv-dev` artifact.
+2. Native artifact: use the `zhongfly/mpv-winbuild` `mpv-dev-lgpl` x86_64 build, pinned by archive hash. A qualified lawyer reviews the package before public distribution. Local packaging and playback checks are enabled. Never ship the GPL `mpv-dev` artifact.
 3. Installer budget: keep the 15 MB core budget and add a separate native payload budget for the two DLLs.
 4. Transparency scope: only the watch route goes transparent. The rest of the window stays opaque.
 5. HDR default: tone-mapped SDR by default.
@@ -258,19 +262,19 @@ Approved on 2026-11-08. These replace the open questions.
 7. Native updates: `libmpv-2.dll` and `libmpv-wrapper.dll` update with the app, not on a separate channel.
 8. Fallback telemetry: local counters only for embedded success, WebView fallback, and external opens. No upload.
 
-### P0 dev artifacts, not committed
+### P1 native artifacts, bundled from a gitignored payload
 
-The spike keeps both DLLs in `src-tauri/lib/`, which is gitignored. The plugin searches only the exe directory and exe/lib, so before running the harness copy them into the debug target with:
+The DLLs live in `src-tauri/lib/`, which is gitignored. The plugin searches only the exe directory and exe/lib, so before running the harness copy them into the debug target with:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/prepare-libmpv-dev.ps1
 ```
 
-Re-run that after `cargo clean` or a fresh target directory. Nothing is added to `bundle.resources` in P0.
+Re-run that after `cargo clean` or a fresh target directory. `bundle.resources` includes `lib/**/*` and `pnpm check:libmpv` verifies the hashes before packaging.
 
 | Component | Version | URL | Archive SHA-256 | DLL SHA-256 | Size |
 |---|---|---|---|---|---|
 | libmpv-wrapper | v0.1.1, `libmpv-wrapper-windows-x86_64.zip` | https://github.com/nini22P/libmpv-wrapper/releases/download/v0.1.1/libmpv-wrapper-windows-x86_64.zip | `D2FF8B2EDCD34D2968E544ADAA915E5E5C48EB1A0995945005269C2AF119A492` | `0D5ADEAD5F175C55E0790A80924EC0A2636F72E3675C79A6D9D9568B2ED2384A` | 391,680 bytes |
 | libmpv | 2026-11-08, mpv git `8bc468896e`, `mpv-dev-lgpl-x86_64-20261108-git-8bc468896e.7z` | https://github.com/zhongfly/mpv-winbuild/releases/download/2026-11-08-8bc468896e/mpv-dev-lgpl-x86_64-20261108-git-8bc468896e.7z | `84BD684C848591356B55555001C114FC72AF9EDCE2D4EBB8B38CC7356A3C0BF5` | `2A287ECB1FE2BC5B6AB636CFEC0CACBB12FFEC05E4EB4E5C2CADE1752E2D15E6` | 101,853,696 bytes |
 
-The wrapper zip publishes a matching `sha256.txt`, and its local `LICENSE` is LGPL-2.1. The mpv-dev-lgpl archive contains `libmpv-2.dll`, the import library, and headers, but no license or copyright file. P1 must add the license texts and a source offer from the mpv and FFmpeg projects before shipping. `mpv-dev-lgpl` is still marked use at own risk by its author, so the lawyer sign-off stays a hard gate.
+The wrapper zip publishes a matching `sha256.txt`, and its local `LICENSE` is LGPL-2.1. The mpv-dev-lgpl archive contains `libmpv-2.dll`, the import library, and headers, but no license or copyright file. P1 added the license texts and a source offer from the mpv and FFmpeg projects. `mpv-dev-lgpl` is still marked use at own risk by its author, so counsel review remains the gate for public distribution.

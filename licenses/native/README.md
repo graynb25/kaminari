@@ -1,8 +1,8 @@
-# Native libmpv license package (pre-P1)
+# Native libmpv license package (bundled)
 
-Status: preparation only. No native DLL is bundled in this build, and no binary is distributed yet. Lawyer sign-off is still required before any P1 packaging that ships these binaries. This folder holds the license texts, the artifact hashes, and the source references needed for that review.
+Status: bundled from 0.19.0. `src-tauri/lib/` stays gitignored as a build payload, `bundle.resources` includes `lib/**/*`, and `pnpm check:libmpv` verifies both DLL hashes before a Tauri bundle. A draft legal review packet is in `docs/LEGAL-REVIEW-DRAFT.md`; a qualified lawyer still needs to review it before public distribution.
 
-Scope guard: do not copy DLLs, archives, or samples into the repo. Do not add bundle.resources. The player path and its checklist belong to another session.
+Scope guard: do not commit the DLLs or the source archives. The installer build requires the two DLLs in `src-tauri/lib`, and the build fails fast if either is missing or does not match the pinned hash.
 
 ## Artifacts (development machine, 2026-11-09)
 
@@ -13,7 +13,7 @@ Scope guard: do not copy DLLs, archives, or samples into the repo. Do not add bu
 | `mpv-dev-lgpl-x86_64-20261108-git-8bc468896e.7z` | `84BD684C848591356B55555001C114FC72AF9EDCE2D4EBB8B38CC7356A3C0BF5` | 29,073,618 | https://github.com/zhongfly/mpv-winbuild/releases/tag/2026-11-08-8bc468896e |
 | `libmpv-wrapper-windows-x86_64.zip` | `D2FF8B2EDCD34D2968E544ADAA915E5E5C48EB1A0995945005269C2AF119A492` | 196,183 | https://github.com/nini22P/libmpv-wrapper/releases |
 
-Hashes above were verified on the development machine with `Get-FileHash`. The archives and DLLs live outside the repo (local temp dir and `src-tauri/lib`, which is a dev-only payload, never bundled).
+Hashes above were verified on the development machine with `Get-FileHash` and are rechecked by `scripts/check-libmpv-artifacts.mjs` before every Tauri bundle. The archives and DLLs live outside git.
 
 ## Build evidence (as observed, not re-audited here)
 
@@ -34,9 +34,9 @@ Hashes above were verified on the development machine with `Get-FileHash`. The a
 
 ## FFmpeg source reference (verified)
 
-The Build MPV (64, true) job at https://github.com/zhongfly/mpv-winbuild/actions/runs/42478239987/job/128724313594 ran on 2026-11-08. At 12:12:25Z it executed `git -C mpv-winbuild-cmake/src_packages/ffmpeg rev-parse --short HEAD` and returned `cc583787b`. That short ref resolves on FFmpeg GitHub to `cc583787bbecd4914fee7c2bf7f09463113822fe` ("avcodec/vvc: correct RPR reference coordinate derivation", 2026-11-08). The same job produced the FFmpeg asset `ffmpeg-lgpl-x86_64-git-cc583787b.7z` (SHA-256 `30ef003bdd8ad8588e722736138d45efefe271e130dcc3827a5e1e2348dac40a`) and the `mpv-dev-lgpl-x86_64-20261108-git-8bc468896e.7z` archive above. The FFmpeg commit is now proven from the build log, not only from the asset name. Source URL: https://github.com/FFmpeg/FFmpeg/commit/cc583787bbecd4914fee7c2bf7f09463113822fe
+The Build MPV (64, true) job at https://github.com/zhongfly/mpv-winbuild/actions/runs/42478239987/job/128724313594 ran on 2026-11-08. At 12:12:25Z it executed `git -C mpv-winbuild-cmake/src_packages/ffmpeg rev-parse --short HEAD` and returned `cc583787b`. That short ref resolves on FFmpeg GitHub to `cc583787bbecd4914fee7c2bf7f09463113822fe` ("avcodec/vvc: correct RPR reference coordinate derivation", 2026-11-08). The same job produced the FFmpeg asset `ffmpeg-lgpl-x86_64-git-cc583787b.7z` (SHA-256 `30ef003bdd8ad8588e722736138d45efefe271e130dcc3827a5e1e2348dac40a`) and the `mpv-dev-lgpl-x86_64-20261108-git-8bc468896e.7z` archive above. The FFmpeg commit is proven from the build log, not only from the asset name. Source URL: https://github.com/FFmpeg/FFmpeg/commit/cc583787bbecd4914fee7c2bf7f09463113822fe
 
-The `mpv-dev-lgpl` archive still carries no license or copyright file. The license texts and the source offer in this folder cover it. Lawyer sign-off remains the final legal gate.
+The `mpv-dev-lgpl` archive carries no license or copyright file. The license texts and the source offer in this folder cover it. The draft legal review is the remaining gate for public distribution.
 
 ## License texts in this folder
 
@@ -44,13 +44,13 @@ The `mpv-dev-lgpl` archive still carries no license or copyright file. The licen
 - `LGPL-3.0.txt`: canonical LGPL-3.0 text from https://www.gnu.org/licenses/lgpl-3.0.txt. Covers FFmpeg as built here (`--enable-version3`, no `--enable-gpl`).
 - `MPL-2.0.txt`: byte copy of the local registry LICENSE for tauri-plugin-libmpv 0.3.2. The crate itself is listed under the Rust group; the text here is the filed copy for the native package.
 - `mpv-Copyright-8bc468896e.txt`: the mpv `Copyright` file at commit `8bc468896e`. It records the GPLv2+ default, the LGPL-2.1+ terms for `-Dgpl=false` builds, and the warning that linked libraries still affect the final license.
-- `native.json`: static manifest consumed by `scripts/generate-licenses.mjs` to render the Native libraries group in the licenses dialog. Every entry is marked not bundled.
+- `native.json`: static manifest consumed by `scripts/generate-licenses.mjs` to render the Native libraries group in the licenses dialog. Every entry is marked bundled.
 
-## Source offer (explicit, for future distribution)
+## Source offer (explicit, for this distribution)
 
-No source distribution accompanies this build because no binary is distributed. When and if Kaminari ships the binaries above, each distribution will be accompanied by either the complete corresponding source or a written offer, valid for at least three years, to provide it. The corresponding source set is: mpv at commit `8bc468896e` (or its proven successor), the proven FFmpeg commit plus the zhongfly winbuild scripts and `compile-lgpl-libmpv.patch`, the libmpv-wrapper source matching the shipped archive, and the tauri-plugin-libmpv 0.3.2 crate source. This offer statement will move into the installer and the dialog notes at P1 packaging time, after lawyer sign-off.
+Kaminari provides the complete corresponding source for the bundled LGPL components on request, valid for at least three years from the date of distribution, at no charge beyond the cost of media or transmission. The corresponding source set is: mpv at commit `8bc468896e` (or its proven successor), the proven FFmpeg commit plus the zhongfly winbuild scripts and `compile-lgpl-libmpv.patch`, the libmpv-wrapper source matching the shipped archive, and the tauri-plugin-libmpv 0.3.2 crate source. The source offer text and URLs are shown in the in-app Licenses dialog under Native libraries. Contact the project maintainer through the repository to request a copy.
 
 ## Remaining legal gate
 
-1. Lawyer sign-off on this package (texts, artifact table, FFmpeg linkage, source offer wording).
-2. Only then: P1 packaging work (bundling, installer notes, CHANGELOG entry), which is explicitly out of scope here.
+1. A qualified lawyer reviews the draft in `docs/LEGAL-REVIEW-DRAFT.md` and this package (texts, artifact table, FFmpeg linkage, source offer wording).
+2. Public distribution waits for that review. Local installer builds and playback checks can proceed.
