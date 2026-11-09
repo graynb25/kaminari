@@ -11,6 +11,7 @@
     THEME_MODES,
     type ThemeMode,
   } from "./theme";
+  import { ACCENTS, getAccent, setAccent, type AccentId } from "./accent";
   import type { Boot, PlayerStatus, ProxyStatus } from "./types";
 
   let {
@@ -25,6 +26,7 @@
 
   let player = $state<PlayerStatus | null>(null);
   let themeMode = $state<ThemeMode>(getThemeMode());
+  let accent = $state<AccentId>(getAccent());
   let proxy = $state<ProxyStatus | null>(null);
   let proxyOn = $state(proxyFlagEnabled());
   let activeId = $state("settings-appearance");
@@ -45,6 +47,11 @@
   function pickMode(next: ThemeMode) {
     themeMode = next;
     setThemeMode(next);
+  }
+
+  function pickAccent(next: AccentId) {
+    accent = next;
+    setAccent(next);
   }
 
   function toggleProxy() {
@@ -298,6 +305,28 @@
                   <span class="block text-xs font-semibold">{option.label}</span>
                   <span class="block text-[10px] mt-0.5" style="color: var(--text-4);">{option.hint}</span>
                 </span>
+              </button>
+            {/each}
+          </div>
+        </div>
+        <div class="accent-row">
+          <div class="min-w-0">
+            <p class="text-xs font-semibold">Accent</p>
+            <p class="text-[10px] mt-0.5" style="color: var(--text-4);">
+              Presets keep the contrast. Violet is the signature.
+            </p>
+          </div>
+          <div class="accent-options" role="group" aria-label="Accent color">
+            {#each ACCENTS as option}
+              <button
+                class="accent-option"
+                class:is-active={accent === option.id}
+                aria-pressed={accent === option.id}
+                onclick={() => pickAccent(option.id)}
+                title={option.label}
+              >
+                <span class="accent-swatch" style="--swatch: {option.swatch};"></span>
+                {option.label}
               </button>
             {/each}
           </div>
@@ -603,6 +632,65 @@
   .theme-option.is-active .theme-option-icon {
     background: var(--accent-wash-strong);
     color: var(--volt-300);
+  }
+
+  .accent-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+
+  .accent-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .accent-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px;
+    border-radius: 10px;
+    background: var(--control-bg);
+    border: 1px solid var(--line);
+    color: var(--text-3);
+    font-size: 11px;
+    font-weight: 600;
+    transition:
+      background var(--dur-fast) var(--ease-out),
+      border-color var(--dur-fast) var(--ease-out),
+      color var(--dur-fast) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out);
+  }
+
+  .accent-option:hover {
+    background: var(--tint-1);
+    border-color: var(--line-strong);
+    color: var(--text-1);
+    transform: translateY(-1px);
+  }
+
+  .accent-option.is-active {
+    background: var(--accent-wash);
+    border-color: var(--line-volt);
+    color: var(--text-1);
+    box-shadow: inset 0 0 0 1px var(--accent-wash-strong);
+  }
+
+  .accent-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--swatch);
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 0.18),
+      0 0 10px color-mix(in oklab, var(--swatch) 45%, transparent);
   }
 
   .theme-preview {

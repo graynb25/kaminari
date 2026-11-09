@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-09 Accent presets
+
+Context. The P2 plan left accent picker hooks open, and the app had one fixed violet accent.
+
+What we shipped. Five presets: Violet, Ocean, Forest, Ember and Rose. A `data-accent` attribute on the root selects token sets for dark and light themes, and the poster, source card and player surfaces keep the dark accent values over art. Settings has a labelled swatch row with `aria-pressed`, the choice persists in `localStorage["kaminari.accent"]`, and `initAccent()` runs before mount. `parseAccent` falls back to violet for unknown values.
+
+What we measured. Dark root `--volt-400` is `#8b8aff`, `#6ea8ff`, `#62c99a`, `#ff9457` and `#ff7fa4` for the five presets. Light Ocean resolves to `#2f6fd6`, and a poster art surface resolves Ocean to `#6ea8ff`. The selection persisted across reload. No horizontal overflow at 1280, 1024 or 900, and no page errors. 49 Vitest tests pass, including `parseAccent` for a known preset and an unknown one. The settings accent row is a text plus swatch control, not color alone. The 0.20.0 installer is 37,659,877 bytes (35.92 MiB), and the installed build resolved Ocean to `#6ea8ff`; the DLL payload is unchanged.
+
+What we did not do. No custom color picker, only presets. No full WCAG contrast audit for every accent and text pair. Violet stays the default.
+
 ## 2026-11-09 500-item grid gate
 
 Context. The P2 plan asked for a 500-item grid check before deciding whether the library grid needs virtualization.

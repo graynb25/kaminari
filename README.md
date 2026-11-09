@@ -22,6 +22,10 @@ Screenshots are captured from the current Windows build in the Storm theme and l
 | **Search palette** | **Sources** |
 | ![Search palette](assets/screenshots/palette.webp) | ![Sources](assets/screenshots/sources.webp) |
 
+Palette to playback, captured from the same build:
+
+![Palette to playback](assets/screenshots/palette-to-playback.gif)
+
 ## What it is
 
 - **Core:** Tauri 2 plus Rust for shell, networking, database, extension host, player bridge
@@ -38,7 +42,7 @@ If you already know React, the Rust side does not care. The contract stays the s
 
 ## Status
 
-Working today: cinematic browse with five AniList rails, Top 10 Today, Ctrl K palette, detail pages, a local AniList library, watched episode tracking, Continue Watching, an Aniyomi registry reader that stores source metadata, a native JavaScript extension host with a source browser, details, episodes and stream resolve, an in-app player for MP4 and HLS, a loopback stream proxy for headers, cookies, HLS media and master playlists, a source library with resumable playback progress, source Continue Watching and merged history, System, Dark and Light themes, a Windows tray menu with show and quit, and an in-app license list generated from the build.
+Working today: cinematic browse with five AniList rails, Top 10 Today, Ctrl K palette, detail pages, a local AniList library, watched episode tracking, Continue Watching, an Aniyomi registry reader that stores source metadata, a native JavaScript extension host with a source browser, details, episodes and stream resolve, an in-app player for MP4 and HLS, a loopback stream proxy for headers, cookies, HLS media and master playlists, a source library with resumable playback progress, source Continue Watching and merged history, System, Dark and Light themes with five accent presets, a Windows tray menu with show and quit, and an in-app license list generated from the build.
 
 Embedded libmpv is bundled behind the default-off `kaminari.libmpv` flag. Set `localStorage["kaminari.libmpv"]="true"` or add `?libmpv=1` to the app URL to opt in. The default player stays the WebView player with external mpv fallback. Public distribution waits for counsel review of `docs/LEGAL-REVIEW-DRAFT.md`; the dev spike passes z-order, HEVC and fallback on Windows. A 2026-11-08 review confirmed Suwayomi is manga-only and cannot run Aniyomi/yuzono anime extensions, so native `.kext` stays the bundled source model. The app does not download APKs or run package code from the Aniyomi registry.
 
@@ -50,6 +54,8 @@ Windows is the first target. macOS and Linux come later.
 pnpm install
 pnpm tauri dev
 ```
+
+The installer build expects the two pinned libmpv DLLs in `src-tauri/lib/`. Download the archives listed in `licenses/native/README.md`, extract `libmpv-2.dll` and `libmpv-wrapper.dll` there, then run `pnpm check:libmpv`. The Tauri build runs the check automatically and stops on a missing file or hash mismatch.
 
 Builds are produced locally with `pnpm tauri build`; the build verifies the pinned libmpv DLLs with `pnpm check:libmpv` before packaging. GitHub Releases will follow the first public build. No telemetry, no ads, no account needed to browse.
 

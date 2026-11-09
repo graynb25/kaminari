@@ -59,6 +59,8 @@ Run for each packaging candidate. Record the native payload separately from the 
 | libmpv-wrapper.dll | 391,680 | 0.37 MiB uncompressed |
 | Native payload | 102,245,376 | 97.5 MiB uncompressed |
 
+0.20.0 measurement, 2026-11-09: installer 37,659,877 bytes (35.92 MiB). The DLL payload is unchanged. The installed build reported `mpv_embed_status.available=true` with the install `lib` directory.
+
 ```powershell
 npm exec --yes pnpm@10 -- tauri build
 Get-Item "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object Name, Length

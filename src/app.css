@@ -319,6 +319,215 @@
   color-scheme: light;
 }
 
+/* Accent presets. Violet is the signature token set above. */
+:root[data-accent="ocean"] {
+  --volt-200: #d9e8ff;
+  --volt-300: #a9c8ff;
+  --volt-400: #6ea8ff;
+  --volt-500: #3d7bf0;
+  --line-volt: rgb(110 168 255 / 0.38);
+  --shadow-glow: 0 0 0 1px var(--volt-400), 0 8px 32px rgb(61 123 240 / 0.35);
+  --volt-glow: rgb(61 123 240 / 0.38);
+  --accent-rgb: 61 123 240;
+  --accent-bright-rgb: 110 168 255;
+  --accent-shadow: rgb(61 123 240 / 0.28);
+  --accent-shadow-strong: rgb(61 123 240 / 0.4);
+  --accent-hover-from: #8bb8ff;
+  --accent-hover-to: #3f74e8;
+  --selection-bg: rgb(61 123 240 / 0.35);
+}
+
+[data-theme="light"][data-accent="ocean"] {
+  --volt-200: #244f9e;
+  --volt-300: #255fbf;
+  --volt-400: #2f6fd6;
+  --volt-500: #2158b0;
+  --line-volt: rgb(33 88 176 / 0.32);
+  --shadow-glow: 0 0 0 1px var(--volt-400), 0 8px 32px rgb(47 111 214 / 0.22);
+  --volt-glow: rgb(47 111 214 / 0.28);
+  --accent-rgb: 33 88 176;
+  --accent-bright-rgb: 47 111 214;
+  --accent-shadow: rgb(33 88 176 / 0.22);
+  --accent-shadow-strong: rgb(33 88 176 / 0.3);
+  --accent-hover-from: #4c83e6;
+  --accent-hover-to: #1f55a8;
+  --selection-bg: rgb(47 111 214 / 0.22);
+}
+
+[data-accent="ocean"] .poster-art,
+[data-accent="ocean"] .library-source-art,
+[data-accent="ocean"] .player-shell {
+  --volt-200: #d9e8ff;
+  --volt-300: #a9c8ff;
+  --volt-400: #6ea8ff;
+  --volt-500: #3d7bf0;
+  --line-volt: rgb(110 168 255 / 0.38);
+  --shadow-glow: 0 0 0 1px var(--volt-400), 0 8px 32px rgb(61 123 240 / 0.35);
+  --volt-glow: rgb(61 123 240 / 0.38);
+  --accent-rgb: 61 123 240;
+  --accent-bright-rgb: 110 168 255;
+  --accent-shadow: rgb(61 123 240 / 0.28);
+  --accent-shadow-strong: rgb(61 123 240 / 0.4);
+  --accent-hover-from: #8bb8ff;
+  --accent-hover-to: #3f74e8;
+}
+
+:root[data-accent="forest"] {
+  --volt-200: #d6f5e7;
+  --volt-300: #a3e5c8;
+  --volt-400: #62c99a;
+  --volt-500: #2f9a6d;
+  --line-volt: rgb(98 201 154 / 0.38);
+  --shadow-glow: 0 0 0 1px var(--volt-400), 0 8px 32px rgb(47 154 109 / 0.35);
+  --volt-glow: rgb(47 154 109 / 0.38);
+  --accent-rgb: 47 154 109;
+  --accent-bright-rgb: 98 201 154;
+  --accent-shadow: rgb(47 154 109 / 0.28);
+  --accent-shadow-strong: rgb(47 154 109 / 0.4);
+  --accent-hover-from: #7ed9ae;
+  --accent-hover-to: #2f9a6d;
+  --selection-bg: rgb(47 154 109 / 0.35);
+}
+
+[data-theme="light"][data-accent="forest"] {
+  --volt-200: #14533a;
+  --volt-300: #1a6848;
+  --volt-400: #237a55;
+  --volt-500: #175c41;
+  --line-volt: rgb(23 92 65 / 0.32);
+  --shadow-glow: 0 0 0 1px var(--volt-400), 0 8px 32px rgb(35 122 85 / 0.22);
+  --volt-glow: rgb(35 122 85 / 0.28);
+  --accent-rgb: 23 92 65;
+  --accent-bright-rgb: 35 122 85;
+  --accent-shadow: rgb(23 92 65 / 0.22);
+  --accent-shadow-strong: rgb(23 92 65 / 0.3);
+  --accent-hover-from: #2f9468;
+  --accent-hover-to: #175c41;
+  --selection-bg: rgb(35 122 85 / 0.22);
+}
+
+[data-accent="forest"] .poster-art,
+[data-accent="forest"] .library-source-art,
+[data-accent="forest"] .player-shell {
+  --volt-200: #d6f5e7;
+  --volt-300: #a3e5c8;
+  --volt-400: #62c99a;
+  --volt-500: #2f9a6d;
+  --line-volt: rgb(98 201 154 / 0.38);
+  --shadow-glow: 0 0 0 1px var(--volt-400), 0 8px 32px rgb(47 154 109 / 0.35);
+  --volt-glow: rgb(47 154 109 / 0.38);
+  --accent-rgb: 47 154 109;
+  --accent-bright-rgb: 98 201 154;
+  --accent-shadow: rgb(47 154 109 / 0.28);
+  --accent-shadow-strong: rgb(47 154 109 / 0.4);
+  --accent-hover-from: #7ed9ae;
+  --accent-hover-to: #2f9a6d;
+}
+
+:root[data-accent="ember"] {
+  --volt-200: #ffe6d1;
+  --volt-300: #ffc08f;
+  --volt-400: #ff9457;
+  --volt-500: #e4652a;
+  --line-volt: rgb(255 148 87 / 0.38);
+  --shadow-glow: 0 0 0 1px var(--volt-400), 0 8px 32px rgb(228 101 42 / 0.35);
+  --volt-glow: rgb(228 101 42 / 0.38);
+  --accent-rgb: 228 101 42;
+  --accent-bright-rgb: 255 148 87;
+  --accent-shadow: rgb(228 101 42 / 0.28);
+  --accent-shadow-strong: rgb(228 101 42 / 0.4);
+  --accent-hover-from: #ffb07a;
+  --accent-hover-to: #e4652a;
+  --selection-bg: rgb(228 101 42 / 0.35);
+}
+
+[data-theme="light"][data-accent="ember"] {
+  --volt-200: #7a2f0c;
+  --volt-300: #8f3a10;
+  --volt-400: #a54513;
+  --volt-500: #7f330e;
+  --line-volt: rgb(127 51 14 / 0.32);
+  --shadow-glow: 0 0 0 1px var(--volt-400), 0 8px 32px rgb(165 69 19 / 0.22);
+  --volt-glow: rgb(165 69 19 / 0.28);
+  --accent-rgb: 127 51 14;
+  --accent-bright-rgb: 165 69 19;
+  --accent-shadow: rgb(127 51 14 / 0.22);
+  --accent-shadow-strong: rgb(127 51 14 / 0.3);
+  --accent-hover-from: #c25a1b;
+  --accent-hover-to: #7f330e;
+  --selection-bg: rgb(165 69 19 / 0.22);
+}
+
+[data-accent="ember"] .poster-art,
+[data-accent="ember"] .library-source-art,
+[data-accent="ember"] .player-shell {
+  --volt-200: #ffe6d1;
+  --volt-300: #ffc08f;
+  --volt-400: #ff9457;
+  --volt-500: #e4652a;
+  --line-volt: rgb(255 148 87 / 0.38);
+  --shadow-glow: 0 0 0 1px var(--volt-400), 0 8px 32px rgb(228 101 42 / 0.35);
+  --volt-glow: rgb(228 101 42 / 0.38);
+  --accent-rgb: 228 101 42;
+  --accent-bright-rgb: 255 148 87;
+  --accent-shadow: rgb(228 101 42 / 0.28);
+  --accent-shadow-strong: rgb(228 101 42 / 0.4);
+  --accent-hover-from: #ffb07a;
+  --accent-hover-to: #e4652a;
+}
+
+:root[data-accent="rose"] {
+  --volt-200: #ffe0ea;
+  --volt-300: #ffb3c9;
+  --volt-400: #ff7fa4;
+  --volt-500: #e04b78;
+  --line-volt: rgb(255 127 164 / 0.38);
+  --shadow-glow: 0 0 0 1px var(--volt-400), 0 8px 32px rgb(224 75 120 / 0.35);
+  --volt-glow: rgb(224 75 120 / 0.38);
+  --accent-rgb: 224 75 120;
+  --accent-bright-rgb: 255 127 164;
+  --accent-shadow: rgb(224 75 120 / 0.28);
+  --accent-shadow-strong: rgb(224 75 120 / 0.4);
+  --accent-hover-from: #ff9cbb;
+  --accent-hover-to: #e04b78;
+  --selection-bg: rgb(224 75 120 / 0.35);
+}
+
+[data-theme="light"][data-accent="rose"] {
+  --volt-200: #7a1e3c;
+  --volt-300: #8f2446;
+  --volt-400: #a52a51;
+  --volt-500: #7f203f;
+  --line-volt: rgb(127 32 63 / 0.32);
+  --shadow-glow: 0 0 0 1px var(--volt-400), 0 8px 32px rgb(165 42 81 / 0.22);
+  --volt-glow: rgb(165 42 81 / 0.28);
+  --accent-rgb: 127 32 63;
+  --accent-bright-rgb: 165 42 81;
+  --accent-shadow: rgb(127 32 63 / 0.22);
+  --accent-shadow-strong: rgb(127 32 63 / 0.3);
+  --accent-hover-from: #c23a66;
+  --accent-hover-to: #7f203f;
+  --selection-bg: rgb(165 42 81 / 0.22);
+}
+
+[data-accent="rose"] .poster-art,
+[data-accent="rose"] .library-source-art,
+[data-accent="rose"] .player-shell {
+  --volt-200: #ffe0ea;
+  --volt-300: #ffb3c9;
+  --volt-400: #ff7fa4;
+  --volt-500: #e04b78;
+  --line-volt: rgb(255 127 164 / 0.38);
+  --shadow-glow: 0 0 0 1px var(--volt-400), 0 8px 32px rgb(224 75 120 / 0.35);
+  --volt-glow: rgb(224 75 120 / 0.38);
+  --accent-rgb: 224 75 120;
+  --accent-bright-rgb: 255 127 164;
+  --accent-shadow: rgb(224 75 120 / 0.28);
+  --accent-shadow-strong: rgb(224 75 120 / 0.4);
+  --accent-hover-from: #ff9cbb;
+  --accent-hover-to: #e04b78;
+}
+
 html {
   height: 100%;
   background: transparent;

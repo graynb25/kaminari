@@ -4,6 +4,13 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.20.0 - 2026-11-09
+
+- Settings: Violet, Ocean, Forest, Ember and Rose accent presets, persisted locally
+- Styles: accent tokens for dark and light themes, including poster, source and player surfaces
+- Docs: accent picker notes and refreshed screenshots for 0.20.0
+- Version: bump to 0.20.0
+
 ## 0.19.0 - 2026-11-09
 
 - Player: bundle `libmpv-2.dll` and `libmpv-wrapper.dll` in the installer, opt-in behind `kaminari.libmpv`
@@ -11,6 +18,7 @@ Every visible change gets a line here. Keep lines short and specific.
 - Licenses: Native libraries group now bundled, with versions, hashes, source URLs, texts and the source offer
 - Docs: lawyer review draft, P1 packaging checklist and README build notes
 - Dev: 500-item grid perf harness at `?perfHarness=1`, gate passes without virtualization
+- Docs: palette-to-playback GIF from the real 0.19.0 build
 - Version: bump to 0.19.0
 
 ## 0.18.1 - 2026-11-09
