@@ -4,6 +4,15 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.16.0 - 2026-11-08
+
+- UI: shared Modal with focus trap, Escape, focus restore and one overlay lock for legal, licenses, shortcuts and palette
+- UI: Callout and ProgressBar atoms across offline, library, sources, search, resolve and detail progress
+- UI: corrected double-encoded middle dots and palette arrow keys
+- UI: global shortcuts stay blocked while any overlay is open
+- Docs: embedded libmpv plan with licensing, log redaction and z-order gates
+- Version: bump to 0.16.0
+
 ## 0.15.0 - 2026-11-08
 
 - Player: per-entry cookie jar for protected HLS, capturing Set-Cookie on playlists, keys, maps, segments and redirects

@@ -118,6 +118,16 @@ Context. The app is a player and extension host with no shipped content. The use
 
 What we wrote. `docs/TERMS.md` describes the app, the user's responsibility, third-party extensions, no warranty, liability limits and copyright complaints. `docs/PRIVACY.md` describes the local SQLite and WebView data, the direct AniList, registry, extension and stream requests, no telemetry, deletion paths and contact. Both link from the README.
 
+## 2026-11-08 Modal, Callout and ProgressBar atoms
+
+Context. Each dialog carried its own focus trap, Escape handling, overlay lock, panel material and scroll shell. Callouts and progress bars were hand rolled with different tones and widths.
+
+What we shipped. `Modal.svelte` owns the backdrop, glass panel, focus trap, Escape, focus restore, a shared overlay lock count, sticky header, scroll body and width variants. Legal, Licenses, Shortcuts and the search palette use it; SourceBrowser stays full screen. `Callout.svelte` has info, success, warning and danger tones with status or alert roles. `ProgressBar.svelte` handles determinate and indeterminate states with progressbar ARIA and a transform based fill. They replaced the offline banner, library and source errors, palette rate limit, registry and install progress, source search and resolve progress, and the detail episode bar.
+
+What we measured. In the running app, typing "1" in the palette leaves the view unchanged, Escape closes only the palette, Legal keeps focus inside and returns it to Terms, Licenses autofocuses search and returns focus to Licenses, and hls.js filters to one row. The detail bar reports 2 of 12. The pass also found and fixed double-encoded middle dots and palette arrow keys. All 31 Vitest tests pass and the build passes.
+
+What we did not do. Cascade layers, Settings navigation and FatalState. Those remain phase 3.
+
 ## 2026-11-08 Proxy cookie jar and live refresh
 
 Context. Some sources set a session cookie on the playlist fetch that segments and keys then need. hls.js cannot see or forward those cookies, and the earlier proxy only forwarded the extension seed Cookie header.
