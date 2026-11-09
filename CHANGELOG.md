@@ -4,6 +4,8 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+- Docs: real build screenshots in `assets/screenshots/`, plus accurate player, extension and release claims in the README
+
 ## 0.17.1 - 2026-11-09
 
 - Styles: base and component CSS moved into cascade layers, with 36 deliberate overrides and reduced motion kept unlayered

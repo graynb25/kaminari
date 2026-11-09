@@ -10,29 +10,37 @@ A desktop anime app for Windows first, with care in every pixel. Fast startup. K
 
 | Library | Search | Player | Extensions |
 |---|---|---|---|
-| Watching and planning with progress and history | Ctrl K palette, live plus cached offline | libmpv, ASS subs, J L K keys, diagnostics with D | Sandboxed QuickJS, signed .kext, permission prompts |
+| Watching and planning with progress and history | Ctrl K palette, live plus cached offline | In-app MP4 and HLS, external mpv fallback, J L K keys, diagnostics with D | Sandboxed QuickJS, local .kext, explicit host allowlists |
 
-Screenshots live in `assets/screenshots/`: hero, library, detail, player, palette. Placeholders until P2, then real build shots. Every PR that changes UI updates the `/design` route and one screenshot.
+Screenshots are captured from the current Windows build in the Storm theme and live in `assets/screenshots/`. Every PR that changes UI updates one screenshot.
+
+| Browse | Library |
+|---|---|
+| ![Browse](assets/screenshots/browse.webp) | ![Library](assets/screenshots/library.webp) |
+| **Detail** | **Player** |
+| ![Detail](assets/screenshots/detail.webp) | ![Player](assets/screenshots/player.webp) |
+| **Search palette** | **Sources** |
+| ![Search palette](assets/screenshots/palette.webp) | ![Sources](assets/screenshots/sources.webp) |
 
 ## What it is
 
 - **Core:** Tauri 2 plus Rust for shell, networking, database, extension host, player bridge
 - **Interface:** Svelte 5 with Runes plus TypeScript plus Tailwind CSS 4
 - **Data:** AniList GraphQL for titles, posters, scores, tracking
-- **Player:** libmpv embedded for smooth HLS and MP4
-- **Extensions:** sandboxed JS modules through QuickJS, signed registry JSON, hot reload in dev
+- **Player:** in-app WebView playback for MP4 and HLS, with external mpv as the fallback for formats the WebView cannot play
+- **Extensions:** sandboxed JS modules through QuickJS, local `.kext` packages, Aniyomi registry metadata
 
 ## Why this stack
 
-Tauri keeps the installer small and startup fast. Rust keeps the heavy parts honest. Network, storage, and trust live there. Svelte keeps the interface light and easy to shape by hand. libmpv handles video better than a web player will. QuickJS lets authors use plain JavaScript without writing Rust.
+Tauri keeps the installer small and startup fast. Rust keeps the heavy parts honest. Network, storage, and trust live there. Svelte keeps the interface light and easy to shape by hand. The in-app player covers MP4 and HLS; mpv handles the formats a web player will not. QuickJS lets authors use plain JavaScript without writing Rust.
 
 If you already know React, the Rust side does not care. The contract stays the same.
 
 ## Status
 
-Working today: cinematic browse with five AniList rails, Top 10 Today, Ctrl K palette, detail pages, a local AniList library, watched episode tracking, Continue Watching, an Aniyomi registry reader that stores source metadata, a native JavaScript extension host with a source browser, details, episodes and stream resolve, an in-app player for MP4 and HLS, a source library with resumable playback progress, source Continue Watching and merged history, System, Dark and Light themes, and an in-app license list generated from the build.
+Working today: cinematic browse with five AniList rails, Top 10 Today, Ctrl K palette, detail pages, a local AniList library, watched episode tracking, Continue Watching, an Aniyomi registry reader that stores source metadata, a native JavaScript extension host with a source browser, details, episodes and stream resolve, an in-app player for MP4 and HLS, a loopback stream proxy for headers, cookies, HLS media and master playlists, a source library with resumable playback progress, source Continue Watching and merged history, System, Dark and Light themes, and an in-app license list generated from the build.
 
-Next: a loopback stream proxy for headers, cookies and HLS manifests, then embedded libmpv for HEVC, ASS and HDR. A 2026-11-08 review confirmed Suwayomi is manga-only and cannot run Aniyomi/yuzono anime extensions, so native `.kext` stays the bundled source model. The app does not download APKs or run package code from the Aniyomi registry.
+Next: embedded libmpv packaging for HEVC, ASS and HDR, blocked on lawyer sign-off for the LGPL artifacts. The dev spike passes z-order, HEVC and fallback on Windows. A 2026-11-08 review confirmed Suwayomi is manga-only and cannot run Aniyomi/yuzono anime extensions, so native `.kext` stays the bundled source model. The app does not download APKs or run package code from the Aniyomi registry.
 
 Windows is the first target. macOS and Linux come later.
 
@@ -43,7 +51,7 @@ pnpm install
 pnpm tauri dev
 ```
 
-Builds land in GitHub Releases. No telemetry, no ads, no account needed to browse.
+Builds are produced locally with `pnpm tauri build`; GitHub Releases will follow the first public build. No telemetry, no ads, no account needed to browse.
 
 ## Versioning
 
@@ -51,7 +59,7 @@ The root `VERSION` file is the only version source. `pnpm build` and `pnpm tauri
 
 ## Licenses
 
-Settings, and the footer, open a generated list of every Rust crate, npm package, font and built-in sample in this build. The rows carry versions, license identifiers, sources and full license texts where the installed package includes one. Run `pnpm licenses:build` after dependency changes; it regenerates `public/licenses.json` from `Cargo.lock` and the installed node_modules.
+Settings, and the footer, open a generated list of every Rust crate, npm package, font and built-in sample in this build. The rows carry versions, license identifiers, sources and full license texts where the installed package includes one. Native libmpv artifacts are listed separately and marked not bundled until lawyer sign-off. Run `pnpm licenses:build` after dependency changes; it regenerates `public/licenses.json` from `Cargo.lock` and the installed node_modules.
 
 ## Principles
 
