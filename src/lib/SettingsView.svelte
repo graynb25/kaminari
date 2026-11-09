@@ -395,11 +395,13 @@
   }
 
   .theme-mini {
-    flex: 1 1 180px;
+    flex: 0 1 210px;
+    width: 210px;
+    max-width: 100%;
     min-width: 0;
     padding: 10px 11px 11px;
     border-radius: 13px;
-    background: var(--well-bg);
+    background: var(--void-900);
     border: 1px solid var(--line);
   }
 
@@ -418,7 +420,8 @@
   }
 
   .theme-swatch {
-    flex: 1;
+    flex: 0 0 auto;
+    width: 42px;
     aspect-ratio: 2 / 3;
     border-radius: 6px;
     border: 1px solid var(--line);
