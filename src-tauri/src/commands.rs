@@ -2,8 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::anilist::{AniListClient, Media, ShelfKind};
 use crate::db::{
@@ -31,6 +33,15 @@ pub struct BootSnapshot {
     pub anilist_endpoint: String,
     pub limits: HostLimits,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupExport {
+    pub path: String,
+    pub bytes: u64,
+}
+
+const SETTINGS_MAX_BYTES: usize = 64 * 1024;
 
 fn ipc_error(error: AppError) -> String {
     error.to_string()
@@ -408,4 +419,90 @@ pub fn source_history(
     state
         .source_history(limit.unwrap_or(100))
         .map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn backup_export(state: State<'_, Db>, path: String) -> Result<BackupExport, String> {
+    let bytes = state.backup_to(&path).map_err(ipc_error)?;
+    Ok(BackupExport { path, bytes })
+}
+
+#[tauri::command]
+pub fn backup_restore(state: State<'_, Db>, path: String) -> Result<(), String> {
+    state.restore_from(&path).map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn settings_export(path: String, json: String) -> Result<(), String> {
+    if json.len() > SETTINGS_MAX_BYTES {
+        return Err("settings file is too large (64 KiB limit)".to_string());
+    }
+    let target = settings_path(&path)?;
+    write_atomic(&target, json.as_bytes())
+}
+
+#[tauri::command]
+pub fn settings_read(path: String) -> Result<String, String> {
+    let target = settings_path(&path)?;
+    let metadata =
+        std::fs::metadata(&target).map_err(|err| format!("cannot read settings file: {err}"))?;
+    if metadata.len() > SETTINGS_MAX_BYTES as u64 {
+        return Err("settings file is too large (64 KiB limit)".to_string());
+    }
+    let bytes =
+        std::fs::read(&target).map_err(|err| format!("cannot read settings file: {err}"))?;
+    if bytes.len() > SETTINGS_MAX_BYTES {
+        return Err("settings file is too large (64 KiB limit)".to_string());
+    }
+    String::from_utf8(bytes).map_err(|_| "settings file is not UTF-8".to_string())
+}
+
+#[tauri::command]
+pub fn app_restart(app: AppHandle) {
+    app.restart();
+}
+
+fn settings_path(path: &str) -> Result<PathBuf, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("settings path is empty".to_string());
+    }
+    let target = PathBuf::from(trimmed);
+    if !target.is_absolute() {
+        return Err("settings path must be absolute".to_string());
+    }
+    Ok(target)
+}
+
+fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), String> {
+    let name = target
+        .file_name()
+        .map(|value| value.to_string_lossy().into_owned())
+        .ok_or_else(|| "settings path has no file name".to_string())?;
+    let temp = target.with_file_name(format!(".{name}.kaminari.tmp"));
+    let result = (|| -> std::io::Result<()> {
+        let mut file = std::fs::File::create(&temp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        replace_file(&temp, target)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    result.map_err(|err| format!("cannot write settings file: {err}"))
+}
+
+fn replace_file(temp: &Path, target: &Path) -> std::io::Result<()> {
+    match std::fs::rename(temp, target) {
+        Ok(()) => Ok(()),
+        Err(err)
+            if err.kind() == std::io::ErrorKind::AlreadyExists
+                || err.kind() == std::io::ErrorKind::PermissionDenied =>
+        {
+            std::fs::remove_file(target)?;
+            std::fs::rename(temp, target)
+        }
+        Err(err) => Err(err),
+    }
 }

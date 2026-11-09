@@ -22,6 +22,7 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_libmpv::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(anilist::AniListClient::new())
         .manage(player::PlayerState::new())
         .manage(mpv_embed::MpvEmbedState::default())
@@ -111,7 +112,12 @@ fn main() {
             commands::source_progress_get,
             commands::source_progress_set,
             commands::source_continue,
-            commands::source_history
+            commands::source_history,
+            commands::backup_export,
+            commands::backup_restore,
+            commands::settings_export,
+            commands::settings_read,
+            commands::app_restart
         ])
         .run(tauri::generate_context!())
         .expect("error starting Kaminari");

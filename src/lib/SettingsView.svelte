@@ -1,10 +1,13 @@
 ﻿<script lang="ts">
   import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
+  import { confirm, open, save } from "@tauri-apps/plugin-dialog";
   import BrandMark from "./BrandMark.svelte";
   import Icon from "./Icon.svelte";
   import PageHeader from "./PageHeader.svelte";
   import { playerStatus, proxyStatus } from "./api";
   import { proxyFlagEnabled, setProxyFlag } from "./streamProxy";
+  import { applySettings, collectSettings, parseSettings } from "./settingsBackup";
   import {
     getThemeMode,
     setThemeMode,
@@ -31,6 +34,10 @@
   let proxyOn = $state(proxyFlagEnabled());
   let activeId = $state("settings-appearance");
   let manualActive = false;
+  let dataBusy = $state(false);
+  let dataStatus = $state("");
+  let dataStatusTone = $state<"success" | "error">("success");
+  let restartNeeded = $state(false);
 
   type NavItem = { id: string; title: string; hint: string };
 
@@ -57,6 +64,150 @@
   function toggleProxy() {
     proxyOn = !proxyOn;
     setProxyFlag(proxyOn);
+  }
+
+  function backupFileName(): string {
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return `kaminari-backup-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.db`;
+  }
+
+  function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function setDataStatus(tone: "success" | "error", text: string, restart = false) {
+    dataStatusTone = tone;
+    dataStatus = text;
+    restartNeeded = restart;
+  }
+
+  function resetDataStatus() {
+    dataStatus = "";
+    restartNeeded = false;
+  }
+
+  function errorText(err: unknown): string {
+    if (typeof err === "string") return err;
+    if (err instanceof Error) return err.message;
+    return "File operation failed.";
+  }
+
+  function pickedPath(value: string | string[] | null): string | null {
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) return value[0] ?? null;
+    return null;
+  }
+
+  async function backupLibrary() {
+    if (dataBusy) return;
+    resetDataStatus();
+    dataBusy = true;
+    try {
+      const path = pickedPath(
+        await save({
+          title: "Backup library",
+          defaultPath: backupFileName(),
+          filters: [{ name: "Kaminari backup", extensions: ["db"] }],
+        }),
+      );
+      if (!path) return;
+      const result = await invoke<{ path: string; bytes: number }>("backup_export", { path });
+      setDataStatus("success", `Backup saved (${formatBytes(result.bytes)}).`);
+    } catch (err) {
+      setDataStatus("error", errorText(err));
+    } finally {
+      dataBusy = false;
+    }
+  }
+
+  async function restoreBackup() {
+    if (dataBusy) return;
+    resetDataStatus();
+    dataBusy = true;
+    try {
+      const path = pickedPath(
+        await open({
+          title: "Restore backup",
+          multiple: false,
+          directory: false,
+          filters: [{ name: "Kaminari backup", extensions: ["db"] }],
+        }),
+      );
+      if (!path) return;
+      const approved = await confirm(
+        "Replace the current library with this backup? Restart Kaminari after the restore.",
+        { title: "Restore backup", kind: "warning" },
+      );
+      if (!approved) return;
+      await invoke<void>("backup_restore", { path });
+      setDataStatus("success", "Backup restored. Restart to load it.", true);
+    } catch (err) {
+      setDataStatus("error", errorText(err));
+    } finally {
+      dataBusy = false;
+    }
+  }
+
+  async function exportSettings() {
+    if (dataBusy) return;
+    resetDataStatus();
+    dataBusy = true;
+    try {
+      const path = pickedPath(
+        await save({
+          title: "Export settings",
+          defaultPath: "kaminari-settings.json",
+          filters: [{ name: "Kaminari settings", extensions: ["json"] }],
+        }),
+      );
+      if (!path) return;
+      const json = JSON.stringify(collectSettings(), null, 2);
+      await invoke<void>("settings_export", { path, json });
+      setDataStatus("success", "Settings exported.");
+    } catch (err) {
+      setDataStatus("error", errorText(err));
+    } finally {
+      dataBusy = false;
+    }
+  }
+
+  async function importSettings() {
+    if (dataBusy) return;
+    resetDataStatus();
+    dataBusy = true;
+    try {
+      const path = pickedPath(
+        await open({
+          title: "Import settings",
+          multiple: false,
+          directory: false,
+          filters: [{ name: "Kaminari settings", extensions: ["json"] }],
+        }),
+      );
+      if (!path) return;
+      const raw = await invoke<string>("settings_read", { path });
+      const data = parseSettings(raw);
+      applySettings(data);
+      themeMode = data.theme;
+      accent = data.accent;
+      proxyOn = data.proxy;
+      setDataStatus("success", "Settings imported.");
+    } catch (err) {
+      setDataStatus("error", errorText(err));
+    } finally {
+      dataBusy = false;
+    }
+  }
+
+  async function restartNow() {
+    try {
+      await invoke("app_restart");
+    } catch (err) {
+      setDataStatus("error", errorText(err));
+    }
   }
 
   function goToSection(id: string) {
@@ -439,6 +590,58 @@
                   </div>
                 {/each}
               </dl>
+              {#if section.id === "settings-data"}
+                <div class="data-actions" style="border-top: 1px solid var(--line);">
+                  <div class="flex flex-wrap items-center gap-2 pt-3">
+                    <button
+                      class="btn-ghost px-3 py-2 text-xs"
+                      disabled={dataBusy}
+                      onclick={backupLibrary}
+                    >
+                      <Icon name="database" size={14} />
+                      Backup library
+                    </button>
+                    <button
+                      class="btn-ghost px-3 py-2 text-xs"
+                      disabled={dataBusy}
+                      onclick={restoreBackup}
+                    >
+                      <Icon name="refresh" size={14} />
+                      Restore backup
+                    </button>
+                    <button
+                      class="btn-ghost px-3 py-2 text-xs"
+                      disabled={dataBusy}
+                      onclick={exportSettings}
+                    >
+                      <Icon name="download" size={14} />
+                      Export settings
+                    </button>
+                    <button
+                      class="btn-ghost px-3 py-2 text-xs"
+                      disabled={dataBusy}
+                      onclick={importSettings}
+                    >
+                      <Icon name="folder" size={14} />
+                      Import settings
+                    </button>
+                  </div>
+                  <p
+                    role="status"
+                    class="data-status"
+                    class:is-error={dataStatusTone === "error"}
+                    class:is-success={dataStatusTone === "success"}
+                  >
+                    {dataStatus}
+                    {#if restartNeeded}
+                      <button class="btn-ghost px-2.5 py-1 text-[11px]" onclick={restartNow}>
+                        <Icon name="refresh" size={12} />
+                        Restart now
+                      </button>
+                    {/if}
+                  </p>
+                </div>
+              {/if}
             {/if}
           </section>
         {/each}
@@ -579,6 +782,29 @@
 
   .settings-rail-item[aria-current="location"] .settings-rail-hint {
     color: var(--text-3);
+  }
+
+  .data-actions {
+    margin-top: 4px;
+  }
+
+  .data-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-height: 16px;
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-3);
+  }
+
+  .data-status.is-success {
+    color: var(--success);
+  }
+
+  .data-status.is-error {
+    color: var(--danger);
   }
 
   .theme-options {

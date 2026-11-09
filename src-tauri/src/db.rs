@@ -1,8 +1,11 @@
 // SQLite helpers. One file, WAL, migrations checked in.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::backup::Backup;
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 use crate::anilist::{CoverImage, Media, MediaTitle};
@@ -137,13 +140,8 @@ pub struct SourceHistoryItem {
 impl Db {
     pub fn new(path: &str) -> AppResult<Self> {
         let conn = Connection::open(path)?;
-        conn.pragma_update(None, "journal_mode", "WAL")?;
-        conn.pragma_update(None, "foreign_keys", "ON")?;
-        conn.pragma_update(None, "busy_timeout", 5000)?;
-        conn.execute_batch(include_str!("../migrations/0001_init.sql"))?;
-        conn.execute_batch(include_str!("../migrations/0002_watched.sql"))?;
-        conn.execute_batch(include_str!("../migrations/0003_js_extensions.sql"))?;
-        conn.execute_batch(include_str!("../migrations/0004_source_library.sql"))?;
+        apply_pragmas(&conn)?;
+        apply_migrations(&conn)?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
@@ -765,6 +763,120 @@ impl Db {
         )?;
         Ok(())
     }
+
+    pub fn backup_to(&self, path: &str) -> AppResult<u64> {
+        let target = absolute_path(path)?;
+        let parent = target
+            .parent()
+            .ok_or_else(|| AppError::Blocked("backup path has no parent folder".to_string()))?;
+        let name = target
+            .file_name()
+            .map(|value| value.to_string_lossy().into_owned())
+            .ok_or_else(|| AppError::Blocked("backup path has no file name".to_string()))?;
+        let temp = parent.join(format!(".{name}.kaminari.tmp"));
+        let temp_raw = temp.to_string_lossy().into_owned();
+
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let outcome = (|| -> AppResult<()> {
+            if temp.exists() {
+                std::fs::remove_file(&temp)
+                    .map_err(|err| AppError::Db(format!("cannot clear temp backup: {err}")))?;
+            }
+            conn.execute("VACUUM INTO ?1", params![temp_raw])?;
+            replace_file(&temp, &target)
+                .map_err(|err| AppError::Db(format!("cannot replace backup: {err}")))?;
+            Ok(())
+        })();
+
+        if outcome.is_err() {
+            let _ = std::fs::remove_file(&temp);
+        }
+        outcome?;
+
+        let bytes = std::fs::metadata(&target)
+            .map_err(|err| AppError::Db(format!("cannot read backup size: {err}")))?
+            .len();
+        Ok(bytes)
+    }
+
+    pub fn restore_from(&self, path: &str) -> AppResult<()> {
+        let source_path = absolute_path(path)?;
+        let source = Connection::open_with_flags(&source_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|err| AppError::Blocked(format!("cannot open backup: {err}")))?;
+
+        const REQUIRED: [&str; 5] = ["media", "library", "watched", "history", "source_library"];
+        let mut missing = Vec::new();
+        for table in REQUIRED {
+            let found: bool = source
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+                    params![table],
+                    |row| row.get(0),
+                )
+                .map_err(|err| AppError::Blocked(format!("not a Kaminari database: {err}")))?;
+            if !found {
+                missing.push(table);
+            }
+        }
+        if !missing.is_empty() {
+            return Err(AppError::Blocked(format!(
+                "not a Kaminari database: missing {}",
+                missing.join(", ")
+            )));
+        }
+
+        let mut conn = self.conn.lock().map_err(|_| db_locked())?;
+        {
+            let backup = Backup::new(&source, &mut conn)?;
+            backup.run_to_completion(100, Duration::from_millis(10), None)?;
+        }
+        apply_pragmas(&conn)?;
+        apply_migrations(&conn)?;
+        Ok(())
+    }
+}
+
+fn absolute_path(path: &str) -> AppResult<PathBuf> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::Blocked("backup path is empty".to_string()));
+    }
+    let target = PathBuf::from(trimmed);
+    if !target.is_absolute() {
+        return Err(AppError::Blocked(
+            "backup path must be absolute".to_string(),
+        ));
+    }
+    Ok(target)
+}
+
+fn apply_pragmas(conn: &Connection) -> AppResult<()> {
+    conn.pragma_update(None, "journal_mode", "WAL")?;
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    conn.pragma_update(None, "busy_timeout", 5000)?;
+    Ok(())
+}
+
+fn apply_migrations(conn: &Connection) -> AppResult<()> {
+    conn.execute_batch(include_str!("../migrations/0001_init.sql"))?;
+    conn.execute_batch(include_str!("../migrations/0002_watched.sql"))?;
+    conn.execute_batch(include_str!("../migrations/0003_js_extensions.sql"))?;
+    conn.execute_batch(include_str!("../migrations/0004_source_library.sql"))?;
+    Ok(())
+}
+
+fn replace_file(temp: &std::path::Path, target: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::rename(temp, target) {
+        Ok(()) => Ok(()),
+        Err(err)
+            if err.kind() == std::io::ErrorKind::AlreadyExists
+                || err.kind() == std::io::ErrorKind::PermissionDenied =>
+        {
+            std::fs::remove_file(target)?;
+            std::fs::rename(temp, target)
+        }
+        Err(err) => Err(err),
+    }
 }
 
 fn upsert_media(conn: &Connection, media: &Media) -> AppResult<()> {
@@ -1167,5 +1279,62 @@ mod tests {
         let cleared = db.mark_all_watched(&media, 28, false).unwrap();
         assert!(cleared.is_empty());
         assert!(db.continue_watching(10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn backup_and_restore_round_trip() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or_default();
+        let dir = std::env::temp_dir().join(format!(
+            "kaminari-backup-test-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let live_path = dir.join("live.db");
+        let backup_path = dir.join("backup.db");
+        let other_path = dir.join("other.db");
+        let live_raw = live_path.to_string_lossy().into_owned();
+        let backup_raw = backup_path.to_string_lossy().into_owned();
+
+        {
+            let db = Db::new(&live_raw).unwrap();
+            db.add_to_library(&sample_media(), "watching").unwrap();
+
+            let bytes = db.backup_to(&backup_raw).unwrap();
+            assert!(bytes > 0);
+            assert!(backup_path.exists());
+
+            let mut second = sample_media();
+            second.id = 2;
+            second.title.romaji = Some("Second show".to_string());
+            db.add_to_library(&second, "planning").unwrap();
+            assert_eq!(db.list_library().unwrap().len(), 2);
+
+            db.restore_from(&backup_raw).unwrap();
+            let items = db.list_library().unwrap();
+            assert_eq!(items.len(), 1);
+            assert_eq!(items[0].media.id, 15125);
+
+            assert!(db.backup_to("relative.db").is_err());
+            assert!(db.restore_from("relative.db").is_err());
+        }
+
+        {
+            let other = Connection::open(&other_path).unwrap();
+            other
+                .execute_batch("CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT);")
+                .unwrap();
+        }
+
+        let db = Db::new(&live_raw).unwrap();
+        let error = db
+            .restore_from(other_path.to_string_lossy().as_ref())
+            .unwrap_err();
+        assert!(error.to_string().contains("not a Kaminari database"));
+        drop(db);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
