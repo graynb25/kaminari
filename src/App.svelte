@@ -4,6 +4,7 @@
   import ContinueCard from "./lib/ContinueCard.svelte";
   import DetailPage from "./lib/DetailPage.svelte";
   import EmptyState from "./lib/EmptyState.svelte";
+  import FatalState from "./lib/FatalState.svelte";
   import AppFooter from "./lib/AppFooter.svelte";
   import HeroCarousel from "./lib/HeroCarousel.svelte";
   import HistoryView from "./lib/HistoryView.svelte";
@@ -72,6 +73,7 @@
 
   let title = $state("Kaminari");
   let boot = $state<Boot | null>(null);
+  let bootError = $state<string | null>(null);
   let library = $state<LibraryItem[]>([]);
   let libraryLoading = $state(true);
   let libraryError = $state<string | null>(null);
@@ -248,6 +250,20 @@
     ]);
   }
 
+  async function loadBoot() {
+    try {
+      boot = await bootSnapshot();
+      title = boot.title;
+      bootError = null;
+    } catch (e) {
+      bootError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  function retryBoot() {
+    void loadBoot();
+  }
+
   function retryDetail() {
     if (detail) void openDetail(detail, { keepNote: true });
   }
@@ -411,6 +427,10 @@
     playNote = null;
   }
 
+  function errorText(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
   function typingTarget(event: KeyboardEvent): boolean {
     const target = event.target as HTMLElement | null;
     if (!target) return false;
@@ -422,12 +442,7 @@
     // Start keyboard focus in the content, not on the window controls.
     mainEl?.focus();
     void (async () => {
-      try {
-        boot = await bootSnapshot();
-        title = boot.title;
-      } catch {
-        // Boot snapshot is informational. Shelves still load.
-      }
+      await loadBoot();
       await refreshLibrary();
       await refreshContinue();
       await refreshHistory();
@@ -516,8 +531,20 @@
         </Callout>
       {/if}
 
-      {#key detail ? `detail-${detail.id}` : view}
-        <div class="page-swap flex-1">
+      {#if bootError && !boot}
+        <div class="flex-1">
+          <FatalState
+            code="BOOT_SNAPSHOT_FAILED"
+            title="Kaminari could not start"
+            message="The app shell loaded, but the boot snapshot failed. Nothing was written or deleted. Retry the snapshot, then browse again."
+            detail={bootError}
+            onRetry={retryBoot}
+          />
+        </div>
+      {:else}
+        <svelte:boundary>
+          {#key detail ? `detail-${detail.id}` : view}
+            <div class="page-swap flex-1">
           {#if detail}
             {#if detailError}
               <div
@@ -762,8 +789,22 @@
               onOpenLicenses={() => (licensesOpen = true)}
             />
           {/if}
-        </div>
-      {/key}
+            </div>
+          {/key}
+          {#snippet failed(error, reset)}
+            <div class="flex-1">
+              <FatalState
+                code="VIEW_CRASHED"
+                title="This view crashed"
+                message="The app shell is still running. The failed view was stopped before it could spread. Reset it and keep browsing."
+                detail={errorText(error)}
+                retryLabel="Reset view"
+                onRetry={reset}
+              />
+            </div>
+          {/snippet}
+        </svelte:boundary>
+      {/if}
         <AppFooter onOpenLicenses={() => (licensesOpen = true)} />
       </div>
     </main>
