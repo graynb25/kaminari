@@ -702,7 +702,7 @@
             onAction={() => void runSearch()}
           />
         {:else}
-          <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div class="stagger-grid grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
             {#each results as item (item.id)}
               <button
                 class="poster-card group block w-full text-left"

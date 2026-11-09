@@ -208,7 +208,7 @@
           onAction={clearFilters}
         />
       {:else}
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-5">
+        <div class="stagger-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-5">
           {#each filtered as entry (entry.media.id)}
             <div>
               <PosterCard

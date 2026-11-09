@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import BrandMark from "./BrandMark.svelte";
   import Icon from "./Icon.svelte";
 
   let {
@@ -13,9 +14,7 @@
 
 <header class="titlebar" data-tauri-drag-region>
   <div class="flex items-center gap-2.5 min-w-0" data-tauri-drag-region>
-    <span class="brand-mark" aria-hidden="true">
-      <Icon name="bolt" size={14} strokeWidth={1.8} />
-    </span>
+    <BrandMark size={24} />
     <div class="flex items-baseline gap-2 min-w-0" data-tauri-drag-region>
       <span class="brand-word truncate">{title || "Kaminari"}</span>
       <span class="brand-tag hidden md:inline">ANIME DESKTOP</span>

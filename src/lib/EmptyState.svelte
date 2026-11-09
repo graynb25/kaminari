@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BrandMark from "./BrandMark.svelte";
   import Icon from "./Icon.svelte";
 
   let {
@@ -11,6 +12,7 @@
     secondaryLabel,
     onSecondary,
     compact = false,
+    mark = false,
   }: {
     icon: string;
     title: string;
@@ -21,6 +23,7 @@
     secondaryLabel?: string;
     onSecondary?: () => void;
     compact?: boolean;
+    mark?: boolean;
   } = $props();
 
   const iconMap: Record<string, string> = {
@@ -41,6 +44,11 @@
 
 <div class="empty-state {compact ? 'is-compact' : ''}">
   <div class="relative text-center max-w-md">
+    {#if mark}
+      <div class="flex justify-center mb-4">
+        <BrandMark size={48} />
+      </div>
+    {/if}
     <div class="empty-icon">
       <Icon name={iconName} size={26} strokeWidth={1.5} />
     </div>

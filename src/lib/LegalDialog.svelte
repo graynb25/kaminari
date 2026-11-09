@@ -1,6 +1,7 @@
 ﻿<script lang="ts">
   import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
+  import SegmentedControl from "./SegmentedControl.svelte";
   import terms from "../../docs/TERMS.md?raw";
   import privacy from "../../docs/PRIVACY.md?raw";
 
@@ -188,28 +189,16 @@
           Kaminari ships no content and no sources.
         </p>
       </div>
-      <div class="legal-tabs" role="tablist" aria-label="Legal documents">
-        <button
-          id="legal-tab-terms"
-          role="tab"
-          aria-controls="legal-panel"
-          aria-selected={active === "terms"}
-          class:is-active={active === "terms"}
-          onclick={() => switchDoc("terms")}
-        >
-          Terms
-        </button>
-        <button
-          id="legal-tab-privacy"
-          role="tab"
-          aria-controls="legal-panel"
-          aria-selected={active === "privacy"}
-          class:is-active={active === "privacy"}
-          onclick={() => switchDoc("privacy")}
-        >
-          Privacy
-        </button>
-      </div>
+      <SegmentedControl
+        options={[
+          { id: "terms", label: "Terms" },
+          { id: "privacy", label: "Privacy" },
+        ]}
+        value={active}
+        onChange={(id) => switchDoc(id as "terms" | "privacy")}
+        ariaLabel="Legal documents"
+        idPrefix="legal"
+      />
       <button
         bind:this={closeButton}
         class="btn-ghost px-2.5 py-1.5 text-xs"
@@ -236,36 +225,3 @@
     </div>
   </div>
 </div>
-
-<style>
-  .legal-tabs {
-    display: inline-flex;
-    gap: 2px;
-    padding: 3px;
-    border-radius: 10px;
-    background: var(--tint-1);
-    border: 1px solid var(--line);
-  }
-
-  .legal-tabs button {
-    height: 26px;
-    padding: 0 10px;
-    border-radius: 7px;
-    color: var(--text-4);
-    font-size: 11px;
-    font-weight: 650;
-    transition:
-      background var(--dur-fast) var(--ease-out),
-      color var(--dur-fast) var(--ease-out);
-  }
-
-  .legal-tabs button:hover {
-    color: var(--text-1);
-  }
-
-  .legal-tabs button.is-active {
-    background: var(--surface-1);
-    color: var(--text-1);
-    box-shadow: 0 1px 4px rgb(0 0 0 / 0.12);
-  }
-</style>

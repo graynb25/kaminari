@@ -1,5 +1,5 @@
 ﻿<script lang="ts">
-  import Icon from "./Icon.svelte";
+  import BrandMark from "./BrandMark.svelte";
   import LegalDialog from "./LegalDialog.svelte";
 
   let { onOpenLicenses }: { onOpenLicenses: () => void } = $props();
@@ -10,9 +10,7 @@
 <footer class="app-footer" aria-label="Footer">
   <div class="app-footer-inner">
     <div class="flex items-center gap-2.5 min-w-0">
-      <span class="footer-mark" aria-hidden="true">
-        <Icon name="bolt" size={13} />
-      </span>
+      <BrandMark size={28} />
       <div class="min-w-0">
         <p class="text-xs font-semibold">Kaminari</p>
         <p class="footer-copy">No content or sources are included.</p>
@@ -55,18 +53,6 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 14px 20px;
-  }
-
-  .footer-mark {
-    width: 28px;
-    height: 28px;
-    display: grid;
-    place-items: center;
-    flex-shrink: 0;
-    border-radius: 9px;
-    background: linear-gradient(180deg, var(--accent-wash-strong), var(--accent-wash));
-    border: 1px solid var(--line-volt);
-    color: var(--volt-300);
   }
 
   .footer-copy {

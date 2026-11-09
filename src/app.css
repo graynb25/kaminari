@@ -789,6 +789,49 @@ body[data-overlay] #content {
   }
 }
 
+/* Stagger grid entrance. The wrapper animates, never the card itself.
+   Delays run 22ms per item and stop at 18 so long lists stay cheap. */
+.stagger-grid > * {
+  animation: riseIn 320ms var(--ease-out) both;
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.stagger-grid > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-grid > *:nth-child(2) { animation-delay: 22ms; }
+.stagger-grid > *:nth-child(3) { animation-delay: 44ms; }
+.stagger-grid > *:nth-child(4) { animation-delay: 66ms; }
+.stagger-grid > *:nth-child(5) { animation-delay: 88ms; }
+.stagger-grid > *:nth-child(6) { animation-delay: 110ms; }
+.stagger-grid > *:nth-child(7) { animation-delay: 132ms; }
+.stagger-grid > *:nth-child(8) { animation-delay: 154ms; }
+.stagger-grid > *:nth-child(9) { animation-delay: 176ms; }
+.stagger-grid > *:nth-child(10) { animation-delay: 198ms; }
+.stagger-grid > *:nth-child(11) { animation-delay: 220ms; }
+.stagger-grid > *:nth-child(12) { animation-delay: 242ms; }
+.stagger-grid > *:nth-child(13) { animation-delay: 264ms; }
+.stagger-grid > *:nth-child(14) { animation-delay: 286ms; }
+.stagger-grid > *:nth-child(15) { animation-delay: 308ms; }
+.stagger-grid > *:nth-child(16) { animation-delay: 330ms; }
+.stagger-grid > *:nth-child(17) { animation-delay: 352ms; }
+.stagger-grid > *:nth-child(18) { animation-delay: 374ms; }
+.stagger-grid > *:nth-child(n + 19) { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .stagger-grid > * {
+    animation: none !important;
+  }
+}
+
 /* Title bar */
 .titlebar {
   position: relative;
@@ -805,18 +848,6 @@ body[data-overlay] #content {
   backdrop-filter: blur(18px) saturate(150%);
   -webkit-backdrop-filter: blur(18px) saturate(150%);
   box-shadow: inset 0 1px 0 var(--inset-top);
-}
-
-.brand-mark {
-  width: 24px;
-  height: 24px;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  background: linear-gradient(180deg, var(--accent-line), var(--accent-wash));
-  border: 1px solid var(--line-volt);
-  color: var(--volt-300);
-  box-shadow: 0 0 18px var(--accent-shadow);
 }
 
 .brand-word {

@@ -520,7 +520,7 @@
         <h2 class="shelf-title">Installed</h2>
         <span class="shelf-count">{installed.length}</span>
       </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+      <div class="stagger-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {#each installed as entry (entry.id)}
           <article class="surface surface-hover p-4 flex items-start gap-3" style="opacity: {entry.enabled ? 1 : 0.62};">
             <div class="source-tile" aria-hidden="true">{initial(entry.name)}</div>
@@ -616,7 +616,7 @@
         <button class="btn-ghost px-3 py-1.5 text-xs shrink-0" onclick={() => (filter = "")}>Clear</button>
       </div>
     {:else}
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+      <div class="stagger-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {#each shown as entry (entry.pkg)}
           {@const added = installedIds.has(entry.pkg)}
           {@const name = shortName(entry.name)}

@@ -1,5 +1,6 @@
 ﻿<script lang="ts">
   import { onMount } from "svelte";
+  import BrandMark from "./BrandMark.svelte";
   import Icon from "./Icon.svelte";
   import PageHeader from "./PageHeader.svelte";
   import { playerStatus, proxyStatus } from "./api";
@@ -171,6 +172,24 @@
         {/each}
       </div>
     </div>
+    <div class="theme-preview" aria-hidden="true">
+      <div class="theme-mini">
+        <p class="theme-mini-label">Storm</p>
+        <div class="theme-mini-swatches">
+          <span class="theme-swatch is-a"></span>
+          <span class="theme-swatch is-b"></span>
+          <span class="theme-swatch is-c"></span>
+        </div>
+      </div>
+      <div class="theme-mini">
+        <p class="theme-mini-label">Daylight</p>
+        <div class="theme-mini-swatches">
+          <span class="theme-swatch is-c"></span>
+          <span class="theme-swatch is-b"></span>
+          <span class="theme-swatch is-a"></span>
+        </div>
+      </div>
+    </div>
   </section>
 
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
@@ -298,6 +317,19 @@
       View licenses
     </button>
   </div>
+
+  <div class="surface p-5 mt-4 flex flex-wrap items-center gap-4" aria-label="About Kaminari">
+    <BrandMark size={48} />
+    <div class="min-w-0 flex-1">
+      <p class="text-sm font-semibold">Kaminari {__APP_VERSION__}</p>
+      <p class="text-xs mt-0.5" style="color: var(--paper-400);">
+        Anime desktop. Tauri 2, Svelte 5 Runes, QuickJS host, local SQLite library.
+      </p>
+    </div>
+    <span class="chip text-[10px] px-2.5 py-1" style="font-family: var(--font-mono);">
+      {__APP_VERSION__}
+    </span>
+  </div>
 </div>
 
 <style>
@@ -356,5 +388,57 @@
   .theme-option.is-active .theme-option-icon {
     background: var(--accent-wash-strong);
     color: var(--volt-300);
+  }
+
+  .theme-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .theme-mini {
+    flex: 1 1 180px;
+    min-width: 0;
+    padding: 10px 11px 11px;
+    border-radius: 13px;
+    background: var(--well-bg);
+    border: 1px solid var(--line);
+  }
+
+  .theme-mini-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-4);
+  }
+
+  .theme-mini-swatches {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .theme-swatch {
+    flex: 1;
+    aspect-ratio: 2 / 3;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+  }
+
+  .theme-swatch.is-a {
+    background:
+      radial-gradient(circle at 30% 20%, var(--accent-wash-strong), transparent 60%),
+      var(--void-800);
+  }
+
+  .theme-swatch.is-b {
+    background: var(--void-700);
+  }
+
+  .theme-swatch.is-c {
+    background:
+      linear-gradient(180deg, var(--accent-wash-strong), var(--accent-wash-faint));
   }
 </style>
