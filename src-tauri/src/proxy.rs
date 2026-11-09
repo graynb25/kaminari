@@ -31,6 +31,7 @@ pub const MAX_HEADERS: usize = 16;
 pub const MAX_HEADER_BYTES: usize = 8 * 1024;
 pub const MAX_CHILDREN: usize = 256;
 pub const MAX_PLAYLIST_BYTES: usize = 2 * 1024 * 1024;
+pub const MAX_PLAYLIST_DEPTH: u8 = 4;
 pub const MAX_KEY_BYTES: usize = 64 * 1024;
 pub const MAX_SUBTITLE_BYTES: usize = 512 * 1024;
 pub const MAX_RANGE_SKIP: u64 = 16 * 1024 * 1024;
@@ -110,6 +111,7 @@ struct ChildEntry {
     content_type: Option<String>,
     byte_range: Option<String>,
     kind: ChildKind,
+    depth: u8,
     last_used: Instant,
 }
 
@@ -119,6 +121,7 @@ struct ChildSpec {
     content_type: Option<String>,
     byte_range: Option<String>,
     kind: ChildKind,
+    depth: u8,
 }
 
 #[derive(Clone)]
@@ -158,7 +161,8 @@ enum LookupError {
 enum ProxyError {
     Upstream(&'static str),
     Timeout,
-    MasterPlaylist,
+    PlaylistDepth,
+    ChildNotAllowed,
     Oversized(&'static str),
     BadPlaylist,
 }
@@ -189,6 +193,12 @@ enum PlaylistLine {
 struct ParsedPlaylist {
     lines: Vec<PlaylistLine>,
     specs: Vec<ChildSpec>,
+}
+
+#[derive(Clone, Copy)]
+struct PlaylistOrigin<'a> {
+    base: &'a Url,
+    depth: u8,
 }
 
 impl ProxyStore {
@@ -460,6 +470,7 @@ impl ProxyStore {
                 }
                 child.byte_range = spec.byte_range.clone();
                 child.kind = spec.kind;
+                child.depth = spec.depth;
                 child.last_used = now;
                 ids.push(child.child_id.clone());
                 continue;
@@ -488,6 +499,7 @@ impl ProxyStore {
                     content_type: spec.content_type.clone(),
                     byte_range: spec.byte_range.clone(),
                     kind: spec.kind,
+                    depth: spec.depth,
                     last_used: now,
                 },
             );
@@ -669,13 +681,13 @@ async fn manifest_handler(
         return proxy_error_response(ProxyError::BadPlaylist);
     }
     let text = String::from_utf8_lossy(&body);
-    if is_master_playlist(&text) {
-        return proxy_error_response(ProxyError::MasterPlaylist);
-    }
-    let parsed = match parse_media_playlist(&final_url, &text) {
+    let parsed = match parse_playlist(&final_url, &text, 0) {
         Ok(parsed) => parsed,
         Err(err) => return proxy_error_response(err),
     };
+    if let Err(err) = check_specs_allowed(&entry, &parsed.specs) {
+        return proxy_error_response(err);
+    }
     let child_ids = match store.reconcile_children(&id, &parsed.specs) {
         Ok(ids) => ids,
         Err(err) => return proxy_error_response(err),
@@ -734,6 +746,9 @@ async fn playlist_child_response(
     child: &ChildEntry,
     method: &Method,
 ) -> Response {
+    if child.kind == ChildKind::Playlist && child.depth > MAX_PLAYLIST_DEPTH {
+        return proxy_error_response(ProxyError::PlaylistDepth);
+    }
     let cap = if child.kind == ChildKind::Subtitle {
         MAX_SUBTITLE_BYTES
     } else {
@@ -765,14 +780,17 @@ async fn playlist_child_response(
     if !is_playlist {
         return proxy_error_response(ProxyError::BadPlaylist);
     }
-    let text = String::from_utf8_lossy(&body);
-    if is_master_playlist(&text) {
-        return proxy_error_response(ProxyError::MasterPlaylist);
+    if child.depth > MAX_PLAYLIST_DEPTH {
+        return proxy_error_response(ProxyError::PlaylistDepth);
     }
-    let parsed = match parse_media_playlist(&final_url, &text) {
+    let text = String::from_utf8_lossy(&body);
+    let parsed = match parse_playlist(&final_url, &text, child.depth) {
         Ok(parsed) => parsed,
         Err(err) => return proxy_error_response(err),
     };
+    if let Err(err) = check_specs_allowed(entry, &parsed.specs) {
+        return proxy_error_response(err);
+    }
     let child_ids = match store.reconcile_children(&entry.opaque_id, &parsed.specs) {
         Ok(ids) => ids,
         Err(err) => return proxy_error_response(err),
@@ -1135,9 +1153,8 @@ fn relay(upstream: reqwest::Response, status: StatusCode, method: &Method) -> Re
 fn proxy_error_response(error: ProxyError) -> Response {
     match error {
         ProxyError::Timeout => short(StatusCode::GATEWAY_TIMEOUT, "timeout"),
-        ProxyError::MasterPlaylist => {
-            short(StatusCode::NOT_IMPLEMENTED, "master-playlist-unsupported")
-        }
+        ProxyError::PlaylistDepth => short(StatusCode::BAD_GATEWAY, "playlist-depth"),
+        ProxyError::ChildNotAllowed => short(StatusCode::BAD_GATEWAY, "child-not-allowed"),
         ProxyError::Oversized(reason) => (StatusCode::BAD_GATEWAY, reason).into_response(),
         ProxyError::BadPlaylist => short(StatusCode::BAD_GATEWAY, "not-a-playlist"),
         ProxyError::Upstream(reason) => {
@@ -1210,20 +1227,19 @@ fn looks_like_playlist(body: &[u8]) -> bool {
         .starts_with("#EXTM3U")
 }
 
-fn is_master_playlist(text: &str) -> bool {
-    text.lines().any(|line| {
-        let line = line.trim();
-        line.starts_with("#EXT-X-STREAM-INF") || line.starts_with("#EXT-X-I-FRAME-STREAM-INF")
-    })
-}
-
-fn parse_media_playlist(base: &Url, text: &str) -> Result<ParsedPlaylist, ProxyError> {
+fn parse_playlist(base: &Url, text: &str, depth: u8) -> Result<ParsedPlaylist, ProxyError> {
     let mut lines = Vec::new();
     let mut specs = Vec::new();
     let mut defines: HashMap<String, String> = HashMap::new();
     let mut pending_range: Option<String> = None;
     let mut next_offset = 0u64;
     let mut count = 0usize;
+    let mut pending_variant = false;
+    let child_depth = depth.saturating_add(1);
+    let origin = PlaylistOrigin {
+        base,
+        depth: child_depth,
+    };
 
     for raw in text.lines() {
         count += 1;
@@ -1235,8 +1251,64 @@ fn parse_media_playlist(base: &Url, text: &str) -> Result<ParsedPlaylist, ProxyE
             lines.push(PlaylistLine::Text(String::new()));
             continue;
         }
-        if line.starts_with("#EXT-X-STREAM-INF") || line.starts_with("#EXT-X-I-FRAME-STREAM-INF") {
-            return Err(ProxyError::MasterPlaylist);
+        if pending_variant && !line.starts_with('#') {
+            pending_variant = false;
+            let Some(uri) = substitute_defines(line, &defines) else {
+                tracing::debug!(
+                    tag = "stream-inf",
+                    "proxy: dropped a variant URI with an undefined variable"
+                );
+                continue;
+            };
+            let Some(resolved) = resolve_playlist_url(base, &uri) else {
+                tracing::debug!(tag = "stream-inf", "proxy: dropped a malformed variant URI");
+                continue;
+            };
+            let spec = ChildSpec {
+                upstream_url: resolved.to_string(),
+                content_type: ChildKind::Playlist
+                    .default_content_type()
+                    .map(str::to_string),
+                byte_range: None,
+                kind: ChildKind::Playlist,
+                depth: child_depth,
+            };
+            let index = specs.len();
+            specs.push(spec);
+            lines.push(PlaylistLine::Segment { spec: index });
+            continue;
+        }
+        if line.starts_with("#EXT-X-STREAM-INF") {
+            pending_range = None;
+            if find_attr(line, "URI").is_some() {
+                pending_variant = false;
+                push_uri_tag(
+                    line,
+                    ChildKind::Playlist,
+                    None,
+                    &defines,
+                    origin,
+                    &mut lines,
+                    &mut specs,
+                );
+            } else {
+                lines.push(PlaylistLine::Text(line.to_string()));
+                pending_variant = true;
+            }
+            continue;
+        }
+        if line.starts_with("#EXT-X-I-FRAME-STREAM-INF") {
+            pending_range = None;
+            push_uri_tag(
+                line,
+                ChildKind::Playlist,
+                None,
+                &defines,
+                origin,
+                &mut lines,
+                &mut specs,
+            );
+            continue;
         }
         if line.starts_with("#EXT-X-DEFINE") {
             if has_attr(line, "IMPORT") {
@@ -1267,7 +1339,7 @@ fn parse_media_playlist(base: &Url, text: &str) -> Result<ParsedPlaylist, ProxyE
                     ChildKind::Key,
                     None,
                     &defines,
-                    base,
+                    origin,
                     &mut lines,
                     &mut specs,
                 );
@@ -1283,7 +1355,7 @@ fn parse_media_playlist(base: &Url, text: &str) -> Result<ParsedPlaylist, ProxyE
                 ChildKind::Map,
                 range,
                 &defines,
-                base,
+                origin,
                 &mut lines,
                 &mut specs,
             );
@@ -1294,7 +1366,7 @@ fn parse_media_playlist(base: &Url, text: &str) -> Result<ParsedPlaylist, ProxyE
                 Some(kind) if kind.eq_ignore_ascii_case("SUBTITLES") => ChildKind::Subtitle,
                 _ => ChildKind::Playlist,
             };
-            push_uri_tag(line, kind, None, &defines, base, &mut lines, &mut specs);
+            push_uri_tag(line, kind, None, &defines, origin, &mut lines, &mut specs);
             continue;
         }
         if line.starts_with("#EXT-X-SESSION-DATA") {
@@ -1303,7 +1375,7 @@ fn parse_media_playlist(base: &Url, text: &str) -> Result<ParsedPlaylist, ProxyE
                 ChildKind::File,
                 None,
                 &defines,
-                base,
+                origin,
                 &mut lines,
                 &mut specs,
             );
@@ -1318,7 +1390,7 @@ fn parse_media_playlist(base: &Url, text: &str) -> Result<ParsedPlaylist, ProxyE
                 ChildKind::Segment,
                 range,
                 &defines,
-                base,
+                origin,
                 &mut lines,
                 &mut specs,
             );
@@ -1330,7 +1402,7 @@ fn parse_media_playlist(base: &Url, text: &str) -> Result<ParsedPlaylist, ProxyE
                 ChildKind::Segment,
                 None,
                 &defines,
-                base,
+                origin,
                 &mut lines,
                 &mut specs,
             );
@@ -1357,6 +1429,7 @@ fn parse_media_playlist(base: &Url, text: &str) -> Result<ParsedPlaylist, ProxyE
             content_type: None,
             byte_range: pending_range.take(),
             kind: ChildKind::Segment,
+            depth: child_depth,
         };
         let index = specs.len();
         specs.push(spec);
@@ -1364,6 +1437,22 @@ fn parse_media_playlist(base: &Url, text: &str) -> Result<ParsedPlaylist, ProxyE
     }
 
     Ok(ParsedPlaylist { lines, specs })
+}
+
+fn check_specs_allowed(entry: &ProxyEntry, specs: &[ChildSpec]) -> Result<(), ProxyError> {
+    let Some(rules) = entry.allowed.as_ref() else {
+        return Ok(());
+    };
+    for spec in specs {
+        let Ok(url) = Url::parse(&spec.upstream_url) else {
+            return Err(ProxyError::ChildNotAllowed);
+        };
+        if !rules.iter().any(|rule| rule.allows(&url)) {
+            tracing::debug!(host = %url.host_str().unwrap_or(""), "proxy: child is not allowlisted");
+            return Err(ProxyError::ChildNotAllowed);
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -1450,7 +1539,7 @@ fn push_uri_tag(
     kind: ChildKind,
     byte_range: Option<String>,
     defines: &HashMap<String, String>,
-    base: &Url,
+    origin: PlaylistOrigin<'_>,
     lines: &mut Vec<PlaylistLine>,
     specs: &mut Vec<ChildSpec>,
 ) {
@@ -1462,7 +1551,7 @@ fn push_uri_tag(
         tracing::debug!(tag = %tag_name(line), "proxy: dropped a playlist URI with an undefined variable");
         return;
     };
-    let Some(resolved) = resolve_playlist_url(base, &uri) else {
+    let Some(resolved) = resolve_playlist_url(origin.base, &uri) else {
         tracing::debug!(tag = %tag_name(line), "proxy: dropped a malformed playlist URI");
         return;
     };
@@ -1471,6 +1560,7 @@ fn push_uri_tag(
         content_type: kind.default_content_type().map(str::to_string),
         byte_range,
         kind,
+        depth: origin.depth,
     };
     let index = specs.len();
     specs.push(spec);
@@ -1935,6 +2025,21 @@ mod tests {
         )
     }
 
+    async fn deep_playlist(Path(n): Path<u8>) -> ([(header::HeaderName, &'static str); 1], String) {
+        let body = if n < 6 {
+            format!(
+                "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=100000\n../{}/master.m3u8\n",
+                n + 1
+            )
+        } else {
+            "#EXTM3U\n#EXT-X-ENDLIST\n".to_string()
+        };
+        (
+            [(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")],
+            body,
+        )
+    }
+
     async fn hls_fixture() -> HlsFixture {
         const MEDIA_PLAYLIST: &str = "#EXTM3U\n\
 #EXT-X-VERSION:7\n\
@@ -1965,8 +2070,36 @@ seg1.ts\n\
 seg1.ts\n\
 #EXT-X-ENDLIST\n";
         const MASTER_PLAYLIST: &str = "#EXTM3U\n\
-#EXT-X-STREAM-INF:BANDWIDTH=1280000\n\
-low.m3u8\n";
+#EXT-X-VERSION:7\n\
+#EXT-X-DEFINE:NAME=\"dir\",VALUE=\"low\"\n\
+#EXT-X-SESSION-KEY:METHOD=AES-128,URI=\"key.bin?auth=1\",IV=0x0123456789abcdef0123456789abcdef\n\
+#EXT-X-SESSION-DATA:DATA-ID=\"com.example.title\",VALUE=\"Example\"\n\
+#EXT-X-SESSION-DATA:DATA-ID=\"com.example.meta\",URI=\"meta.json\"\n\
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"English\",URI=\"audio.m3u8?lang=en\"\n\
+#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subs\",NAME=\"English\",URI=\"subs.vtt\"\n\
+#EXT-X-STREAM-INF:BANDWIDTH=1280000,AUDIO=\"aud\",SUBTITLES=\"subs\"\n\
+{$dir}.m3u8?auth=1\n\
+#EXT-X-STREAM-INF:BANDWIDTH=2560000,AUDIO=\"aud\",SUBTITLES=\"subs\",URI=\"high.m3u8\"\n\
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=100000,URI=\"iframe.m3u8\"\n";
+        const HIGH_PLAYLIST: &str = "#EXTM3U\n\
+#EXT-X-TARGETDURATION:4\n\
+seg/seg2.ts\n\
+#EXT-X-ENDLIST\n";
+        const AUDIO_PLAYLIST: &str = "#EXTM3U\n\
+#EXT-X-TARGETDURATION:4\n\
+seg/seg2.ts\n\
+#EXT-X-ENDLIST\n";
+        const IFRAME_PLAYLIST: &str = "#EXTM3U\n\
+#EXT-X-TARGETDURATION:4\n\
+seg1.ts\n\
+#EXT-X-ENDLIST\n";
+        const IFRAME_MASTER_PLAYLIST: &str = "#EXTM3U\n\
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=100000,URI=\"iframe.m3u8\"\n";
+        const NESTED_BASE_PLAYLIST: &str = "#EXTM3U\n\
+#EXT-X-TARGETDURATION:4\n\
+#EXT-X-BYTERANGE:300@0\n\
+seg1.ts\n\
+#EXT-X-ENDLIST\n";
         const BIG_KEY_PLAYLIST: &str = "#EXTM3U\n\
 #EXT-X-TARGETDURATION:4\n\
 #EXT-X-KEY:METHOD=AES-128,URI=\"bigkey.bin\"\n\
@@ -2033,6 +2166,25 @@ seg1.ts\n\
                 vec![b'a'; MAX_SUBTITLE_BYTES + 1],
             )
         };
+        let subtitle = || async {
+            (
+                [(header::CONTENT_TYPE, "text/vtt".to_string())],
+                "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nHello\n",
+            )
+        };
+        let session_data = || async {
+            (
+                [(header::CONTENT_TYPE, "application/json".to_string())],
+                r#"{"title":"Example"}"#,
+            )
+        };
+        let redirect_nested = || async {
+            (
+                StatusCode::FOUND,
+                [(header::LOCATION, "/hls/nested/base.m3u8".to_string())],
+                Vec::<u8>::new(),
+            )
+        };
 
         let seg1_body = Arc::new(
             (0..2000)
@@ -2083,6 +2235,22 @@ seg1.ts\n\
                 test_get(playlist(SHARED_RANGE_PLAYLIST)),
             )
             .route("/hls/master.m3u8", test_get(playlist(MASTER_PLAYLIST)))
+            .route("/hls/low.m3u8", test_get(playlist(MEDIA_PLAYLIST)))
+            .route("/hls/high.m3u8", test_get(playlist(HIGH_PLAYLIST)))
+            .route("/hls/audio.m3u8", test_get(playlist(AUDIO_PLAYLIST)))
+            .route("/hls/iframe.m3u8", test_get(playlist(IFRAME_PLAYLIST)))
+            .route(
+                "/hls/iframe-master.m3u8",
+                test_get(playlist(IFRAME_MASTER_PLAYLIST)),
+            )
+            .route("/hls/subs.vtt", test_get(subtitle))
+            .route("/hls/meta.json", test_get(session_data))
+            .route("/hls/redirect.m3u8", test_get(redirect_nested))
+            .route(
+                "/hls/nested/base.m3u8",
+                test_get(playlist(NESTED_BASE_PLAYLIST)),
+            )
+            .route("/hls/deep/{n}/master.m3u8", test_get(deep_playlist))
             .route("/hls/large.m3u8", test_get(large_playlist))
             .route("/hls/bigkey.m3u8", test_get(playlist(BIG_KEY_PLAYLIST)))
             .route(
@@ -2092,7 +2260,8 @@ seg1.ts\n\
             .route("/hls/key.bin", test_get(key))
             .route("/hls/bigkey.bin", test_get(big_key))
             .route("/hls/bigsubs.vtt", test_get(big_subtitle))
-            .route("/hls/seg1.ts", test_get(seg1.clone()).head(seg1))
+            .route("/hls/seg1.ts", test_get(seg1.clone()).head(seg1.clone()))
+            .route("/hls/nested/seg1.ts", test_get(seg1.clone()).head(seg1))
             .route("/hls/seg/seg2.ts", test_get(seg2.clone()).head(seg2))
             .route("/hls/init.mp4", test_get(init.clone()).head(init))
             .layer(middleware::from_fn_with_state(seen.clone(), record_hls));
@@ -2765,7 +2934,106 @@ seg1.ts\n\
     }
 
     #[tokio::test]
-    async fn hls_master_playlist_is_rejected() {
+    async fn hls_master_playlist_rewrites_variants_audio_and_subtitles() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/master.m3u8", fixture.base),
+                "hls",
+                Some(headers()),
+            )
+            .await
+            .unwrap();
+        let client = reqwest::Client::new();
+
+        let response = client
+            .get(hls_proxy_url(&base, &registered))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).unwrap(),
+            PLAYLIST_CONTENT_TYPE
+        );
+        assert_eq!(
+            response.headers().get(header::CACHE_CONTROL).unwrap(),
+            "no-store"
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .unwrap(),
+            "*"
+        );
+        let text = response.text().await.unwrap();
+
+        assert!(!text.contains(&fixture.base), "{text}");
+        assert!(!text.contains("https://"), "{text}");
+        for name in ["low.m3u8", "high.m3u8", "audio.m3u8", "subs.vtt"] {
+            assert!(!text.contains(name), "{name}: {text}");
+        }
+        assert!(
+            text.contains("#EXT-X-STREAM-INF:BANDWIDTH=1280000"),
+            "{text}"
+        );
+        assert!(
+            text.contains("#EXT-X-STREAM-INF:BANDWIDTH=2560000"),
+            "{text}"
+        );
+        assert!(text.contains("#EXT-X-MEDIA:TYPE=AUDIO"), "{text}");
+        assert!(text.contains("#EXT-X-MEDIA:TYPE=SUBTITLES"), "{text}");
+        assert_eq!(text.matches("/s/").count(), 7, "{text}");
+
+        let low_path = seg_paths(&text).first().unwrap().clone();
+        let low = client
+            .get(format!("{base}{low_path}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(low.status(), StatusCode::OK);
+        let low_text = low.text().await.unwrap();
+        assert!(low_text.contains("#EXT-X-KEY"), "{low_text}");
+        assert!(!low_text.contains("seg1.ts"), "{low_text}");
+        assert!(
+            fixture.seen_for("/hls/low.m3u8?auth=1").is_some(),
+            "the variant query was not preserved"
+        );
+
+        let audio_line = text
+            .lines()
+            .find(|line| line.starts_with("#EXT-X-MEDIA:TYPE=AUDIO"))
+            .unwrap();
+        let audio_path = child_path_from_line(audio_line).unwrap();
+        let audio = client
+            .get(format!("{base}{audio_path}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(audio.status(), StatusCode::OK);
+        assert!(audio.text().await.unwrap().contains("/seg/"));
+        assert!(fixture.seen_for("/hls/audio.m3u8?lang=en").is_some());
+
+        let subtitle_line = text
+            .lines()
+            .find(|line| line.starts_with("#EXT-X-MEDIA:TYPE=SUBTITLES"))
+            .unwrap();
+        let subtitle_path = child_path_from_line(subtitle_line).unwrap();
+        let subtitle = client
+            .get(format!("{base}{subtitle_path}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(subtitle.status(), StatusCode::OK);
+        assert!(subtitle.text().await.unwrap().contains("WEBVTT"));
+        assert!(fixture.seen_for("/hls/subs.vtt").is_some());
+    }
+
+    #[tokio::test]
+    async fn hls_variant_request_is_rewritten_as_a_media_playlist() {
         let fixture = hls_fixture().await;
         let (store, base, _handle) = proxy().await;
         let registered = store
@@ -2777,16 +3045,229 @@ seg1.ts\n\
             )
             .await
             .unwrap();
+        let client = reqwest::Client::new();
 
-        let response = reqwest::Client::new()
+        let master = client
             .get(hls_proxy_url(&base, &registered))
             .send()
             .await
+            .unwrap()
+            .text()
+            .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        let high_line = master
+            .lines()
+            .find(|line| line.starts_with("#EXT-X-STREAM-INF") && line.contains("URI="))
+            .unwrap();
+        let high_path = child_path_from_line(high_line).unwrap();
+
+        let variant = client
+            .get(format!("{base}{high_path}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(variant.status(), StatusCode::OK);
         assert_eq!(
-            response.text().await.unwrap(),
-            "master-playlist-unsupported"
+            variant.headers().get(header::CONTENT_TYPE).unwrap(),
+            PLAYLIST_CONTENT_TYPE
+        );
+        let variant_text = variant.text().await.unwrap();
+        assert!(!variant_text.contains("seg/seg2.ts"), "{variant_text}");
+        assert!(!variant_text.contains("https://"), "{variant_text}");
+        let segments = seg_paths(&variant_text);
+        assert_eq!(segments.len(), 1, "{variant_text}");
+
+        let segment = client
+            .get(format!("{base}{}", segments[0]))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(segment.status(), StatusCode::OK);
+        assert_eq!(segment.bytes().await.unwrap().len(), 2000);
+        assert!(fixture.seen_for("/hls/seg/seg2.ts").is_some());
+    }
+
+    #[tokio::test]
+    async fn hls_iframe_variant_is_rewritten() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/iframe-master.m3u8", fixture.base),
+                "hls",
+                None,
+            )
+            .await
+            .unwrap();
+        let client = reqwest::Client::new();
+
+        let master = client
+            .get(hls_proxy_url(&base, &registered))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        let iframe_line = master
+            .lines()
+            .find(|line| line.starts_with("#EXT-X-I-FRAME-STREAM-INF"))
+            .unwrap();
+        assert!(iframe_line.contains("/s/"), "{iframe_line}");
+        let iframe_path = child_path_from_line(iframe_line).unwrap();
+
+        let iframe = client
+            .get(format!("{base}{iframe_path}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(iframe.status(), StatusCode::OK);
+        let iframe_text = iframe.text().await.unwrap();
+        assert_eq!(seg_paths(&iframe_text).len(), 1, "{iframe_text}");
+        assert!(fixture.seen_for("/hls/iframe.m3u8").is_some());
+    }
+
+    #[tokio::test]
+    async fn hls_session_key_and_data_are_rewritten() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/master.m3u8", fixture.base),
+                "hls",
+                None,
+            )
+            .await
+            .unwrap();
+        let client = reqwest::Client::new();
+
+        let master = client
+            .get(hls_proxy_url(&base, &registered))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+
+        let key_line = master
+            .lines()
+            .find(|line| line.starts_with("#EXT-X-SESSION-KEY"))
+            .unwrap();
+        assert!(key_line.contains("/s/"), "{key_line}");
+        assert!(
+            key_line.contains("IV=0x0123456789abcdef0123456789abcdef"),
+            "{key_line}"
+        );
+        let key_path = child_path_from_line(key_line).unwrap();
+        let key = client
+            .get(format!("{base}{key_path}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(key.status(), StatusCode::OK);
+        assert_eq!(key.bytes().await.unwrap().as_ref(), &[0x42u8; 16]);
+        assert!(fixture.seen_for("/hls/key.bin?auth=1").is_some());
+
+        let value_line = master
+            .lines()
+            .find(|line| line.contains("DATA-ID=\"com.example.title\""))
+            .unwrap();
+        assert!(
+            value_line.starts_with("#EXT-X-SESSION-DATA") && !value_line.contains("URI="),
+            "{value_line}"
+        );
+
+        let data_line = master
+            .lines()
+            .find(|line| line.contains("DATA-ID=\"com.example.meta\""))
+            .unwrap();
+        assert!(data_line.contains("/s/"), "{data_line}");
+        let data_path = child_path_from_line(data_line).unwrap();
+        let data = client
+            .get(format!("{base}{data_path}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(data.status(), StatusCode::OK);
+        assert!(data.text().await.unwrap().contains("Example"));
+        assert!(fixture.seen_for("/hls/meta.json").is_some());
+    }
+
+    #[tokio::test]
+    async fn hls_nested_master_depth_is_capped() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/deep/0/master.m3u8", fixture.base),
+                "hls",
+                None,
+            )
+            .await
+            .unwrap();
+        let client = reqwest::Client::new();
+
+        let mut path = hls_proxy_url(&base, &registered);
+        for depth in 0..=MAX_PLAYLIST_DEPTH {
+            let response = client.get(path).send().await.unwrap();
+            let status = response.status();
+            let text = response.text().await.unwrap();
+            assert_eq!(status, StatusCode::OK, "depth {depth}: {text}");
+            let next = seg_paths(&text);
+            assert_eq!(next.len(), 1, "depth {depth}: {text}");
+            path = format!("{base}{}", next[0]);
+        }
+
+        let response = client.get(path).send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        assert_eq!(response.text().await.unwrap(), "playlist-depth");
+    }
+
+    #[tokio::test]
+    async fn hls_redirect_resolves_children_against_the_final_url() {
+        let fixture = hls_fixture().await;
+        let (store, base, _handle) = proxy().await;
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                &format!("{}/hls/redirect.m3u8", fixture.base),
+                "hls",
+                None,
+            )
+            .await
+            .unwrap();
+        let client = reqwest::Client::new();
+
+        let manifest = client
+            .get(hls_proxy_url(&base, &registered))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        assert!(manifest.contains("#EXT-X-BYTERANGE:300@0"), "{manifest}");
+        let segments = seg_paths(&manifest);
+        assert_eq!(segments.len(), 1, "{manifest}");
+
+        let response = client
+            .get(format!("{base}{}", segments[0]))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(response.bytes().await.unwrap().len(), 300);
+        assert!(
+            fixture.seen_for("/hls/nested/seg1.ts").is_some(),
+            "the child did not resolve against the redirect target"
+        );
+        assert!(
+            fixture.seen_for("/hls/seg1.ts").is_none(),
+            "the child resolved against the pre redirect URL"
         );
     }
 
@@ -3006,6 +3487,7 @@ seg1.ts\n\
                 content_type: None,
                 byte_range: None,
                 kind: ChildKind::Segment,
+                depth: 1,
             })
             .collect::<Vec<_>>();
         let first = store
@@ -3033,6 +3515,7 @@ seg1.ts\n\
             content_type: None,
             byte_range: None,
             kind: ChildKind::Segment,
+            depth: 1,
         };
         let ids = store
             .reconcile_children(&registered.opaque_id, &[duplicate.clone(), duplicate])
@@ -3045,6 +3528,7 @@ seg1.ts\n\
                 content_type: None,
                 byte_range: None,
                 kind: ChildKind::Segment,
+                depth: 1,
             })
             .collect::<Vec<_>>();
         let ids = store
@@ -3073,7 +3557,7 @@ seg1.ts\n\
 #EXT-X-SESSION-KEY:METHOD=AES-128,URI=\"key.bin\",IV=0xABCD\n\
 #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"a\",NAME=\"en\",URI=\"audio.m3u8\"\n\
 {$dir}/1.ts?token=abc\n";
-        let parsed = parse_media_playlist(&base, text).unwrap();
+        let parsed = parse_playlist(&base, text, 0).unwrap();
         assert_eq!(parsed.specs.len(), 3);
         assert_eq!(
             parsed.specs[0].upstream_url,
@@ -3106,6 +3590,38 @@ seg1.ts\n\
             "{rendered}"
         );
         assert_eq!(rendered.matches("/s/opaque/seg/").count(), 3);
+    }
+
+    #[test]
+    fn cross_origin_children_must_be_in_the_manifest_allowlist() {
+        let base = Url::parse("https://origin.example/hls/master.m3u8").unwrap();
+        let text = "#EXTM3U\n\
+#EXT-X-STREAM-INF:BANDWIDTH=1\n\
+https://cdn.example/hls/low.m3u8\n\
+#EXT-X-STREAM-INF:BANDWIDTH=2\n\
+https://other.example/hls/high.m3u8\n";
+        let parsed = parse_playlist(&base, text, 0).unwrap();
+        assert_eq!(parsed.specs.len(), 2);
+        assert_eq!(parsed.specs[0].depth, 1);
+        assert_eq!(parsed.specs[1].depth, 1);
+
+        let mut entry = test_entry();
+        entry.allowed = Some(vec![HostRule::parse("https://cdn.example/*").unwrap()]);
+        assert!(check_specs_allowed(&entry, &parsed.specs[..1]).is_ok());
+        assert!(matches!(
+            check_specs_allowed(&entry, &parsed.specs[1..]),
+            Err(ProxyError::ChildNotAllowed)
+        ));
+        assert!(matches!(
+            check_specs_allowed(&entry, &parsed.specs),
+            Err(ProxyError::ChildNotAllowed)
+        ));
+
+        entry.allowed = Some(Vec::new());
+        assert!(matches!(
+            check_specs_allowed(&entry, &parsed.specs[..1]),
+            Err(ProxyError::ChildNotAllowed)
+        ));
     }
 
     fn test_entry() -> ProxyEntry {
