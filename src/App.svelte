@@ -463,7 +463,7 @@
   $effect(() => {
     const onKey = (event: KeyboardEvent) => {
       const overlayOpen = Boolean(document.body.dataset.overlay);
-      if (document.body.dataset.playerOpen === "true" || (overlayOpen && !paletteOpen)) return;
+      if (document.body.dataset.playerOpen === "true" || overlayOpen) return;
       const mod = event.ctrlKey || event.metaKey;
       if (mod && event.key.toLowerCase() === "k") {
         event.preventDefault();
