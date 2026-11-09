@@ -4,6 +4,16 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.14.0 - 2026-11-08
+
+- Player: HLS master playlists, variant switching, audio and subtitle groups, session keys and data
+- Proxy: every child URL is checked against the extension host allowlist, with a depth cap of 4
+- UI: BrandMark across the title bar, footer, empty state and Settings
+- UI: staggered library and source grids, with wrappers that keep hover and disabled opacity
+- UI: compact static Storm and Daylight theme preview
+- UI: accessible SegmentedControl with Arrow, Home and End focus, used for legal tabs
+- Version: bump to 0.14.0
+
 ## 0.13.0 - 2026-11-08
 
 - Player: HLS media playlists and segments proxy through loopback, including keys, init maps and byte ranges

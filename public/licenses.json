@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-11-09",
-  "appVersion": "0.13.0",
+  "appVersion": "0.14.0",
   "platform": "x86_64-pc-windows-msvc",
   "summary": {
     "packages": 437,
@@ -17,7 +17,7 @@
           "key": "bundled:Kaminari::MIT",
           "name": "Kaminari",
           "versions": [
-            "0.13.0"
+            "0.14.0"
           ],
           "license": "MIT",
           "source": "https://github.com/graynb25/kaminari"

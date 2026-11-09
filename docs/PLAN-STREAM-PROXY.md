@@ -446,7 +446,7 @@ P1, HLS media playlists (effort: 4 to 6 days). Status: shipped. 49 Rust tests, 2
 * `/s/:id/manifest.m3u8` plus `/s/:id/seg/:child`, media playlist rewrite (segments, key, map, byterange), child reconcile, subtitle file proxy.
 * Acceptance: single variant HLS with relative segments and init map plays. Key rotation with two keys passes. Fixture tests green. Manual QA at 1280 and 1600.
 
-P2, master playlists and keys (effort: 3 to 5 days). Status: next.
+P2, master playlists and keys (effort: 3 to 5 days). Status: shipped. 55 Rust tests, 31 proxy tests. Depth cap 4, typed `playlist-depth` and `child-not-allowed` failures, and every child is checked against the extension manifest allowlist.
 
 * Master rewrite (stream inf, iframe, media audio and subtitles), nested variant fetch, depth cap, key handler with 64 KB cap, redirect recheck with final base URL.
 * Acceptance: master with two variants plus audio group plays. Variant switch works. Malicious playlist fixture (nested depth 6, `file:` URI) fails closed with player intact.

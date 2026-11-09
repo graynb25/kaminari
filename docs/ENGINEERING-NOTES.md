@@ -118,6 +118,26 @@ Context. The app is a player and extension host with no shipped content. The use
 
 What we wrote. `docs/TERMS.md` describes the app, the user's responsibility, third-party extensions, no warranty, liability limits and copyright complaints. `docs/PRIVACY.md` describes the local SQLite and WebView data, the direct AniList, registry, extension and stream requests, no telemetry, deletion paths and contact. Both link from the README.
 
+## 2026-11-08 Phase 2 atoms
+
+Context. Phase 2 had PageHeader and the artwork lifecycle. The remaining atoms were BrandMark, staggered grids, a static theme preview and a segmented control with an honest use.
+
+What we shipped. BrandMark for the title bar, footer, empty state and Settings About, with duplicate mark styles removed. `stagger-grid` with 22ms steps capped at 18, applied to the library, source results and source cards. Wrappers animate, not the cards, so poster hover and disabled source opacity survive. A compact static Storm and Daylight preview uses each mini's own scoped theme tokens. `SegmentedControl` has a roving tabindex and Arrow, Home and End focus, and is used for the LegalDialog Terms and Privacy tabs. The EmptyState `mark` prop replaces the generic icon and the main library empty state uses it.
+
+What we measured. 31 Vitest tests pass. Storm and Daylight resolve their own `--void-950` values, #08080f and #f6f7fc, in both active themes. ArrowRight focused Privacy and Enter kept it selected; Home and End moved focus. A staggered poster kept its hover transform matrix(1.03, -4). Settings shows three BrandMarks. The theme minis measure 210 by 109 and the Appearance card is 220px tall. No page errors.
+
+What we did not do. No FatalState, settings navigation, or shared callout and progress primitives; those are Phase 3. SegmentedControl has one honest use, LegalDialog; no detail tabs or sort control exists yet.
+
+## 2026-11-08 HLS master playlist proxy
+
+Context. P1 handled media playlists, but many sources return a master playlist with variants, audio and subtitle groups and session keys. Master playlists returned 501 and fell back to mpv.
+
+What we shipped. The parser now handles both master and media. Master rewrite covers next-line and inline `EXT-X-STREAM-INF`, `EXT-X-I-FRAME-STREAM-INF`, `EXT-X-MEDIA` audio and subtitles, `EXT-X-SESSION-KEY` and `EXT-X-SESSION-DATA`. Variants are child playlists; a request for a variant is rewritten as a media playlist. Depth is capped at 4 with a typed `playlist-depth` failure. Every child is checked against the extension manifest allowlist at rewrite time; a missing host returns a typed `child-not-allowed` failure. Relative URLs resolve against the final redirect URL. CORS, tokens and range behavior are unchanged.
+
+What we measured. 55 Rust tests pass, 31 proxy tests. Coverage includes master variants, variant request rewrite, I-frame, session key and data, nested depth cap, allowlist pass and fail, and relative redirect base. The app boots with the frontend unchanged.
+
+What we did not do. No cookie jar, no live playlist refresh beyond child reuse, no public suffix handling. P3 owns those. Cross-origin children are allowed only when the extension manifest lists them; a source that redirects to an undeclared CDN fails closed.
+
 ## 2026-11-08 HLS media playlist proxy
 
 Context. P0 handled MP4 with headers. HLS needed the manifest and segment URLs rewritten so hls.js never leaves loopback and never needs custom headers. Keys, init maps and byte ranges had to stay on the same loopback path.
