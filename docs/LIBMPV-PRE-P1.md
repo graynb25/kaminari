@@ -63,6 +63,8 @@ Run for each packaging candidate. Record the native payload separately from the 
 
 0.21.0 measurement, 2026-11-09: installer 37,745,278 bytes (36.00 MiB). The DLL payload is unchanged. The installed build reported version 0.21.0, the four Data actions and a 106,496-byte backup.
 
+0.22.0 measurement, 2026-11-09: installer 37,878,262 bytes (36.12 MiB). The DLL payload is unchanged. The installed build reported version 0.22.0, the AniList viewer connected from the keychain, and the `kaminari://` scheme registered to the installed exe.
+
 ```powershell
 npm exec --yes pnpm@10 -- tauri build
 Get-Item "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object Name, Length

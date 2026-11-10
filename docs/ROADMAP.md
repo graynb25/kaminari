@@ -30,7 +30,7 @@ Acceptance: grid holds 60fps on integrated graphics, no dropped streak over 3 fr
 
 AniList OAuth read first, then write. Offline queue replays without dupes. Server wins conflicts with a toast and a log. Downloads to a user folder where licensed. Auto update from GitHub Releases with Minisign, one click restart. Settings export and import. Backup restores on a fresh PC.
 
-Status: settings export and import plus SQLite backup and restore landed in 0.21.0. AniList OAuth is next with client ID `56484` and redirect `kaminari://auth/callback`, following `docs/PLAN-ANILIST-AUTH.md`. Offline sync, downloads and auto update remain.
+Status: settings export and import plus SQLite backup and restore landed in 0.21.0. AniList OAuth connect landed in 0.22.0 with client ID `56484`, the `kaminari://auth/callback` deep link and keychain storage. Read sync is next, then the offline write queue, downloads and auto update.
 
 Acceptance: progress syncs after a watch in under 30 seconds on good net. Airplane queue replays clean. Update installs stable to stable with library intact. Signed installer documents SmartScreen behavior. Rollback is reinstall plus intact SQLite file.
 

@@ -11,7 +11,8 @@ use crate::error::{AppError, AppResult};
 
 const ENDPOINT: &str = "https://graphql.anilist.co";
 
-pub const ANILIST_AUTH_URL: &str = "https://anilist.co/api/v2/oauth/authorize?client_id=56484&response_type=token&redirect_uri=kaminari%3A%2F%2Fauth%2Fcallback";
+pub const ANILIST_AUTH_URL: &str =
+    "https://anilist.co/api/v2/oauth/authorize?client_id=56484&response_type=token";
 
 pub fn auth_url() -> &'static str {
     ANILIST_AUTH_URL
@@ -520,11 +521,11 @@ mod tests {
     }
 
     #[test]
-    fn auth_url_has_client_id_and_encoded_redirect() {
+    fn auth_url_has_client_id_and_token_response() {
         let url = auth_url();
         assert!(url.contains("client_id=56484"));
         assert!(url.contains("response_type=token"));
-        assert!(url.contains("redirect_uri=kaminari%3A%2F%2Fauth%2Fcallback"));
+        assert!(!url.contains("redirect_uri"));
     }
 
     #[test]

@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-11-09",
-  "appVersion": "0.21.0",
+  "generatedAt": "2026-11-10",
+  "appVersion": "0.22.0",
   "platform": "x86_64-pc-windows-msvc",
   "summary": {
-    "packages": 444,
+    "packages": 451,
     "licenses": 33,
     "notRecorded": 0,
     "proprietary": 0
@@ -17,7 +17,7 @@
           "key": "bundled:Kaminari::MIT",
           "name": "Kaminari",
           "versions": [
-            "0.21.0"
+            "0.22.0"
           ],
           "license": "MIT",
           "source": "https://github.com/graynb25/kaminari"
@@ -1525,6 +1525,15 @@
           "source": "https://github.com/matklad/once_cell"
         },
         {
+          "key": "rust:open::MIT",
+          "name": "open",
+          "versions": [
+            "5.4.5"
+          ],
+          "license": "MIT",
+          "source": "https://github.com/Byron/open-rs"
+        },
+        {
           "key": "rust:option-ext::MPL-2.0",
           "name": "option-ext",
           "versions": [
@@ -2406,6 +2415,15 @@
           "source": "https://github.com/tauri-apps/tauri"
         },
         {
+          "key": "rust:tauri-plugin-deep-link::Apache-2.0 OR MIT",
+          "name": "tauri-plugin-deep-link",
+          "versions": [
+            "2.6.3"
+          ],
+          "license": "Apache-2.0 OR MIT",
+          "source": "https://github.com/tauri-apps/plugins-workspace"
+        },
+        {
           "key": "rust:tauri-plugin-dialog::Apache-2.0 OR MIT",
           "name": "tauri-plugin-dialog",
           "versions": [
@@ -2431,6 +2449,24 @@
           ],
           "license": "MPL-2.0",
           "source": "https://github.com/nini22P/tauri-plugin-libmpv"
+        },
+        {
+          "key": "rust:tauri-plugin-opener::Apache-2.0 OR MIT",
+          "name": "tauri-plugin-opener",
+          "versions": [
+            "2.7.2"
+          ],
+          "license": "Apache-2.0 OR MIT",
+          "source": "https://github.com/tauri-apps/plugins-workspace"
+        },
+        {
+          "key": "rust:tauri-plugin-single-instance::Apache-2.0 OR MIT",
+          "name": "tauri-plugin-single-instance",
+          "versions": [
+            "2.5.5"
+          ],
+          "license": "Apache-2.0 OR MIT",
+          "source": "https://github.com/tauri-apps/plugins-workspace"
         },
         {
           "key": "rust:tauri-runtime::Apache-2.0 OR MIT",
@@ -2973,6 +3009,15 @@
           "source": "https://github.com/microsoft/windows-rs"
         },
         {
+          "key": "rust:windows_x86_64_msvc::MIT OR Apache-2.0",
+          "name": "windows_x86_64_msvc",
+          "versions": [
+            "0.53.1"
+          ],
+          "license": "MIT OR Apache-2.0",
+          "source": "https://github.com/microsoft/windows-rs"
+        },
+        {
           "key": "rust:windows-collections::MIT OR Apache-2.0",
           "name": "windows-collections",
           "versions": [
@@ -3036,6 +3081,15 @@
           "source": "https://github.com/microsoft/windows-rs"
         },
         {
+          "key": "rust:windows-registry::MIT OR Apache-2.0",
+          "name": "windows-registry",
+          "versions": [
+            "0.6.1"
+          ],
+          "license": "MIT OR Apache-2.0",
+          "source": "https://github.com/microsoft/windows-rs"
+        },
+        {
           "key": "rust:windows-result::MIT OR Apache-2.0",
           "name": "windows-result",
           "versions": [
@@ -3057,7 +3111,17 @@
           "key": "rust:windows-sys::MIT OR Apache-2.0",
           "name": "windows-sys",
           "versions": [
+            "0.60.2",
             "0.61.2"
+          ],
+          "license": "MIT OR Apache-2.0",
+          "source": "https://github.com/microsoft/windows-rs"
+        },
+        {
+          "key": "rust:windows-targets::MIT OR Apache-2.0",
+          "name": "windows-targets",
+          "versions": [
+            "0.53.5"
           ],
           "license": "MIT OR Apache-2.0",
           "source": "https://github.com/microsoft/windows-rs"

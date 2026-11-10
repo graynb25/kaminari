@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-09 AniList OAuth connect
+
+Context. P3 started with AniList read access. The app had public metadata only and no account state.
+
+What we shipped. The AniList implicit grant with client ID 56484 and no client secret. The clean authorize URL omits `redirect_uri`; AniList uses the registered `kaminari://auth/callback`. Deep-link and single-instance plugins route the callback into Rust, Viewer validates it, and the token is stored in Windows Credential Manager under service `app.kaminari.desktop` and user `anilist`. Settings has an account block with the viewer name, avatar, Connect and Disconnect. No token reaches Svelte or localStorage.
+
+What we measured. The clean URL without `redirect_uri` authorized; the earlier URL with `redirect_uri` produced `unsupported_grant_type` and a malformed browser URL. The real login returned viewer `graynb25`, id 8314048, with the default avatar. A synthetic callback with a fake token was rejected and did not overwrite the keychain; after the fix it leaves the account connected and shows an error line. 85 Rust and 54 frontend tests pass. The 0.22.0 installer is 37,878,262 bytes (36.12 MiB); an in-place install kept the keychain and the connected viewer.
+
+What we did not do. No list pull or write sync yet. No explicit expiry timestamp; Viewer validation handles revoked or expired tokens. AniList has no refresh token, so expiry means reconnecting.
+
 ## 2026-11-09 Settings export and library backup
 
 Context. P3 needed portable local data before sync. The library lives in WAL SQLite and had no UI path to copy or restore it.

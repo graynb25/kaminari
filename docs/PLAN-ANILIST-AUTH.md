@@ -5,7 +5,7 @@ Status: planned. AniList client ID `56484`, redirect URL `kaminari://auth/callba
 ## Flow
 
 1. Settings shows the AniList account state. If disconnected, a Connect button calls `anilist_auth_url`.
-2. Rust builds `https://anilist.co/api/v2/oauth/authorize?client_id=56484&response_type=token&redirect_uri=kaminari%3A%2F%2Fauth%2Fcallback`.
+2. Rust builds `https://anilist.co/api/v2/oauth/authorize?client_id=56484&response_type=token`. No `redirect_uri` parameter is sent; AniList uses the client's registered redirect, which is exactly `kaminari://auth/callback`.
 3. The frontend opens the URL in the system browser through the opener plugin.
 4. AniList approves the client and redirects to `kaminari://auth/callback#access_token=...`.
 5. `tauri-plugin-single-instance` forwards the URL to the running app. `tauri-plugin-deep-link` calls a Rust handler in the capture path, not the WebView.

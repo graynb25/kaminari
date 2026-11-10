@@ -65,7 +65,7 @@ Rate limit: public ceiling near 90 per minute. Token bucket holds 90, refills 1 
 
 Queries cover search, detail with relations and next airing, trending and airing with cursor. Cache table holds query hash, body, fetched time, TTL. Trending TTL 1 hour. Detail 24 hours. Airing 5 minutes. Stale serves on 429 or offline with a `stale: true` flag.
 
-OAuth uses PKCE in Rust, callback through `tauri-plugin-deep-link` at `kaminari://auth/callback`. Tokens live in OS keychain. JS and localStorage never see them. Refresh starts at 80 percent expiry.
+OAuth uses the AniList implicit grant through `kaminari://auth/callback`. The token is parsed and validated in Rust, stored in the OS keychain, and never reaches JS. AniList tokens last one year and there is no refresh token, so expiry means reconnecting.
 
 ## Database
 

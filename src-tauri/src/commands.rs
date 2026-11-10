@@ -153,21 +153,31 @@ pub async fn complete_anilist_auth(app: &AppHandle, token: String) -> AniListAut
                 }
             }
         },
-        Err(AppError::Auth(message)) => AniListAuthStatus {
-            connected: false,
-            viewer: None,
-            error: Some(message),
-        },
-        Err(err) => AniListAuthStatus {
-            connected: false,
-            viewer: None,
-            error: Some(format!(
-                "Could not reach AniList. Try connecting again. {err}"
-            )),
-        },
+        Err(AppError::Auth(message)) => failed_callback_status(client.inner(), message).await,
+        Err(err) => {
+            let message = format!("Could not reach AniList. Try connecting again. {err}");
+            failed_callback_status(client.inner(), message).await
+        }
     };
     let _ = app.emit("anilist-auth-changed", &status);
     status
+}
+
+async fn failed_callback_status(client: &AniListClient, message: String) -> AniListAuthStatus {
+    let current = anilist_auth_status_for(client).await;
+    if current.connected {
+        AniListAuthStatus {
+            connected: true,
+            viewer: current.viewer,
+            error: Some(message),
+        }
+    } else {
+        AniListAuthStatus {
+            connected: false,
+            viewer: None,
+            error: Some(message),
+        }
+    }
 }
 
 pub async fn handle_anilist_deep_link(app: AppHandle, url: url::Url) {

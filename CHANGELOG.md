@@ -4,6 +4,13 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.22.0 - 2026-11-09
+
+- AniList: connect through the implicit grant, deep link callback, Viewer validation and OS keychain storage
+- AniList: account block in Settings with viewer name, connect and disconnect
+- Build: deep-link, single-instance and opener plugins, with the `kaminari://` scheme registered by the installer
+- Version: bump to 0.22.0
+
 ## 0.21.0 - 2026-11-09
 
 - Settings: export and import theme, accent and proxy settings as JSON
