@@ -128,6 +128,22 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-10 Long HLS playlist stall
+
+Context. Playback stopped around 28 seconds and the player offered a retry. The stream was a 23 minute VOD episode with 283 HLS segments.
+
+What we measured. The proxy capped each stream at 256 child URLs. Reconciling the 283 segment playlist evicted the least recently used children to make room, which was the first 27 segments. The player had buffered them, then requested one after the buffer and got a 404 from the local proxy. The browser logged seven 404s for the same child and hls.js raised a fatal error.
+
+What we shipped. The child cap is now 4096 and the playlist line cap is 20000, enough for a four hour VOD at four seconds per segment. A regression test reconciles a 283 segment playlist and asserts every child survives. A live AniKoto run played for three minutes and seeked to 600 and 1200 seconds with no proxy errors.
+
+## 2026-11-10 AniList to source handoff
+
+Context. Browse recommendations came from AniList but clicking Play only opened a note that playback needed a source. The user wanted a recommendation to open on a source.
+
+What we shipped. Watch on an AniList detail, card or hero opens a modal. It lists enabled sources, searches each one with the title, and sorts the matches by normalized title score. Choosing a result opens the existing source browser at that show. The search box can be corrected without closing the modal. No source list is bundled, and a missing source shows an Open Sources action.
+
+What we measured. A live Naruto handoff found the exact AniKoto and HiAnime results, opened AniKoto, and loaded 220 episodes. The matcher has unit tests for punctuation, exact, prefix, token and tie ordering.
+
 ## 2026-11-10 Mangayomi source shim
 
 Context. The app had a working QuickJS host and a public-domain sample, but no real anime catalog. The user's core requirement is watching anime through user-supplied extensions, so a Mangayomi compatibility layer was the next feature after downloads and updates.
@@ -154,7 +170,7 @@ Context. Updates were manual installers. The updater needs a signed Tauri artifa
 
 What we shipped. `tauri-plugin-updater` v2 and `@tauri-apps/plugin-updater`, the `updater:default` capability, `bundle.createUpdaterArtifacts`, the local public key and the GitHub `latest.json` endpoint. Settings shows the current version, a Check for updates button, available version, date and notes, download progress, install, and Restart to apply. A quiet mount check treats an unreachable feed as a non-blocking warning.
 
-What we measured. The 0.26.0 signed installer built at 36.58 MiB with a 440-byte `.sig` and a local `latest.json`. The release binary reported version 0.26.0 and the Settings check failed with `Update check failed. Could not fetch a valid release JSON from the remote.` because the repository is private. The failure is caught and shown; the app stayed open. The installer and signature have not been run on a clean VM yet.
+What we measured. The 0.26.0 signed installer built at 36.58 MiB with a 440-byte `.sig` and a local `latest.json`. The release binary reported version 0.26.0 and the Settings check failed because the repository is private. 0.26.1 maps that missing manifest to a neutral state: `No public release feed is published for this build. Updates stay local until a signed release exists.` The app stays open. The installer and signature have not been run on a clean VM yet.
 
 What remains. A signed public release with `latest.json`, a clean VM install, an update from an older signed build, and a rollback test. The private key stays outside the repository. `docs/RELEASE-UPDATER.md` records the build and publishing steps.
 

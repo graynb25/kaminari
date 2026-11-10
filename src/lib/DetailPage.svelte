@@ -9,7 +9,6 @@
     media,
     inLibrary,
     status,
-    playNote,
     watched,
     onBack,
     onToggleLibrary,
@@ -21,7 +20,6 @@
     media: Media;
     inLibrary: boolean;
     status: string | null;
-    playNote: string | null;
     watched: number[];
     onBack: () => void;
     onToggleLibrary: (item: Media) => void;
@@ -160,7 +158,7 @@
         <div class="flex flex-wrap items-center gap-2 mt-5">
           <button class="btn-primary px-5 py-2.5 text-sm" onclick={() => onPlay(media)}>
             <Icon name="play" size={14} />
-            Play
+            Watch
           </button>
 
           {#if inLibrary}
@@ -224,17 +222,6 @@
         </div>
       {/if}
     </div>
-
-    {#if playNote}
-      <div
-        class="mt-6 max-w-2xl p-4 rounded-xl text-sm leading-relaxed flex items-start gap-3"
-        style="background: var(--accent-wash-faint); border: 1px solid var(--line-volt); color: var(--paper-300);"
-        role="status"
-      >
-        <Icon name="info" size={16} class="mt-0.5 shrink-0" />
-        <span>{playNote}</span>
-      </div>
-    {/if}
 
     <div class="mt-8 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-8">
       <div class="min-w-0">
@@ -317,7 +304,7 @@
               {/each}
             </ol>
             <p class="text-xs mt-3" style="color: var(--paper-450);">
-              Click an episode to mark it watched. Playback needs a source extension.
+              Click an episode to mark it watched. Watch finds this title in an installed source.
             </p>
             {#if (media.episodes ?? 0) > 200}
               <p class="text-xs mt-1" style="color: var(--paper-450);">

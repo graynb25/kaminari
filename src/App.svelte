@@ -21,6 +21,7 @@
   import Skeleton from "./lib/Skeleton.svelte";
   import SourceContinueCard from "./lib/SourceContinueCard.svelte";
   import SourceBrowser from "./lib/SourceBrowser.svelte";
+  import SourceMatchDialog from "./lib/SourceMatchDialog.svelte";
   import SourcesView from "./lib/SourcesView.svelte";
   import TitleBar from "./lib/TitleBar.svelte";
   import Toasts from "./lib/Toasts.svelte";
@@ -88,7 +89,7 @@
   let view = $state<View>("browse");
   let detail = $state<Media | null>(null);
   let detailError = $state<string | null>(null);
-  let playNote = $state<string | null>(null);
+  let sourceMatchMedia = $state<Media | null>(null);
   let watchedDetail = $state<number[]>([]);
   let continueItems = $state<ContinueItem[]>([]);
   let continueError = $state<string | null>(null);
@@ -107,9 +108,6 @@
   let mainEl = $state<HTMLElement | null>(null);
   let online = $state(typeof navigator !== "undefined" ? navigator.onLine : true);
   let detailRequest = 0;
-
-  const PLAY_NOTE =
-    "Playback needs a source extension. AniList gives us the catalogue, not the stream. The extension host lands in P1.";
 
   const trendingRail = $derived(rails.trending);
 
@@ -153,7 +151,6 @@
     detailRequest += 1;
     detail = null;
     detailError = null;
-    playNote = null;
     watchedDetail = [];
     view = next;
     if (next === "history") {
@@ -266,12 +263,11 @@
   }
 
   function retryDetail() {
-    if (detail) void openDetail(detail, { keepNote: true });
+    if (detail) void openDetail(detail);
   }
 
-  async function openDetail(item: Media, options: { keepNote?: boolean } = {}) {
+  async function openDetail(item: Media) {
     const request = ++detailRequest;
-    if (!options.keepNote) playNote = null;
     detailError = null;
     detail = item;
     mainEl?.scrollTo({ top: 0, behavior: "auto" });
@@ -292,9 +288,7 @@
   }
 
   function openPlay(item: Media) {
-    playNote = PLAY_NOTE;
-    notify("Source playback arrives in P1. Details are live now.", "info");
-    void openDetail(item, { keepNote: true });
+    sourceMatchMedia = item;
   }
 
   function openSourceShow(item: {
@@ -425,7 +419,6 @@
     detailRequest += 1;
     detail = null;
     detailError = null;
-    playNote = null;
   }
 
   function errorText(error: unknown): string {
@@ -588,7 +581,6 @@
               media={detail}
               inLibrary={isInLibrary(detail.id)}
               status={detailEntry?.status ?? null}
-              playNote={playNote}
               watched={watchedDetail}
               onBack={closeDetail}
               onToggleLibrary={toggleLibrary}
@@ -854,6 +846,24 @@
 />
 
 <ShortcutsDialog open={shortcutsOpen} onClose={() => (shortcutsOpen = false)} />
+
+{#if sourceMatchMedia}
+  <SourceMatchDialog
+    media={sourceMatchMedia}
+    onClose={() => (sourceMatchMedia = null)}
+    onOpen={(extension, item) => {
+      sourceBrowser = {
+        extension: { id: extension.id, name: extension.name },
+        initialShow: item,
+      };
+      sourceMatchMedia = null;
+    }}
+    onOpenSources={() => {
+      sourceMatchMedia = null;
+      goView("sources");
+    }}
+  />
+{/if}
 
 {#if sourceBrowser}
   <SourceBrowser
