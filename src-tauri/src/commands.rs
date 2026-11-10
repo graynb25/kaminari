@@ -2,9 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::anilist::{
@@ -16,6 +18,7 @@ use crate::db::{
 };
 use crate::error::AppError;
 use crate::ext_host::{self, ExtPackage, ExtStorage};
+use crate::mangayomi;
 use crate::player::{self, PlaybackInfo, PlaybackRequest, PlayerState, PlayerStatus};
 use crate::proxy::{ProxyStatus, ProxyStore, ProxyStreamInput, ProxyUrl};
 use crate::registry::{fetch_index, LegacyExtension};
@@ -537,6 +540,104 @@ pub fn js_extension_install_path(state: State<'_, Db>, path: String) -> Result<(
     state
         .install_js_extension(&package.manifest, &package.code, "sideloaded")
         .map_err(ipc_error)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MangayomiPreview {
+    pub url: String,
+    pub sha256: String,
+    pub bytes: usize,
+    pub sources: Vec<mangayomi::PreviewSource>,
+}
+
+#[tauri::command]
+pub async fn mangayomi_preview(url: String) -> Result<MangayomiPreview, String> {
+    let (code, sha256, bytes) = fetch_mangayomi_source(&url).await?;
+    let preview = mangayomi::preview(&code).map_err(ipc_error)?;
+    Ok(MangayomiPreview {
+        url,
+        sha256,
+        bytes,
+        sources: preview.sources,
+    })
+}
+
+#[tauri::command]
+pub async fn mangayomi_install(
+    state: State<'_, Db>,
+    url: String,
+    source_index: usize,
+    sha256: String,
+) -> Result<String, String> {
+    let (code, actual, _) = fetch_mangayomi_source(&url).await?;
+    if actual != sha256 {
+        return Err(
+            "the source changed since inspection; inspect it again before installing".to_string(),
+        );
+    }
+    let source = mangayomi::source_at(&code, source_index).map_err(ipc_error)?;
+    let manifest = mangayomi::build_manifest(&source, source_index).map_err(ipc_error)?;
+    let wrapped = mangayomi::wrap_code(&code, source_index);
+    state
+        .install_js_extension(&manifest, &wrapped, "sideloaded")
+        .map_err(ipc_error)?;
+    Ok(manifest.id)
+}
+
+async fn fetch_mangayomi_source(url: &str) -> Result<(String, String, usize), String> {
+    let parsed = reqwest::Url::parse(url).map_err(|_| "source URL is not valid".to_string())?;
+    if parsed.scheme() != "https" {
+        return Err("only https source URLs are allowed".to_string());
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("source URL must not contain credentials".to_string());
+    }
+    if ext_host::is_private_host(parsed.host_str().unwrap_or("")) {
+        return Err("source URL host is local or private".to_string());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .build()
+        .map_err(|err| format!("network client failed: {err}"))?;
+    let response = client
+        .get(parsed)
+        .header(reqwest::header::ACCEPT, "text/javascript, text/plain, */*")
+        .send()
+        .await
+        .map_err(|err| format!("source download failed: {err}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "source download failed with HTTP {}",
+            response.status()
+        ));
+    }
+    if response
+        .content_length()
+        .is_some_and(|length| length > mangayomi::MAX_SOURCE_BYTES as u64)
+    {
+        return Err("source is larger than 2 MB".to_string());
+    }
+    let mut body = Vec::new();
+    let mut response = response;
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|err| format!("source download failed: {err}"))?
+    {
+        if body.len() + chunk.len() > mangayomi::MAX_SOURCE_BYTES {
+            return Err("source is larger than 2 MB".to_string());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    let bytes = body.len();
+    let code =
+        String::from_utf8(body).map_err(|_| "source is not valid UTF-8 JavaScript".to_string())?;
+    let mut hasher = Sha256::new();
+    hasher.update(code.as_bytes());
+    let sha256 = hex::encode(hasher.finalize());
+    Ok((code, sha256, bytes))
 }
 
 #[tauri::command]

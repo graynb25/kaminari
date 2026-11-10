@@ -77,6 +77,7 @@ pub struct JsExtensionRow {
     pub name: String,
     pub version: String,
     pub api_version: String,
+    pub kind: String,
     pub enabled: bool,
     pub trust: String,
     pub installed_at: i64,
@@ -504,8 +505,14 @@ impl Db {
         let rows = statement.query_map([], |row| {
             let manifest_raw: String = row.get(7)?;
             let manifest = serde_json::from_str::<Manifest>(&manifest_raw).ok();
+            let id: String = row.get(0)?;
             Ok(JsExtensionRow {
-                id: row.get(0)?,
+                kind: if id.starts_with("mangayomi.") {
+                    "mangayomi".to_string()
+                } else {
+                    "native".to_string()
+                },
+                id,
                 name: row.get(1)?,
                 version: row.get(2)?,
                 api_version: row.get(3)?,

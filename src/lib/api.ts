@@ -14,6 +14,7 @@ import type {
   JsStream,
   LegacyExtension,
   LibraryItem,
+  MangayomiPreview,
   Media,
   MpvEmbedStatus,
   PlaybackInfo,
@@ -120,6 +121,18 @@ export function jsExtensionInstallSample(): Promise<void> {
 
 export function jsExtensionInstallPath(path: string): Promise<void> {
   return invoke<void>("js_extension_install_path", { path });
+}
+
+export function mangayomiPreview(url: string): Promise<MangayomiPreview> {
+  return invoke<MangayomiPreview>("mangayomi_preview", { url });
+}
+
+export function mangayomiInstall(
+  url: string,
+  sourceIndex: number,
+  sha256: string,
+): Promise<string> {
+  return invoke<string>("mangayomi_install", { url, sourceIndex, sha256 });
 }
 
 export function jsExtensionRemove(id: string): Promise<void> {

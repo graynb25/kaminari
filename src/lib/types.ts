@@ -88,10 +88,28 @@ export type JsExtension = {
   name: string;
   version: string;
   apiVersion: string;
+  kind: string;
   enabled: boolean;
   trust: string;
   installedAt: number;
   hosts: string[];
+};
+
+export type MangayomiSourcePreview = {
+  index: number;
+  name: string;
+  version: string;
+  lang: string;
+  baseUrl: string;
+  sourceCodeUrl?: string | null;
+  nsfw: boolean;
+};
+
+export type MangayomiPreview = {
+  url: string;
+  sha256: string;
+  bytes: number;
+  sources: MangayomiSourcePreview[];
 };
 
 export type JsSearchItem = {
@@ -137,6 +155,7 @@ export type JsStream = {
   subtitles?: { lang: string; url: string; label?: string }[] | null;
   proxiedUrl?: string | null;
   proxyId?: string | null;
+  subtitleProxyIds?: string[] | null;
 };
 
 export type DownloadStatus = "running" | "done" | "cancelled" | "error";

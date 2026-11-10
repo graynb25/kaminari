@@ -3,6 +3,7 @@
   import type HlsType from "hls.js";
   import Icon from "./Icon.svelte";
   import { playbackUrl } from "./streamProxy";
+  import { vttBlobUrl } from "./subtitles";
   import type { JsStream } from "./types";
 
   let {
@@ -49,6 +50,19 @@
   let previousFocus: HTMLElement | null = null;
 
   const subtitles = $derived(stream.subtitles ?? []);
+  let subtitleTracks = $state<{ lang: string; label?: string; url: string }[]>([]);
+  $effect(() => {
+    const current = stream.subtitles ?? [];
+    const created: string[] = [];
+    subtitleTracks = current.map((track) => {
+      const blob = vttBlobUrl(track.url);
+      if (blob) created.push(blob);
+      return { ...track, url: blob ?? track.url };
+    });
+    return () => {
+      for (const url of created) URL.revokeObjectURL(url);
+    };
+  });
   const hasHeaders = $derived(Object.keys(stream.headers ?? {}).length > 0);
   const playbackSource = $derived(playbackUrl(stream));
   const proxied = $derived(Boolean(stream.proxiedUrl));
@@ -498,10 +512,11 @@
     bind:this={video}
     class="absolute inset-0 w-full h-full {fill ? 'object-cover' : 'object-contain'}"
     playsinline
+    crossorigin={subtitleTracks.length > 0 ? "anonymous" : undefined}
     onclick={onVideoClick}
     ondblclick={onVideoDoubleClick}
   >
-    {#each subtitles as subtitleTrack, index}
+    {#each subtitleTracks as subtitleTrack, index}
       <track
         kind="subtitles"
         src={subtitleTrack.url}

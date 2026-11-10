@@ -10,6 +10,8 @@
     jsExtensionList,
     jsExtensionRemove,
     jsExtensionTest,
+    mangayomiInstall,
+    mangayomiPreview,
     registryFetch,
     sourceInstall,
     sourceList,
@@ -22,6 +24,8 @@
     JsExtension,
     JsSearchItem,
     LegacyExtension,
+    MangayomiPreview,
+    MangayomiSourcePreview,
   } from "./types";
 
   let {
@@ -54,6 +58,10 @@
   let jsTestLoading = $state(false);
   let jsTestError = $state<string | null>(null);
   let jsTestItems = $state<JsSearchItem[]>([]);
+  let mangayomiUrl = $state("");
+  let mangayomiPreviewState = $state<MangayomiPreview | null>(null);
+  let mangayomiError = $state<string | null>(null);
+  let mangayomiBusy = $state<string | null>(null);
 
   const mem = $derived(
     boot ? `${Math.round(boot.limits.extMemoryBytes / 1024 / 1024)}MB per runtime` : "Loading",
@@ -122,6 +130,49 @@
       notify(`Package install failed: ${message}`, "error");
     } finally {
       jsBusy = null;
+    }
+  }
+
+  async function inspectMangayomi() {
+    const target = mangayomiUrl.trim();
+    if (!target) {
+      notify("Paste a raw JavaScript source URL first.", "error");
+      return;
+    }
+    mangayomiBusy = "inspect";
+    mangayomiError = null;
+    mangayomiPreviewState = null;
+    try {
+      const preview = await mangayomiPreview(target);
+      mangayomiPreviewState = preview;
+      if (preview.sources.length === 0) {
+        mangayomiError = "The file has no anime sources.";
+      }
+    } catch (e) {
+      mangayomiError = e instanceof Error ? e.message : String(e);
+    } finally {
+      mangayomiBusy = null;
+    }
+  }
+
+  async function installMangayomi(source: MangayomiSourcePreview) {
+    if (!mangayomiPreviewState) return;
+    mangayomiBusy = `install-${source.index}`;
+    mangayomiError = null;
+    try {
+      await mangayomiInstall(
+        mangayomiPreviewState.url,
+        source.index,
+        mangayomiPreviewState.sha256,
+      );
+      mangayomiPreviewState = null;
+      mangayomiUrl = "";
+      await refreshJsExtensions();
+      notify(`Installed ${source.name}. It is a third party source.`, "success");
+    } catch (e) {
+      mangayomiError = e instanceof Error ? e.message : String(e);
+    } finally {
+      mangayomiBusy = null;
     }
   }
 
@@ -253,7 +304,7 @@
   <PageHeader
     eyebrow="Extensions"
     title="Sources"
-    subtitle="Kaminari runs its own JavaScript packages in a QuickJS host. The Aniyomi registry below is metadata only, because those packages are Android APKs. Neither path bundles a source."
+    subtitle="Kaminari runs its own JavaScript packages and third-party Mangayomi sources in a QuickJS host. The Aniyomi registry below is metadata only, because those packages are Android APKs. Kaminari bundles no source; you add one you trust."
   >
     <span class="status-pill">
       <span class="status-dot" aria-hidden="true"></span>
@@ -373,6 +424,11 @@
                 <div class="flex flex-wrap items-center gap-2">
                   <h3 class="text-sm font-semibold">{extension.name}</h3>
                   <span class="chip text-[10px] px-2 py-0.5">v{extension.version}</span>
+                  {#if extension.kind === "mangayomi"}
+                    <span class="chip chip-volt text-[10px] px-2 py-0.5">Mangayomi</span>
+                  {:else}
+                    <span class="chip text-[10px] px-2 py-0.5">Native</span>
+                  {/if}
                   <span class="chip chip-volt text-[10px] px-2 py-0.5">{extension.trust}</span>
                 </div>
                 <p class="text-[11px] mt-0.5 truncate" style="color: var(--paper-450); font-family: var(--font-mono);" title={extension.id}>
@@ -471,6 +527,109 @@
         {/each}
       </div>
     {/if}
+  </section>
+
+  <section class="mb-8" aria-label="Mangayomi sources">
+    <div class="flex flex-wrap items-baseline gap-3 mb-3">
+      <div>
+        <p class="eyebrow">Third party</p>
+        <h2 class="shelf-title mt-1">Mangayomi sources</h2>
+      </div>
+      <span class="chip text-[10px] px-2 py-0.5">JavaScript</span>
+      <span class="chip text-[10px] px-2 py-0.5">Anime only</span>
+    </div>
+    <p class="page-sub mb-4 max-w-3xl">
+      Paste a raw Mangayomi JavaScript source URL, inspect it, then install it. The source is
+      stored locally and runs in the same sandbox as a native package. Kaminari does not include
+      a source list, endorse a source, or solve a site's browser challenge.
+    </p>
+
+    <div class="surface p-4">
+      <form
+        class="flex flex-col sm:flex-row gap-2"
+        onsubmit={(event) => {
+          event.preventDefault();
+          void inspectMangayomi();
+        }}
+      >
+        <label class="relative flex-1">
+          <span class="sr-only">Raw Mangayomi source URL</span>
+          <span class="absolute left-3 top-1/2 -translate-y-1/2" style="color: var(--paper-450);">
+            <Icon name="link" size={14} />
+          </span>
+          <input
+            bind:value={mangayomiUrl}
+            placeholder="https://example.com/source.js"
+            class="w-full h-9 rounded-xl pl-9 pr-3 text-sm outline-none"
+            style="background: var(--input-bg); border: 1px solid var(--line); color: var(--text-1); font-family: var(--font-mono);"
+            aria-label="Raw Mangayomi source URL"
+            spellcheck="false"
+          />
+        </label>
+        <button
+          type="submit"
+          class="btn-primary px-4 py-2 text-sm shrink-0"
+          disabled={mangayomiBusy === "inspect"}
+        >
+          <Icon name="search" size={14} />
+          {mangayomiBusy === "inspect" ? "Inspecting" : "Inspect source"}
+        </button>
+      </form>
+
+      {#if mangayomiBusy === "inspect"}
+        <ProgressBar label="Downloading and inspecting source" indeterminate class="mt-3" />
+      {/if}
+
+      {#if mangayomiError}
+        <Callout tone="danger" class="mt-3">{mangayomiError}</Callout>
+      {/if}
+
+      {#if mangayomiPreviewState}
+        <Callout tone="warning" title="Third party code" class="mt-3">
+          This source can contact any host and send it what it reads. Kaminari does not review
+          it. Install only sources you trust.
+        </Callout>
+        <p class="text-[11px] mt-3" style="color: var(--paper-450); font-family: var(--font-mono);">
+          sha256 {mangayomiPreviewState.sha256.slice(0, 16)}... · {Math.ceil(
+            mangayomiPreviewState.bytes / 1024,
+          )} KB
+        </p>
+        <div class="space-y-2 mt-3">
+          {#each mangayomiPreviewState.sources as source (source.index)}
+            <div
+              class="rounded-xl p-3 flex flex-col sm:flex-row sm:items-center gap-3"
+              style="background: var(--well-bg); border: 1px solid var(--line);"
+            >
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="text-sm font-semibold">{source.name}</p>
+                  <span class="chip text-[10px] px-2 py-0.5">v{source.version || "unknown"}</span>
+                  <span class="chip text-[10px] px-2 py-0.5">{source.lang || "all"}</span>
+                  {#if source.nsfw}
+                    <span class="chip chip-volt text-[10px] px-2 py-0.5">NSFW</span>
+                  {/if}
+                </div>
+                <p class="text-[11px] mt-0.5 truncate" style="color: var(--paper-450); font-family: var(--font-mono);" title={source.baseUrl}>
+                  {source.baseUrl}
+                </p>
+                {#if source.sourceCodeUrl}
+                  <p class="text-[10px] mt-0.5 truncate" style="color: var(--paper-450); font-family: var(--font-mono);" title={source.sourceCodeUrl}>
+                    {source.sourceCodeUrl}
+                  </p>
+                {/if}
+              </div>
+              <button
+                class="btn-primary px-3 py-1.5 text-[11px] shrink-0"
+                disabled={mangayomiBusy === `install-${source.index}`}
+                onclick={() => void installMangayomi(source)}
+              >
+                {mangayomiBusy === `install-${source.index}` ? "Installing" : "Install"}
+              </button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
   </section>
 
   <div class="surface p-4 mb-6">

@@ -8,6 +8,7 @@ mod db;
 mod download;
 mod error;
 mod ext_host;
+mod mangayomi;
 mod mpv_embed;
 mod player;
 mod proxy;
@@ -138,6 +139,8 @@ fn main() {
             commands::js_extension_list,
             commands::js_extension_install_sample,
             commands::js_extension_install_path,
+            commands::mangayomi_preview,
+            commands::mangayomi_install,
             commands::js_extension_remove,
             commands::js_extension_test,
             commands::js_extension_detail,

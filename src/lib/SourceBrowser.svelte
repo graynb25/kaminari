@@ -312,14 +312,17 @@
   }
 
   async function closePlayer() {
-    const proxyId = activePlayback?.stream.proxyId ?? null;
+    const proxyIds = [
+      activePlayback?.stream.proxyId ?? null,
+      ...(activePlayback?.stream.subtitleProxyIds ?? []),
+    ].filter((id): id is string => Boolean(id));
     const episodeId = activePlayback?.episode.id ?? playbackEpisodeId;
     activePlayback = null;
     await tick();
     focusEpisodePlay(episodeId);
     playbackEpisodeId = null;
     await progressSave;
-    if (proxyId) {
+    for (const proxyId of proxyIds) {
       try {
         await proxyRevoke(proxyId);
       } catch {
@@ -513,10 +516,31 @@
             kind: isHlsStream(stream) ? "hls" : "mp4",
             headers: stream.headers ?? null,
           });
+          const subtitles: NonNullable<JsStream["subtitles"]> = [];
+          const subtitleProxyIds: string[] = [];
+          for (const subtitle of stream.subtitles ?? []) {
+            if (!/^https?:\/\//i.test(subtitle.url)) {
+              subtitles.push(subtitle);
+              continue;
+            }
+            try {
+              const proxied = await proxyRegister(extension.id, {
+                url: subtitle.url,
+                kind: "file",
+                headers: stream.headers ?? null,
+              });
+              subtitles.push({ ...subtitle, url: proxied.proxyUrl });
+              subtitleProxyIds.push(proxied.opaqueId);
+            } catch {
+              subtitles.push(subtitle);
+            }
+          }
           prepared = {
             ...stream,
             proxiedUrl: registered.proxyUrl,
             proxyId: registered.opaqueId,
+            subtitles: subtitles.length > 0 ? subtitles : stream.subtitles,
+            subtitleProxyIds,
           };
         }
       } catch {

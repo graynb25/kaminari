@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use rquickjs::{Context, Ctx, Function, Object, Runtime};
+use rquickjs::{Context, Ctx, Function, Object, Promise, Runtime};
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -19,10 +19,14 @@ use crate::error::{AppError, AppResult};
 
 pub const TIMEOUT_SECS: u64 = 5;
 pub const RESOLVE_TIMEOUT_SECS: u64 = 10;
+pub const COMPAT_TIMEOUT_SECS: u64 = 60;
+pub const COMPAT_RESOLVE_TIMEOUT_SECS: u64 = 120;
 pub const MEMORY_BYTES: usize = 64 * 1024 * 1024;
 pub const STACK_BYTES: usize = 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 5 * 1024 * 1024;
 const MAX_CODE_BYTES: usize = 2 * 1024 * 1024;
+const COMPAT_FETCH_TIMEOUT_SECS: u64 = 30;
+const MAX_FETCH_TIMEOUT_SECS: u64 = 60;
 #[cfg(test)]
 const MAX_STORAGE_BYTES: usize = 1024 * 1024;
 const MAX_KEXT_BYTES: usize = 4 * 1024 * 1024;
@@ -271,7 +275,14 @@ pub(crate) struct HostRule {
 
 impl HostRule {
     pub(crate) fn parse(raw: &str) -> Option<Self> {
-        let trimmed = raw.trim().trim_end_matches('*');
+        let raw = raw.trim();
+        if raw == "*" {
+            return Some(Self {
+                host: "*".to_string(),
+                path_prefix: "/".to_string(),
+            });
+        }
+        let trimmed = raw.trim_end_matches('*');
         let url = reqwest::Url::parse(trimmed).ok()?;
         if url.scheme() != "https" {
             return None;
@@ -289,11 +300,15 @@ impl HostRule {
     }
 
     pub(crate) fn allows(&self, url: &reqwest::Url) -> bool {
-        url.scheme() == "https"
-            && url
-                .host_str()
-                .map(|host| host.eq_ignore_ascii_case(&self.host))
-                .unwrap_or(false)
+        if url.scheme() != "https" {
+            return false;
+        }
+        if self.host == "*" {
+            return true;
+        }
+        url.host_str()
+            .map(|host| host.eq_ignore_ascii_case(&self.host))
+            .unwrap_or(false)
             && url.path().starts_with(&self.path_prefix)
     }
 }
@@ -343,9 +358,22 @@ pub fn run(
             "extension code is larger than 2 MB".to_string(),
         ));
     }
+    let compat = package.manifest.id.starts_with("mangayomi.");
     let timeout = match op {
-        "search" | "getShow" | "getEpisodes" => limits.timeout,
-        "resolveEpisode" => limits.resolve_timeout,
+        "search" | "getShow" | "getEpisodes" => {
+            if compat {
+                Duration::from_secs(COMPAT_TIMEOUT_SECS)
+            } else {
+                limits.timeout
+            }
+        }
+        "resolveEpisode" => {
+            if compat {
+                Duration::from_secs(COMPAT_RESOLVE_TIMEOUT_SECS)
+            } else {
+                limits.resolve_timeout
+            }
+        }
         other => {
             return Err(AppError::Extension(format!(
                 "unknown extension operation: {other}"
@@ -357,7 +385,11 @@ pub fn run(
         extension_id: package.manifest.id.clone(),
         allow: package.manifest.allowed_rules()?,
         storage,
-        fetch_timeout: Duration::from_secs(10),
+        fetch_timeout: Duration::from_secs(if compat {
+            COMPAT_FETCH_TIMEOUT_SECS
+        } else {
+            10
+        }),
     });
 
     let runtime = Runtime::new().map_err(|err| AppError::Extension(err.to_string()))?;
@@ -382,9 +414,10 @@ pub fn run(
             .set("__kaminari_args", args.to_string())
             .map_err(|err| AppError::Extension(err.to_string()))?;
 
-        let raw: String = ctx
+        let promise: Promise = ctx
             .eval(DISPATCH)
             .map_err(|err| AppError::Extension(err.to_string()))?;
+        let raw = finish_promise(&ctx, promise, deadline, timeout)?;
         let envelope: Value = serde_json::from_str(&raw).map_err(|err| {
             AppError::Extension(format!("extension returned invalid JSON: {err}"))
         })?;
@@ -406,6 +439,36 @@ pub fn run(
         return Err(AppError::ExtensionTimeout(timeout.as_secs()));
     }
     result
+}
+
+fn finish_promise(
+    ctx: &Ctx<'_>,
+    promise: Promise<'_>,
+    deadline: Instant,
+    timeout: Duration,
+) -> AppResult<String> {
+    loop {
+        if let Some(result) = promise.result::<String>() {
+            return result.map_err(|err| AppError::Extension(err.to_string()));
+        }
+        if Instant::now() >= deadline {
+            return Err(AppError::ExtensionTimeout(timeout.as_secs()));
+        }
+        if !ctx.execute_pending_job() {
+            let ran_timer: bool = ctx
+                .eval(
+                    "typeof globalThis.__kaminari_run_timers === 'function' \
+                     ? globalThis.__kaminari_run_timers() > 0 : false",
+                )
+                .unwrap_or(false);
+            if !ran_timer {
+                return Err(AppError::Extension(
+                    "extension did not finish: it is waiting on an unsupported async operation"
+                        .to_string(),
+                ));
+            }
+        }
+    }
 }
 
 fn inject_bridge(ctx: &Ctx<'_>, host: Arc<HostContext>) -> AppResult<()> {
@@ -446,6 +509,20 @@ fn inject_bridge(ctx: &Ctx<'_>, host: Arc<HostContext>) -> AppResult<()> {
         .map_err(|err| AppError::Extension(err.to_string()))?;
     bridge
         .set("sha256", sha)
+        .map_err(|err| AppError::Extension(err.to_string()))?;
+
+    let random = Function::new(ctx.clone(), |count: u32| {
+        let mut bytes = vec![0u8; (count as usize).min(4096)];
+        match getrandom::fill(&mut bytes) {
+            Ok(()) => json!({ "ok": true, "value": bytes }).to_string(),
+            Err(err) => {
+                json!({ "ok": false, "code": "RANDOM", "message": err.to_string() }).to_string()
+            }
+        }
+    })
+    .map_err(|err| AppError::Extension(err.to_string()))?;
+    bridge
+        .set("randomBytes", random)
         .map_err(|err| AppError::Extension(err.to_string()))?;
 
     let get_host = host.clone();
@@ -557,7 +634,8 @@ impl HostContext {
                 options
                     .timeout_ms
                     .map(Duration::from_millis)
-                    .unwrap_or(self.fetch_timeout),
+                    .unwrap_or(self.fetch_timeout)
+                    .min(Duration::from_secs(MAX_FETCH_TIMEOUT_SECS)),
             )
             .redirect(redirect_policy)
             .build()
@@ -694,7 +772,7 @@ fn attr(html: &str, selector: &str, name: &str) -> Result<Option<String>, HostEr
         .map(|value| value.to_string()))
 }
 
-fn is_private_host(host: &str) -> bool {
+pub(crate) fn is_private_host(host: &str) -> bool {
     let host = host.trim_end_matches('.').to_ascii_lowercase();
     if host == "localhost" || host.ends_with(".localhost") || host.ends_with(".local") {
         return true;
@@ -748,6 +826,12 @@ const BRIDGE_SHIM: &str = r#"
     }
   };
 
+  globalThis.random = {
+    bytes(count) {
+      return call(host.randomBytes(Number(count) || 0));
+    }
+  };
+
   globalThis.storage = {
     get(key) {
       const out = parse(host.storageGet(String(key)));
@@ -772,7 +856,7 @@ const BRIDGE_SHIM: &str = r#"
 "#;
 
 const DISPATCH: &str = r#"
-(function () {
+(async function () {
   try {
     const op = globalThis.__kaminari_op;
     const provider = globalThis.kaminari;
@@ -783,12 +867,7 @@ const DISPATCH: &str = r#"
       throw error;
     }
     const args = JSON.parse(globalThis.__kaminari_args);
-    const out = fn.apply(null, args);
-    if (out && typeof out.then === "function") {
-      const error = new Error("Async methods are not supported in v0.1");
-      error.code = "ASYNC_UNSUPPORTED";
-      throw error;
-    }
+    const out = await fn.apply(null, args);
     const value = JSON.stringify(out);
     if (value === undefined) {
       throw new Error("Extension returned no value");
@@ -886,17 +965,32 @@ mod tests {
     }
 
     #[test]
-    fn async_methods_are_rejected_for_now() {
-        let code = "globalThis.kaminari = { search: async () => ({ items: [] }) };";
-        let err = run(
+    fn async_methods_resolve_through_the_microtask_queue() {
+        let code = r#"
+          globalThis.kaminari = {
+            async search(query) {
+              await Promise.resolve();
+              const second = await Promise.resolve(query + "!");
+              return { items: [{ id: "1", title: second }], hasNext: false };
+            }
+          };
+        "#;
+        let out = run(
             &package(code),
             "search",
             json!(["hello", 1]),
             storage(),
             &limits(1000, 8 * 1024 * 1024),
         )
-        .unwrap_err();
-        assert!(err.to_string().contains("ASYNC_UNSUPPORTED"));
+        .unwrap();
+        assert_eq!(out["items"][0]["title"], "hello!");
+    }
+
+    #[test]
+    fn wildcard_hosts_allow_any_https_host() {
+        let rule = HostRule::parse("*").unwrap();
+        assert!(rule.allows(&reqwest::Url::parse("https://cdn.example/a.m3u8").unwrap()));
+        assert!(!rule.allows(&reqwest::Url::parse("http://cdn.example/a.m3u8").unwrap()));
     }
 
     #[test]
