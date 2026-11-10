@@ -128,6 +128,12 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-10 Continue Watching dedupe
+
+Context. A show linked to AniList and played through a source produced two Continue Watching cards, one from the AniList progress row and one from the source progress row.
+
+What we shipped. `mergeContinueRows` normalizes source and AniList titles, drops the AniList row when a source row matches, and sorts the remaining rows by update time. The source row wins because it is the one that can resume or rewatch the actual stream. Tests cover punctuation, accents, alternate AniList titles and ordering. This is a render-time stopgap; the durable AniList-to-source link is a Phase 1 item in the production review.
+
 ## 2026-11-10 Installer icon
 
 Context. The app executable had the Kaminari icon, but the NSIS setup executable showed the default NSIS icon in Explorer and download lists.
