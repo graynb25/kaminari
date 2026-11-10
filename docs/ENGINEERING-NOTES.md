@@ -134,6 +134,8 @@ Context. The app executable had the Kaminari icon, but the NSIS setup executable
 
 What we shipped. `bundle.windows.nsis.installerIcon` and `uninstallerIcon` now point at `icons/icon.ico`. After the 0.26.8 build, extracting the associated icon from `Kaminari_0.26.8_x64-setup.exe` returned the 32px Kaminari bolt instead of the generic NSIS icon.
 
+Release check. The published 0.26.8 setup was downloaded from the release feed and its associated icon was extracted again, with the same bolt result. A host install of 0.26.7 found 0.26.8, downloaded it, closed itself, and the installer reopened 0.26.8. The feed reported `You are up to date.` The library SHA-256 stayed `66B2266E81DD218B801760F5828081EBBBEEB4F4108A2A36A42DCFCD0742C01A`, and uninstall kept the database. Host only; the clean VM pass remains open.
+
 ## 2026-11-10 Player quality, privacy and history polish
 
 Context. The preferred quality control was a native select. On Windows its popup opened white with pale text, which made the options hard to read. The player had no quality control. History had no time filter or row actions, and Clear history used an OS confirmation dialog. Incognito lived under Playback.
