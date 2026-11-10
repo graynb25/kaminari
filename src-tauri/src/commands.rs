@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 use tokio::sync::Semaphore;
 
 use crate::anilist::{
@@ -21,6 +22,7 @@ use crate::db::{
 use crate::error::AppError;
 use crate::ext_host::{self, ExtPackage, ExtStorage};
 use crate::mangayomi;
+use crate::path_guard::{PathAuthority, PathOperation};
 use crate::player::{self, PlaybackInfo, PlaybackRequest, PlayerState, PlayerStatus};
 use crate::proxy::{ProxyStatus, ProxyStore, ProxyStreamInput, ProxyUrl};
 use crate::registry::{fetch_index, LegacyExtension};
@@ -44,7 +46,6 @@ pub struct BootSnapshot {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupExport {
-    pub path: String,
     pub bytes: u64,
 }
 
@@ -622,12 +623,47 @@ pub fn js_extension_install_sample(state: State<'_, Db>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn js_extension_install_path(state: State<'_, Db>, path: String) -> Result<(), String> {
+pub async fn js_extension_install_pick(
+    app: AppHandle,
+    authority: State<'_, PathAuthority>,
+) -> Result<Option<String>, String> {
+    let Some(path) = run_file_dialog(
+        app,
+        FileDialogMode::Open,
+        "Install extension package",
+        &["kext"],
+        "package.kext",
+    )
+    .await?
+    else {
+        return Ok(None);
+    };
+    authority
+        .grant(&path, PathOperation::ExtensionInstall)
+        .map(Some)
+}
+
+#[tauri::command]
+pub async fn js_extension_install_package(
+    authority: State<'_, PathAuthority>,
+    state: State<'_, Db>,
+    token: String,
+) -> Result<(), String> {
+    let path = authority.consume(&token, PathOperation::ExtensionInstall)?;
     let db = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let metadata = std::fs::metadata(&path).map_err(|err| {
+            AppError::Extension(format!("cannot read package: {err}")).to_string()
+        })?;
+        if metadata.len() > ext_host::MAX_KEXT_BYTES as u64 {
+            return Err("the package is larger than 4 MB".to_string());
+        }
         let bytes = std::fs::read(&path).map_err(|err| {
             AppError::Extension(format!("cannot read package: {err}")).to_string()
         })?;
+        if bytes.len() > ext_host::MAX_KEXT_BYTES {
+            return Err("the package is larger than 4 MB".to_string());
+        }
         let package = ext_host::package_from_kext(&bytes).map_err(ipc_error)?;
         db.install_js_extension(&package.manifest, &package.code, "sideloaded")
             .map_err(ipc_error)
@@ -680,25 +716,15 @@ pub async fn mangayomi_install(
 }
 
 async fn fetch_mangayomi_source(url: &str) -> Result<(String, String, usize), String> {
-    let parsed = reqwest::Url::parse(url).map_err(|_| "source URL is not valid".to_string())?;
-    if parsed.scheme() != "https" {
-        return Err("only https source URLs are allowed".to_string());
-    }
-    if !parsed.username().is_empty() || parsed.password().is_some() {
-        return Err("source URL must not contain credentials".to_string());
-    }
-    if ext_host::is_private_host(parsed.host_str().unwrap_or("")) {
-        return Err("source URL host is local or private".to_string());
-    }
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .redirect(reqwest::redirect::Policy::limited(5))
-        .build()
-        .map_err(|err| format!("network client failed: {err}"))?;
+    let parsed =
+        reqwest::Url::parse(url.trim()).map_err(|_| "source URL is not valid".to_string())?;
+    crate::safe_http::validate_https_url(&parsed)?;
+    let client =
+        crate::safe_http::SafeFetch::new("Kaminari", Some(Duration::from_secs(30)), false)?;
     let response = client
-        .get(parsed)
-        .header(reqwest::header::ACCEPT, "text/javascript, text/plain, */*")
-        .send()
+        .get(parsed.as_str(), |_url, request| {
+            request.header(reqwest::header::ACCEPT, "text/javascript, text/plain, */*")
+        })
         .await
         .map_err(|err| format!("source download failed: {err}"))?;
     if !response.status().is_success() {
@@ -707,24 +733,15 @@ async fn fetch_mangayomi_source(url: &str) -> Result<(String, String, usize), St
             response.status()
         ));
     }
-    if response
-        .content_length()
-        .is_some_and(|length| length > mangayomi::MAX_SOURCE_BYTES as u64)
-    {
-        return Err("source is larger than 2 MB".to_string());
-    }
-    let mut body = Vec::new();
-    let mut response = response;
-    while let Some(chunk) = response
-        .chunk()
+    let body = crate::safe_http::read_capped(response, mangayomi::MAX_SOURCE_BYTES, "source")
         .await
-        .map_err(|err| format!("source download failed: {err}"))?
-    {
-        if body.len() + chunk.len() > mangayomi::MAX_SOURCE_BYTES {
-            return Err("source is larger than 2 MB".to_string());
-        }
-        body.extend_from_slice(&chunk);
-    }
+        .map_err(|err| {
+            if err.contains("larger than") {
+                "source is larger than 2 MB".to_string()
+            } else {
+                format!("source download failed: {err}")
+            }
+        })?;
     let bytes = body.len();
     let code =
         String::from_utf8(body).map_err(|_| "source is not valid UTF-8 JavaScript".to_string())?;
@@ -1041,41 +1058,147 @@ pub fn source_history_remove(
 }
 
 #[tauri::command]
-pub fn backup_export(state: State<'_, Db>, path: String) -> Result<BackupExport, String> {
-    let bytes = state.backup_to(&path).map_err(ipc_error)?;
-    Ok(BackupExport { path, bytes })
+pub async fn backup_export_pick(
+    app: AppHandle,
+    authority: State<'_, PathAuthority>,
+) -> Result<Option<String>, String> {
+    let Some(path) = run_file_dialog(
+        app,
+        FileDialogMode::Save,
+        "Backup library",
+        &["db"],
+        "kaminari-backup.db",
+    )
+    .await?
+    else {
+        return Ok(None);
+    };
+    authority
+        .grant(&path, PathOperation::BackupExport)
+        .map(Some)
+}
+
+#[tauri::command]
+pub async fn backup_export(
+    authority: State<'_, PathAuthority>,
+    state: State<'_, Db>,
+    token: String,
+) -> Result<BackupExport, String> {
+    let path = authority.consume(&token, PathOperation::BackupExport)?;
+    let db = state.inner().clone();
+    let bytes =
+        tauri::async_runtime::spawn_blocking(move || db.backup_to(path.to_string_lossy().as_ref()))
+            .await
+            .map_err(|err| format!("backup failed: {err}"))?
+            .map_err(ipc_error)?;
+    Ok(BackupExport { bytes })
 }
 
 /// Restores a validated backup. The live database is copied to a timestamped
 /// safety file first, and restored extensions are left disabled until reviewed.
 #[tauri::command]
-pub fn backup_restore(state: State<'_, Db>, path: String) -> Result<(), String> {
-    state.restore_from(&path).map_err(ipc_error)
+pub async fn backup_restore_pick(
+    app: AppHandle,
+    authority: State<'_, PathAuthority>,
+) -> Result<Option<String>, String> {
+    let Some(path) = run_file_dialog(
+        app,
+        FileDialogMode::Open,
+        "Restore backup",
+        &["db"],
+        "kaminari-backup.db",
+    )
+    .await?
+    else {
+        return Ok(None);
+    };
+    authority
+        .grant(&path, PathOperation::BackupRestore)
+        .map(Some)
 }
 
 #[tauri::command]
-pub fn settings_export(path: String, json: String) -> Result<(), String> {
+pub async fn backup_restore(
+    authority: State<'_, PathAuthority>,
+    state: State<'_, Db>,
+    token: String,
+) -> Result<(), String> {
+    let path = authority.consume(&token, PathOperation::BackupRestore)?;
+    let db = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        db.restore_from(path.to_string_lossy().as_ref())
+            .map_err(ipc_error)
+    })
+    .await
+    .map_err(|err| format!("restore failed: {err}"))?
+}
+
+#[tauri::command]
+pub async fn settings_export_pick(
+    app: AppHandle,
+    authority: State<'_, PathAuthority>,
+) -> Result<Option<String>, String> {
+    let Some(path) = run_file_dialog(
+        app,
+        FileDialogMode::Save,
+        "Export settings",
+        &["json"],
+        "kaminari-settings.json",
+    )
+    .await?
+    else {
+        return Ok(None);
+    };
+    authority
+        .grant(&path, PathOperation::SettingsExport)
+        .map(Some)
+}
+
+#[tauri::command]
+pub async fn settings_export(
+    authority: State<'_, PathAuthority>,
+    token: String,
+    json: String,
+) -> Result<(), String> {
     if json.len() > SETTINGS_MAX_BYTES {
         return Err("settings file is too large (64 KiB limit)".to_string());
     }
-    let target = settings_path(&path)?;
-    write_atomic(&target, json.as_bytes())
+    let target = authority.consume(&token, PathOperation::SettingsExport)?;
+    tauri::async_runtime::spawn_blocking(move || write_atomic(&target, json.as_bytes()))
+        .await
+        .map_err(|err| format!("settings export failed: {err}"))?
 }
 
 #[tauri::command]
-pub fn settings_read(path: String) -> Result<String, String> {
-    let target = settings_path(&path)?;
-    let metadata =
-        std::fs::metadata(&target).map_err(|err| format!("cannot read settings file: {err}"))?;
-    if metadata.len() > SETTINGS_MAX_BYTES as u64 {
-        return Err("settings file is too large (64 KiB limit)".to_string());
-    }
-    let bytes =
-        std::fs::read(&target).map_err(|err| format!("cannot read settings file: {err}"))?;
-    if bytes.len() > SETTINGS_MAX_BYTES {
-        return Err("settings file is too large (64 KiB limit)".to_string());
-    }
-    String::from_utf8(bytes).map_err(|_| "settings file is not UTF-8".to_string())
+pub async fn settings_import_pick(
+    app: AppHandle,
+    authority: State<'_, PathAuthority>,
+) -> Result<Option<String>, String> {
+    let Some(path) = run_file_dialog(
+        app,
+        FileDialogMode::Open,
+        "Import settings",
+        &["json"],
+        "kaminari-settings.json",
+    )
+    .await?
+    else {
+        return Ok(None);
+    };
+    authority
+        .grant(&path, PathOperation::SettingsImport)
+        .map(Some)
+}
+
+#[tauri::command]
+pub async fn settings_read(
+    authority: State<'_, PathAuthority>,
+    token: String,
+) -> Result<String, String> {
+    let target = authority.consume(&token, PathOperation::SettingsImport)?;
+    tauri::async_runtime::spawn_blocking(move || read_settings_file(&target))
+        .await
+        .map_err(|err| format!("settings import failed: {err}"))?
 }
 
 #[tauri::command]
@@ -1083,16 +1206,52 @@ pub fn app_restart(app: AppHandle) {
     app.restart();
 }
 
-fn settings_path(path: &str) -> Result<PathBuf, String> {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return Err("settings path is empty".to_string());
+#[derive(Clone, Copy)]
+enum FileDialogMode {
+    Open,
+    Save,
+}
+
+async fn run_file_dialog(
+    app: AppHandle,
+    mode: FileDialogMode,
+    title: &'static str,
+    extensions: &'static [&'static str],
+    default_name: &'static str,
+) -> Result<Option<PathBuf>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let dialog = app
+            .dialog()
+            .file()
+            .set_title(title)
+            .add_filter("Kaminari file", extensions);
+        let picked = match mode {
+            FileDialogMode::Open => dialog.blocking_pick_file(),
+            FileDialogMode::Save => dialog.set_file_name(default_name).blocking_save_file(),
+        };
+        picked
+            .map(|file| {
+                file.simplified()
+                    .into_path()
+                    .map_err(|err| format!("the selected path is not valid: {err}"))
+            })
+            .transpose()
+    })
+    .await
+    .map_err(|err| format!("file dialog failed: {err}"))?
+}
+
+fn read_settings_file(target: &Path) -> Result<String, String> {
+    let metadata =
+        std::fs::metadata(target).map_err(|err| format!("cannot read settings file: {err}"))?;
+    if metadata.len() > SETTINGS_MAX_BYTES as u64 {
+        return Err("settings file is too large (64 KiB limit)".to_string());
     }
-    let target = PathBuf::from(trimmed);
-    if !target.is_absolute() {
-        return Err("settings path must be absolute".to_string());
+    let bytes = std::fs::read(target).map_err(|err| format!("cannot read settings file: {err}"))?;
+    if bytes.len() > SETTINGS_MAX_BYTES {
+        return Err("settings file is too large (64 KiB limit)".to_string());
     }
-    Ok(target)
+    String::from_utf8(bytes).map_err(|_| "settings file is not UTF-8".to_string())
 }
 
 fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -1100,9 +1259,26 @@ fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), String> {
         .file_name()
         .map(|value| value.to_string_lossy().into_owned())
         .ok_or_else(|| "settings path has no file name".to_string())?;
-    let temp = target.with_file_name(format!(".{name}.kaminari.tmp"));
+    let mut created = None;
+    for _ in 0..8 {
+        let temp = target.with_file_name(format!(".{name}.kaminari-{}.tmp", random_suffix()?));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)
+        {
+            Ok(file) => {
+                created = Some((temp, file));
+                break;
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(format!("cannot write settings file: {err}")),
+        }
+    }
+    let Some((temp, mut file)) = created else {
+        return Err("cannot create a temporary settings file".to_string());
+    };
     let result = (|| -> std::io::Result<()> {
-        let mut file = std::fs::File::create(&temp)?;
         file.write_all(bytes)?;
         file.sync_all()?;
         drop(file);
@@ -1112,6 +1288,12 @@ fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), String> {
         let _ = std::fs::remove_file(&temp);
     }
     result.map_err(|err| format!("cannot write settings file: {err}"))
+}
+
+fn random_suffix() -> Result<String, String> {
+    let mut bytes = [0u8; 8];
+    getrandom::fill(&mut bytes).map_err(|err| format!("random source failed: {err}"))?;
+    Ok(hex::encode(bytes))
 }
 
 fn replace_file(temp: &Path, target: &Path) -> std::io::Result<()> {

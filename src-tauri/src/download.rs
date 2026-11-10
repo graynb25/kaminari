@@ -8,13 +8,16 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
-use reqwest::header::{self, HeaderName, HeaderValue};
+use reqwest::header::{HeaderName, HeaderValue};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::watch;
 use url::Origin;
+
+use crate::proxy::ProxyStore;
+use crate::safe_http::{self, SafeFetch};
 
 const DOWNLOAD_EVENT: &str = "download-progress";
 const MAX_HEADERS: usize = 16;
@@ -25,8 +28,7 @@ const MAX_HLS_DEPTH: u8 = 3;
 const MAX_FILE_NAME_CHARS: usize = 140;
 const MAX_COLLISION_TRIES: usize = 1000;
 const MAX_DOWNLOADS: usize = 100;
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-const READ_TIMEOUT: Duration = Duration::from_secs(60);
+const MAX_DOWNLOAD_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 const HEADER_TIMEOUT: Duration = Duration::from_secs(30);
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(150);
 
@@ -138,8 +140,15 @@ impl DownloadState {
                 .iter()
                 .find(|(_, record)| record.progress.state != DownloadStatus::Running)
                 .map(|(key, _)| key.clone());
-            if let Some(key) = finished {
-                map.remove(&key);
+            match finished {
+                Some(key) => {
+                    map.remove(&key);
+                }
+                None => {
+                    return Err(format!(
+                        "Too many downloads are running. The limit is {MAX_DOWNLOADS}."
+                    ));
+                }
             }
         }
         map.insert(id.to_string(), DownloadRecord { cancel, progress });
@@ -189,9 +198,10 @@ impl DownloadState {
 pub fn download_start(
     state: State<'_, DownloadState>,
     app: AppHandle,
+    proxy: State<'_, ProxyStore>,
     request: DownloadRequest,
 ) -> Result<DownloadStarted, String> {
-    let prepared = prepare(request)?;
+    let prepared = prepare(request, proxy.inner().clone())?;
     let id = new_download_id()?;
     let cancel = CancelToken::default();
     state.insert(
@@ -240,14 +250,16 @@ struct PreparedDownload {
     folder: PathBuf,
     file_name: String,
     direct_url: String,
+    proxy: ProxyStore,
 }
 
 struct DownloadContext<'a> {
     app: &'a AppHandle,
     state: &'a DownloadState,
     id: &'a str,
-    client: &'a reqwest::Client,
+    fetcher: &'a SafeFetch,
     source: &'a DownloadSource,
+    proxy: &'a ProxyStore,
     cancel: &'a CancelToken,
 }
 
@@ -324,16 +336,16 @@ impl<'a> ProgressSink<'a> {
     }
 }
 
-fn prepare(request: DownloadRequest) -> Result<PreparedDownload, String> {
+fn prepare(request: DownloadRequest, proxy: ProxyStore) -> Result<PreparedDownload, String> {
     let folder = validate_folder(&request.folder)?;
-    let direct = validate_url(&request.url)?;
+    let direct = validate_url(&request.url, &proxy)?;
     let proxied = request
         .proxied_url
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
     let effective = match proxied {
-        Some(value) => validate_url(value)?,
+        Some(value) => validate_url(value, &proxy)?,
         None => direct.clone(),
     };
     let headers = if proxied.is_some() {
@@ -357,6 +369,7 @@ fn prepare(request: DownloadRequest) -> Result<PreparedDownload, String> {
         folder,
         file_name,
         direct_url: request.url.trim().to_string(),
+        proxy,
     })
 }
 
@@ -377,17 +390,13 @@ fn validate_folder(folder: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn validate_url(value: &str) -> Result<Url, String> {
+fn validate_url(value: &str, proxy: &ProxyStore) -> Result<Url, String> {
     let url = Url::parse(value.trim()).map_err(|_| "The stream URL is invalid.".to_string())?;
-    if url.scheme() != "http" && url.scheme() != "https" {
-        return Err("The stream URL must be http or https.".to_string());
+    if proxy.authorizes_url(url.as_str()) {
+        return Ok(url);
     }
-    if url.host_str().is_none() {
-        return Err("The stream URL has no host.".to_string());
-    }
-    if !url.username().is_empty() || url.password().is_some() {
-        return Err("The stream URL must not contain credentials.".to_string());
-    }
+    safe_http::validate_https_url(&url)
+        .map_err(|_| "The stream URL must be https and point to a public host.".to_string())?;
     Ok(url)
 }
 
@@ -509,13 +518,14 @@ async fn execute(
     prepared: &PreparedDownload,
     cancel: &CancelToken,
 ) -> Result<(PathBuf, u64), DownloadError> {
-    let client = build_client()?;
+    let fetcher = build_client(&prepared.proxy)?;
     let context = DownloadContext {
         app,
         state,
         id,
-        client: &client,
+        fetcher: &fetcher,
         source: &prepared.source,
+        proxy: &prepared.proxy,
         cancel,
     };
 
@@ -563,20 +573,25 @@ async fn execute(
     }
 }
 
-fn build_client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .connect_timeout(CONNECT_TIMEOUT)
-        .read_timeout(READ_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::limited(5))
-        .no_gzip()
-        .user_agent("Kaminari")
-        .build()
-        .map_err(|_| "The download client could not start.".to_string())
+fn build_client(proxy: &ProxyStore) -> Result<SafeFetch, String> {
+    let proxy = proxy.clone();
+    SafeFetch::new_with_loopback_authorizer(
+        "Kaminari",
+        None,
+        true, // stream bytes are written as received, never decompressed
+        std::sync::Arc::new(move |url: &Url| proxy.authorizes_url(url.as_str())),
+    )
+    .map_err(|_| "The download client could not start.".to_string())
 }
 
 async fn perform_direct(context: &DownloadContext<'_>, part: &Path) -> Result<u64, DownloadError> {
     let response = send_get(context, &context.source.start_url).await?;
     let total = response.content_length();
+    if total.is_some_and(|bytes| bytes > MAX_DOWNLOAD_BYTES) {
+        return Err(DownloadError::Message(
+            "The download is larger than the 20 GB limit.".to_string(),
+        ));
+    }
     let mut file = create_part_file(part).await?;
     let mut sink = ProgressSink::new(context.app, context.state, context.id);
     sink.publish(DownloadStatus::Running, 0, total, None, None);
@@ -648,22 +663,27 @@ async fn send_get(
     }
     let parsed = Url::parse(url)
         .map_err(|_| DownloadError::Message("The stream URL is invalid.".to_string()))?;
-    let same_origin = parsed.origin() == context.source.origin;
-    let mut request = context.client.get(parsed);
-    for (name, value) in &context.source.headers {
-        if !same_origin && (*name == header::COOKIE || *name == header::AUTHORIZATION) {
-            continue;
-        }
-        request = request.header(name, value);
-    }
+
+    let source_origin = context.source.origin.clone();
+    let headers = &context.source.headers;
+    let request = context
+        .fetcher
+        .get(parsed.as_str(), move |hop, mut request| {
+            if hop.origin() == source_origin {
+                for (name, value) in headers {
+                    request = request.header(name, value);
+                }
+            }
+            request
+        });
 
     let response = tokio::select! {
-        result = tokio::time::timeout(HEADER_TIMEOUT, request.send()) => {
+        result = tokio::time::timeout(HEADER_TIMEOUT, request) => {
             result
                 .map_err(|_| {
                     DownloadError::Message("The server took too long to answer.".to_string())
                 })?
-                .map_err(|error| DownloadError::Message(reqwest_message(&error)))?
+                .map_err(|error| DownloadError::Message(format!("The stream request failed: {error}")))?
         }
         _ = context.cancel.cancelled() => return Err(DownloadError::Cancelled),
     };
@@ -699,6 +719,11 @@ async fn write_response(
             break;
         };
         let chunk = chunk.map_err(|error| DownloadError::Message(reqwest_message(&error)))?;
+        if received.saturating_add(chunk.len() as u64) > MAX_DOWNLOAD_BYTES {
+            return Err(DownloadError::Message(
+                "The download is larger than the 20 GB limit.".to_string(),
+            ));
+        }
         file.write_all(&chunk)
             .await
             .map_err(|_| DownloadError::Message("The file could not be written.".to_string()))?;
@@ -731,7 +756,7 @@ async fn resolve_hls(context: &DownloadContext<'_>) -> Result<HlsPlan, DownloadE
         let (text, final_url) = fetch_playlist(context, &url).await?;
         if is_master_playlist(&text) {
             validate_master_tags(&text)?;
-            let variants = parse_master_playlist(&final_url, &text)?;
+            let variants = parse_master_playlist(&final_url, &text, context.proxy)?;
             let Some(best) = variants.into_iter().max_by_key(|variant| variant.bandwidth) else {
                 return Err(DownloadError::Message(
                     "The HLS master playlist has no variants.".to_string(),
@@ -740,7 +765,7 @@ async fn resolve_hls(context: &DownloadContext<'_>) -> Result<HlsPlan, DownloadE
             url = best.url;
             continue;
         }
-        return Ok(parse_media_playlist(&final_url, &text)?);
+        return Ok(parse_media_playlist(&final_url, &text, context.proxy)?);
     }
     Err(DownloadError::Message(
         "The HLS playlist nests too deeply.".to_string(),
@@ -814,7 +839,11 @@ fn validate_master_tags(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn parse_master_playlist(base: &Url, text: &str) -> Result<Vec<HlsVariant>, String> {
+fn parse_master_playlist(
+    base: &Url,
+    text: &str,
+    proxy: &ProxyStore,
+) -> Result<Vec<HlsVariant>, String> {
     let mut variants = Vec::new();
     let mut pending_bandwidth: Option<u64> = None;
 
@@ -833,7 +862,7 @@ fn parse_master_playlist(base: &Url, text: &str) -> Result<Vec<HlsVariant>, Stri
         let Some(bandwidth) = pending_bandwidth.take() else {
             continue;
         };
-        let url = resolve_playlist_url(base, line)?;
+        let url = resolve_playlist_url(base, line, proxy)?;
         variants.push(HlsVariant {
             bandwidth,
             url: url.to_string(),
@@ -846,7 +875,7 @@ fn parse_master_playlist(base: &Url, text: &str) -> Result<Vec<HlsVariant>, Stri
     Ok(variants)
 }
 
-fn parse_media_playlist(base: &Url, text: &str) -> Result<HlsPlan, String> {
+fn parse_media_playlist(base: &Url, text: &str, proxy: &ProxyStore) -> Result<HlsPlan, String> {
     let mut segments = Vec::new();
     let mut init: Option<String> = None;
     let mut byte_range_pending = false;
@@ -869,7 +898,7 @@ fn parse_media_playlist(base: &Url, text: &str) -> Result<HlsPlan, String> {
                     "The HLS playlist has an initialization section without a URI.".to_string(),
                 );
             };
-            let resolved = resolve_playlist_url(base, &uri)?.to_string();
+            let resolved = resolve_playlist_url(base, &uri, proxy)?.to_string();
             if init.as_deref().is_some_and(|existing| existing != resolved) {
                 return Err(
                     "This HLS playlist changes its initialization section. It cannot be saved as one file."
@@ -892,7 +921,7 @@ fn parse_media_playlist(base: &Url, text: &str) -> Result<HlsPlan, String> {
                     .to_string(),
             );
         }
-        let resolved = resolve_playlist_url(base, line)?;
+        let resolved = resolve_playlist_url(base, line, proxy)?;
         if segments.len() >= MAX_HLS_SEGMENTS {
             return Err(format!(
                 "The HLS playlist has more than {MAX_HLS_SEGMENTS} segments."
@@ -963,19 +992,15 @@ fn split_attributes(input: &str) -> Vec<&str> {
     parts
 }
 
-fn resolve_playlist_url(base: &Url, raw: &str) -> Result<Url, String> {
+fn resolve_playlist_url(base: &Url, raw: &str, proxy: &ProxyStore) -> Result<Url, String> {
     let url = base
         .join(raw.trim())
         .map_err(|_| "The HLS playlist has an invalid URI.".to_string())?;
-    if url.scheme() != "http" && url.scheme() != "https" {
-        return Err("The HLS playlist points to a non HTTP URL.".to_string());
+    if proxy.authorizes_url(url.as_str()) {
+        return Ok(url);
     }
-    if url.host_str().is_none() {
-        return Err("The HLS playlist points to a URL without a host.".to_string());
-    }
-    if !url.username().is_empty() || url.password().is_some() {
-        return Err("The HLS playlist points to a URL with credentials.".to_string());
-    }
+    safe_http::validate_https_url(&url)
+        .map_err(|_| "The HLS playlist points to a non-public HTTPS URL.".to_string())?;
     Ok(url)
 }
 
@@ -1164,6 +1189,10 @@ mod tests {
         Url::parse(value).unwrap()
     }
 
+    fn no_proxy() -> ProxyStore {
+        ProxyStore::for_tests(1)
+    }
+
     fn test_folder(label: &str) -> PathBuf {
         let folder = std::env::temp_dir().join(format!(
             "kaminari-download-{label}-{}",
@@ -1171,6 +1200,26 @@ mod tests {
         ));
         std::fs::create_dir_all(&folder).unwrap();
         folder
+    }
+
+    #[test]
+    fn stream_urls_must_be_public_https() {
+        let proxy = no_proxy();
+        assert!(validate_url("http://cdn.example.com/a.mp4", &proxy).is_err());
+        assert!(validate_url("https://127.0.0.1/a.mp4", &proxy).is_err());
+        assert!(validate_url("https://192.168.1.5/a.mp4", &proxy).is_err());
+        assert!(validate_url("https://user:pass@cdn.example.com/a.mp4", &proxy).is_err());
+        assert!(validate_url("https://cdn.example.com/a.mp4", &proxy).is_ok());
+        assert!(validate_url("http://127.0.0.1:9/s/abc/file?token=def", &proxy).is_err());
+    }
+
+    #[test]
+    fn playlist_children_must_be_public_https() {
+        let base = url("https://cdn.example.com/hls/index.m3u8");
+        let proxy = no_proxy();
+        assert!(resolve_playlist_url(&base, "http://cdn.example.com/seg.ts", &proxy).is_err());
+        assert!(resolve_playlist_url(&base, "https://127.0.0.1/seg.ts", &proxy).is_err());
+        assert!(resolve_playlist_url(&base, "../seg.ts", &proxy).is_ok());
     }
 
     #[test]
@@ -1261,7 +1310,7 @@ mod tests {
         let base = url("https://cdn.example.com/show/master.m3u8");
         let text = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\nlow/index.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=2400000,RESOLUTION=1920x1080\nhigh/index.m3u8\n";
         assert!(validate_master_tags(text).is_ok());
-        let variants = parse_master_playlist(&base, text).unwrap();
+        let variants = parse_master_playlist(&base, text, &no_proxy()).unwrap();
         let best = variants
             .into_iter()
             .max_by_key(|variant| variant.bandwidth)
@@ -1274,7 +1323,7 @@ mod tests {
     fn media_playlist_parses_and_resolves_segments() {
         let base = url("https://cdn.example.com/hls/show/index.m3u8");
         let text = "#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:4.0,\nseg0.ts\n#EXTINF:4.0,\n../seg1.ts\n#EXTINF:4.0,\nhttps://media.example.net/seg2.ts\n#EXT-X-ENDLIST\n";
-        let plan = parse_media_playlist(&base, text).unwrap();
+        let plan = parse_media_playlist(&base, text, &no_proxy()).unwrap();
         assert_eq!(
             plan.segments,
             vec![
@@ -1291,7 +1340,7 @@ mod tests {
     fn init_section_marks_mp4() {
         let base = url("https://cdn.example.com/hls/index.m3u8");
         let text = "#EXTM3U\n#EXT-X-MAP:URI=\"init.mp4\"\n#EXTINF:4.0,\nseg1.m4s\n#EXT-X-ENDLIST\n";
-        let plan = parse_media_playlist(&base, text).unwrap();
+        let plan = parse_media_playlist(&base, text, &no_proxy()).unwrap();
         assert_eq!(
             plan.init.as_deref(),
             Some("https://cdn.example.com/hls/init.mp4")
@@ -1303,7 +1352,7 @@ mod tests {
     fn encrypted_playlist_is_rejected() {
         let base = url("https://cdn.example.com/hls/index.m3u8");
         let text = "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"key.bin\"\n#EXTINF:4.0,\nseg.ts\n#EXT-X-ENDLIST\n";
-        let error = parse_media_playlist(&base, text).unwrap_err();
+        let error = parse_media_playlist(&base, text, &no_proxy()).unwrap_err();
         assert!(error.contains("encrypted"));
     }
 
@@ -1311,7 +1360,7 @@ mod tests {
     fn unencrypted_key_tag_is_allowed() {
         let base = url("https://cdn.example.com/hls/index.m3u8");
         let text = "#EXTM3U\n#EXT-X-KEY:METHOD=NONE\n#EXTINF:4.0,\nseg.ts\n#EXT-X-ENDLIST\n";
-        assert!(parse_media_playlist(&base, text).is_ok());
+        assert!(parse_media_playlist(&base, text, &no_proxy()).is_ok());
     }
 
     #[test]

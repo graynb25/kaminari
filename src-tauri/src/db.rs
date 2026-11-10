@@ -1132,6 +1132,8 @@ impl Db {
 
     pub fn backup_to(&self, path: &str) -> AppResult<u64> {
         let target = absolute_path(path)?;
+        let target = crate::path_guard::resolve_write_target(&target, "backup target")
+            .map_err(AppError::Blocked)?;
         let parent = target
             .parent()
             .ok_or_else(|| AppError::Blocked("backup path has no parent folder".to_string()))?;
@@ -1139,15 +1141,11 @@ impl Db {
             .file_name()
             .map(|value| value.to_string_lossy().into_owned())
             .ok_or_else(|| AppError::Blocked("backup path has no file name".to_string()))?;
-        let temp = parent.join(format!(".{name}.kaminari.tmp"));
+        let temp = parent.join(format!(".{name}.kaminari-{}.tmp", random_suffix()?));
         let temp_raw = temp.to_string_lossy().into_owned();
 
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         let outcome = (|| -> AppResult<()> {
-            if temp.exists() {
-                std::fs::remove_file(&temp)
-                    .map_err(|err| AppError::Db(format!("cannot clear temp backup: {err}")))?;
-            }
             conn.execute("VACUUM INTO ?1", params![temp_raw])?;
             replace_file(&temp, &target)
                 .map_err(|err| AppError::Db(format!("cannot replace backup: {err}")))?;
@@ -1167,6 +1165,8 @@ impl Db {
 
     pub fn restore_from(&self, path: &str) -> AppResult<()> {
         let source_path = absolute_path(path)?;
+        let source_path = crate::path_guard::resolve_read_file(&source_path, "backup")
+            .map_err(AppError::Blocked)?;
         validate_backup_file(&source_path, MAX_BACKUP_BYTES)?;
         validate_backup_database(&source_path)?;
 
@@ -1220,6 +1220,13 @@ fn absolute_path(path: &str) -> AppResult<PathBuf> {
         ));
     }
     Ok(target)
+}
+
+fn random_suffix() -> AppResult<String> {
+    let mut bytes = [0u8; 8];
+    getrandom::fill(&mut bytes)
+        .map_err(|err| AppError::Db(format!("random source failed: {err}")))?;
+    Ok(hex::encode(bytes))
 }
 
 fn validate_backup_file(path: &Path, max_bytes: u64) -> AppResult<()> {

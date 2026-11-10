@@ -129,8 +129,12 @@ export function jsExtensionInstallSample(): Promise<void> {
   return invoke<void>("js_extension_install_sample");
 }
 
-export function jsExtensionInstallPath(path: string): Promise<void> {
-  return invoke<void>("js_extension_install_path", { path });
+export function jsExtensionInstallPick(): Promise<string | null> {
+  return invoke<string | null>("js_extension_install_pick");
+}
+
+export function jsExtensionInstallPackage(token: string): Promise<void> {
+  return invoke<void>("js_extension_install_package", { token });
 }
 
 export function mangayomiPreview(url: string): Promise<MangayomiPreview> {

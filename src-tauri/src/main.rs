@@ -10,9 +10,11 @@ mod error;
 mod ext_host;
 mod mangayomi;
 mod mpv_embed;
+mod path_guard;
 mod player;
 mod proxy;
 mod registry;
+mod safe_http;
 mod tray;
 
 use tauri::Manager;
@@ -50,6 +52,7 @@ fn main() {
         .manage(player::PlayerState::new())
         .manage(mpv_embed::MpvEmbedState::default())
         .manage(download::DownloadState::default())
+        .manage(path_guard::PathAuthority::new())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
@@ -141,7 +144,8 @@ fn main() {
             commands::source_toggle,
             commands::js_extension_list,
             commands::js_extension_install_sample,
-            commands::js_extension_install_path,
+            commands::js_extension_install_pick,
+            commands::js_extension_install_package,
             commands::mangayomi_preview,
             commands::mangayomi_install,
             commands::js_extension_remove,
@@ -174,9 +178,13 @@ fn main() {
             commands::source_continue,
             commands::source_history,
             commands::source_history_remove,
+            commands::backup_export_pick,
             commands::backup_export,
+            commands::backup_restore_pick,
             commands::backup_restore,
+            commands::settings_export_pick,
             commands::settings_export,
+            commands::settings_import_pick,
             commands::settings_read,
             commands::app_restart,
             download::download_start,

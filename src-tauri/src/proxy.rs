@@ -778,6 +778,46 @@ impl ProxyStore {
         Ok(())
     }
 
+    /// True only for a URL the app's proxy issued for a live entry: loopback
+    /// host, this store's port, `/s/{opaque_id}/...` and the matching random
+    /// token. Downloads use this to accept the proxy without accepting an
+    /// arbitrary localhost URL.
+    pub fn authorizes_url(&self, value: &str) -> bool {
+        let Ok(url) = Url::parse(value) else {
+            return false;
+        };
+        if url.scheme() != "http" || url.host_str() != Some("127.0.0.1") {
+            return false;
+        }
+        if !url.username().is_empty() || url.password().is_some() {
+            return false;
+        }
+        let Ok(state) = self.inner.lock() else {
+            return false;
+        };
+        if !state.enabled || url.port() != Some(state.port) {
+            return false;
+        }
+        let segments: Vec<&str> = url
+            .path_segments()
+            .map(|segments| segments.collect())
+            .unwrap_or_default();
+        if segments.len() < 3 || segments[0] != "s" {
+            return false;
+        }
+        let Some(entry) = state.entries.get(segments[1]) else {
+            return false;
+        };
+        if entry.created_at.elapsed() >= ABSOLUTE_TTL || entry.last_used.elapsed() >= IDLE_TTL {
+            return false;
+        }
+        let token = url
+            .query_pairs()
+            .find(|(name, _)| name == "token")
+            .map(|(_, value)| value.into_owned());
+        matches!(token.as_deref(), Some(token) if constant_time_eq(token.as_bytes(), entry.token.as_bytes()))
+    }
+
     fn lookup(&self, id: &str, token: &str) -> Result<ProxyEntry, LookupError> {
         let mut state = self.inner.lock().map_err(|_| LookupError::NotFound)?;
         let Some(entry) = state.entries.get(id) else {
@@ -905,7 +945,7 @@ impl ProxyStore {
     }
 
     #[cfg(test)]
-    fn for_tests(port: u16) -> Self {
+    pub(crate) fn for_tests(port: u16) -> Self {
         Self::with_state(port, true, true)
     }
 
@@ -2125,27 +2165,7 @@ fn check_ip(ip: IpAddr, allow_private: bool) -> Result<(), String> {
 }
 
 fn is_blocked_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(ip) => {
-            ip.is_private()
-                || ip.is_loopback()
-                || ip.is_link_local()
-                || ip.is_multicast()
-                || ip.is_broadcast()
-                || ip.is_unspecified()
-                || ip.octets() == [169, 254, 169, 254]
-                || ip.octets()[0] == 0
-        }
-        IpAddr::V6(ip) => {
-            ip.to_ipv4_mapped()
-                .is_some_and(|ip| is_blocked_ip(IpAddr::V4(ip)))
-                || ip.is_loopback()
-                || ip.is_unspecified()
-                || ip.is_unique_local()
-                || ip.is_unicast_link_local()
-                || ip.is_multicast()
-        }
-    }
+    !crate::safe_http::is_public_ip(ip)
 }
 
 fn parse_range(value: &str) -> Option<ByteRange> {
@@ -4680,6 +4700,36 @@ https://other.example/hls/high.m3u8\n";
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn download_authority_accepts_only_issued_proxy_urls() {
+        let store = ProxyStore::for_tests(8765);
+        let stream = ProxyStreamInput {
+            url: "http://127.0.0.1:9/video.mp4".to_string(),
+            kind: "file".to_string(),
+            headers: None,
+        };
+        let registered = store
+            .register_inner("app.kaminari.test", &stream, None, false)
+            .await
+            .unwrap();
+
+        assert!(store.authorizes_url(&registered.proxy_url));
+        let child = registered.proxy_url.replace("/file", "/seg/segment-1");
+        assert!(store.authorizes_url(&child));
+
+        let wrong_token = format!("{}0", registered.proxy_url);
+        assert!(!store.authorizes_url(&wrong_token));
+        let wrong_port = registered.proxy_url.replace(":8765", ":8766");
+        assert!(!store.authorizes_url(&wrong_port));
+        let wrong_host = registered.proxy_url.replace("127.0.0.1", "localhost");
+        assert!(!store.authorizes_url(&wrong_host));
+        let no_token = registered.proxy_url.split('?').next().unwrap();
+        assert!(!store.authorizes_url(no_token));
+
+        store.revoke(&registered.opaque_id).unwrap();
+        assert!(!store.authorizes_url(&registered.proxy_url));
     }
 
     fn token_of(registered: &ProxyUrl) -> String {

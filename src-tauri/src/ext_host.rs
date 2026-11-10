@@ -38,7 +38,7 @@ const MAX_SELECT_OUTPUT_BYTES: usize = 1024 * 1024;
 const SELECT_ROW_OVERHEAD_BYTES: usize = 512;
 #[cfg(test)]
 const MAX_STORAGE_BYTES: usize = 1024 * 1024;
-const MAX_KEXT_BYTES: usize = 4 * 1024 * 1024;
+pub(crate) const MAX_KEXT_BYTES: usize = 4 * 1024 * 1024;
 
 pub fn validate_source_id(id: &str) -> bool {
     !id.is_empty() && id.chars().all(|c| c.is_ascii_digit())

@@ -1,7 +1,7 @@
 ﻿<script lang="ts">
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { confirm, open, save } from "@tauri-apps/plugin-dialog";
+  import { confirm, open } from "@tauri-apps/plugin-dialog";
   import { check, type Update } from "@tauri-apps/plugin-updater";
   import BrandMark from "./BrandMark.svelte";
   import Icon from "./Icon.svelte";
@@ -168,12 +168,6 @@
     setProxyFlag(proxyOn);
   }
 
-  function backupFileName(): string {
-    const now = new Date();
-    const pad = (value: number) => String(value).padStart(2, "0");
-    return `kaminari-backup-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.db`;
-  }
-
   function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -300,15 +294,9 @@
     resetDataStatus();
     dataBusy = true;
     try {
-      const path = pickedPath(
-        await save({
-          title: "Backup library",
-          defaultPath: backupFileName(),
-          filters: [{ name: "Kaminari backup", extensions: ["db"] }],
-        }),
-      );
-      if (!path) return;
-      const result = await invoke<{ path: string; bytes: number }>("backup_export", { path });
+      const token = await invoke<string | null>("backup_export_pick");
+      if (!token) return;
+      const result = await invoke<{ bytes: number }>("backup_export", { token });
       setDataStatus("success", `Backup saved (${formatBytes(result.bytes)}).`);
     } catch (err) {
       setDataStatus("error", errorText(err));
@@ -345,21 +333,14 @@
     resetDataStatus();
     dataBusy = true;
     try {
-      const path = pickedPath(
-        await open({
-          title: "Restore backup",
-          multiple: false,
-          directory: false,
-          filters: [{ name: "Kaminari backup", extensions: ["db"] }],
-        }),
-      );
-      if (!path) return;
+      const token = await invoke<string | null>("backup_restore_pick");
+      if (!token) return;
       const approved = await confirm(
         "Replace the current library with this backup? Restart Kaminari after the restore.",
         { title: "Restore backup", kind: "warning" },
       );
       if (!approved) return;
-      await invoke<void>("backup_restore", { path });
+      await invoke<void>("backup_restore", { token });
       setDataStatus("success", "Backup restored. Restart to load it.", true);
     } catch (err) {
       setDataStatus("error", errorText(err));
@@ -373,16 +354,10 @@
     resetDataStatus();
     dataBusy = true;
     try {
-      const path = pickedPath(
-        await save({
-          title: "Export settings",
-          defaultPath: "kaminari-settings.json",
-          filters: [{ name: "Kaminari settings", extensions: ["json"] }],
-        }),
-      );
-      if (!path) return;
+      const token = await invoke<string | null>("settings_export_pick");
+      if (!token) return;
       const json = JSON.stringify(collectSettings(), null, 2);
-      await invoke<void>("settings_export", { path, json });
+      await invoke<void>("settings_export", { token, json });
       setDataStatus("success", "Settings exported.");
     } catch (err) {
       setDataStatus("error", errorText(err));
@@ -396,16 +371,9 @@
     resetDataStatus();
     dataBusy = true;
     try {
-      const path = pickedPath(
-        await open({
-          title: "Import settings",
-          multiple: false,
-          directory: false,
-          filters: [{ name: "Kaminari settings", extensions: ["json"] }],
-        }),
-      );
-      if (!path) return;
-      const raw = await invoke<string>("settings_read", { path });
+      const token = await invoke<string | null>("settings_import_pick");
+      if (!token) return;
+      const raw = await invoke<string>("settings_read", { token });
       const data = parseSettings(raw);
       applySettings(data);
       themeMode = data.theme;

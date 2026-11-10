@@ -6,7 +6,8 @@
   import ProgressBar from "./ProgressBar.svelte";
   import SourcePreferencesDialog from "./SourcePreferencesDialog.svelte";
   import {
-    jsExtensionInstallPath,
+    jsExtensionInstallPackage,
+    jsExtensionInstallPick,
     jsExtensionInstallSample,
     jsExtensionList,
     jsExtensionRemove,
@@ -37,7 +38,6 @@
   let jsLoading = $state(true);
   let jsBusy = $state<string | null>(null);
   let prefsExtension = $state<JsExtension | null>(null);
-  let jsPath = $state("");
   let jsTestId = $state<string | null>(null);
   let jsTestQuery = $state("Popeye");
   let jsTestLoading = $state(false);
@@ -107,15 +107,11 @@
   }
 
   async function installPath() {
-    const path = jsPath.trim();
-    if (!path) {
-      notify("Paste a path to a .kext package first.", "error");
-      return;
-    }
     jsBusy = "path";
     try {
-      await jsExtensionInstallPath(path);
-      jsPath = "";
+      const token = await jsExtensionInstallPick();
+      if (!token) return;
+      await jsExtensionInstallPackage(token);
       await refreshJsExtensions();
       notify("Installed the package as sideloaded.", "success");
     } catch (e) {
@@ -268,26 +264,13 @@
           <Icon name="download" size={14} />
           {jsBusy === "sample" ? "Installing" : "Install sample"}
         </button>
-        <label class="relative flex-1">
-          <span class="sr-only">Path to a .kext package</span>
-          <span class="absolute left-3 top-1/2 -translate-y-1/2" style="color: var(--paper-450);">
-            <Icon name="folder" size={14} />
-          </span>
-          <input
-            bind:value={jsPath}
-            placeholder="Path to a .kext package"
-            class="w-full h-9 rounded-xl pl-9 pr-3 text-sm outline-none"
-            style="background: var(--input-bg); border: 1px solid var(--line); color: var(--text-1); font-family: var(--font-mono);"
-            aria-label="Path to a .kext package"
-            spellcheck="false"
-          />
-        </label>
         <button
           class="btn-ghost px-4 py-2 text-sm shrink-0"
           disabled={jsBusy === "path"}
           onclick={() => void installPath()}
         >
-          {jsBusy === "path" ? "Installing" : "Install from path"}
+          <Icon name="folder" size={14} />
+          {jsBusy === "path" ? "Installing" : "Choose .kext package"}
         </button>
       </div>
       <p class="text-xs mt-2 leading-relaxed" style="color: var(--paper-450);">
