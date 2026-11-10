@@ -11,25 +11,134 @@ use url::Url;
 use crate::error::{AppError, AppResult};
 
 const ENDPOINT: &str = "https://graphql.anilist.co";
+const AUTHORIZE_URL: &str = "https://anilist.co/api/v2/oauth/authorize";
+const CLIENT_ID: &str = "56484";
+const AUTH_STATE_BYTES: usize = 32;
 
-pub const ANILIST_AUTH_URL: &str =
-    "https://anilist.co/api/v2/oauth/authorize?client_id=56484&response_type=token";
+/// How long a sign in may take before its state value stops matching.
+pub const AUTH_STATE_TTL: Duration = Duration::from_secs(10 * 60);
 
-pub fn auth_url() -> &'static str {
-    ANILIST_AUTH_URL
+pub fn is_auth_callback(url: &Url) -> bool {
+    url.scheme() == "kaminari" && url.host_str() == Some("auth") && url.path() == "/callback"
+}
+
+/// Builds the AniList authorization URL with a caller supplied state value.
+pub fn authorize_url(state: &str) -> String {
+    let mut url = Url::parse(AUTHORIZE_URL).expect("static AniList authorize URL");
+    url.query_pairs_mut()
+        .append_pair("client_id", CLIENT_ID)
+        .append_pair("response_type", "token")
+        .append_pair("state", state);
+    url.to_string()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthCallback {
+    pub token: String,
+    pub state: String,
 }
 
 /// Parses only the AniList implicit grant callback. The token stays in Rust.
-pub fn parse_auth_callback(url: &Url) -> Result<String, &'static str> {
-    if url.scheme() != "kaminari" || url.host_str() != Some("auth") || url.path() != "/callback" {
+pub fn parse_auth_callback(url: &Url) -> Result<AuthCallback, &'static str> {
+    if !is_auth_callback(url) {
         return Err("not an AniList callback");
     }
     let fragment = url.fragment().ok_or("AniList callback has no token")?;
-    url::form_urlencoded::parse(fragment.as_bytes())
-        .find(|(key, _)| key == "access_token")
-        .map(|(_, value)| value.into_owned())
+    let mut token = None;
+    let mut state = None;
+    for (key, value) in url::form_urlencoded::parse(fragment.as_bytes()) {
+        match key.as_ref() {
+            "access_token" if token.is_none() => token = Some(value.into_owned()),
+            "state" if state.is_none() => state = Some(value.into_owned()),
+            _ => {}
+        }
+    }
+    let token = token
         .filter(|token| !token.trim().is_empty())
-        .ok_or("AniList callback has no token")
+        .ok_or("AniList callback has no token")?;
+    let state = state
+        .or_else(|| {
+            url.query_pairs()
+                .find(|(key, _)| key == "state")
+                .map(|(_, value)| value.into_owned())
+        })
+        .filter(|state| !state.trim().is_empty())
+        .ok_or("AniList callback has no state")?;
+    Ok(AuthCallback { token, state })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthStateError {
+    /// No sign in is pending, or the state was already used.
+    Missing,
+    Mismatch,
+    Expired,
+}
+
+struct PendingAuthState {
+    value: String,
+    expires_at: Instant,
+}
+
+/// Holds the one pending AniList sign in state. One use, short lived.
+#[derive(Default)]
+pub struct AniListAuthState {
+    pending: Mutex<Option<PendingAuthState>>,
+}
+
+impl AniListAuthState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Generates and stores a fresh state value, replacing any previous one.
+    pub fn begin(&self) -> Result<String, String> {
+        let mut bytes = [0u8; AUTH_STATE_BYTES];
+        getrandom::fill(&mut bytes).map_err(|err| format!("random source failed: {err}"))?;
+        let value = hex::encode(bytes);
+        let mut pending = self.pending.lock().expect("auth state lock");
+        *pending = Some(PendingAuthState {
+            value: value.clone(),
+            expires_at: Instant::now() + AUTH_STATE_TTL,
+        });
+        Ok(value)
+    }
+
+    /// Checks and consumes the pending state. The stored value is cleared even
+    /// when it does not match, so a callback cannot be retried.
+    pub fn consume(&self, candidate: &str) -> Result<(), AuthStateError> {
+        self.consume_at(candidate, Instant::now())
+    }
+
+    fn consume_at(&self, candidate: &str, now: Instant) -> Result<(), AuthStateError> {
+        let pending = self.pending.lock().expect("auth state lock").take();
+        let Some(pending) = pending else {
+            return Err(AuthStateError::Missing);
+        };
+        if now >= pending.expires_at {
+            return Err(AuthStateError::Expired);
+        }
+        if !constant_time_eq(pending.value.as_bytes(), candidate.as_bytes()) {
+            return Err(AuthStateError::Mismatch);
+        }
+        Ok(())
+    }
+
+    /// Drops any pending state, for example when the sign in page cannot open.
+    pub fn clear(&self) {
+        self.pending.lock().expect("auth state lock").take();
+    }
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (a, b) in left.iter().zip(right) {
+        diff |= a ^ b;
+    }
+    diff == 0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -840,42 +949,128 @@ mod tests {
     }
 
     #[test]
-    fn auth_url_has_client_id_and_token_response() {
-        let url = auth_url();
-        assert!(url.contains("client_id=56484"));
-        assert!(url.contains("response_type=token"));
-        assert!(!url.contains("redirect_uri"));
+    fn auth_url_has_client_id_response_type_and_state() {
+        let url = Url::parse(&authorize_url("abc123")).unwrap();
+        assert_eq!(url.scheme(), "https");
+        assert_eq!(url.host_str(), Some("anilist.co"));
+        assert_eq!(url.path(), "/api/v2/oauth/authorize");
+        let params: Vec<(String, String)> = url.query_pairs().into_owned().collect();
+        assert!(params.contains(&("client_id".to_string(), CLIENT_ID.to_string())));
+        assert!(params.contains(&("response_type".to_string(), "token".to_string())));
+        assert!(params.contains(&("state".to_string(), "abc123".to_string())));
+        assert!(!params.iter().any(|(key, _)| key == "redirect_uri"));
+        assert!(url.fragment().is_none());
     }
 
     #[test]
     fn parses_valid_auth_callback() {
         // Example token, not a credential.
-        let url = Url::parse("kaminari://auth/callback#access_token=test-token").unwrap();
-        assert_eq!(parse_auth_callback(&url).as_deref(), Ok("test-token"));
+        let url =
+            Url::parse("kaminari://auth/callback#access_token=test-token&state=abc123").unwrap();
+        let callback = parse_auth_callback(&url).unwrap();
+        assert_eq!(callback.token, "test-token");
+        assert_eq!(callback.state, "abc123");
+    }
+
+    #[test]
+    fn accepts_state_in_query() {
+        let url =
+            Url::parse("kaminari://auth/callback?state=abc123#access_token=test-token").unwrap();
+        assert_eq!(parse_auth_callback(&url).unwrap().state, "abc123");
     }
 
     #[test]
     fn rejects_wrong_scheme() {
-        let url = Url::parse("https://auth/callback#access_token=abc123").unwrap();
+        let url = Url::parse("https://auth/callback#access_token=abc123&state=abc123").unwrap();
         assert!(parse_auth_callback(&url).is_err());
     }
 
     #[test]
     fn rejects_wrong_path() {
-        let url = Url::parse("kaminari://auth/other#access_token=abc123").unwrap();
+        let url = Url::parse("kaminari://auth/other#access_token=abc123&state=abc123").unwrap();
         assert!(parse_auth_callback(&url).is_err());
     }
 
     #[test]
     fn rejects_callback_without_token() {
-        let url = Url::parse("kaminari://auth/callback#token_type=Bearer").unwrap();
+        let url = Url::parse("kaminari://auth/callback#token_type=Bearer&state=abc123").unwrap();
         assert!(parse_auth_callback(&url).is_err());
     }
 
     #[test]
-    fn decodes_percent_encoded_token() {
-        let url = Url::parse("kaminari://auth/callback#access_token=abc%2Fdef%3D").unwrap();
-        assert_eq!(parse_auth_callback(&url).as_deref(), Ok("abc/def="));
+    fn rejects_callback_without_state() {
+        let url = Url::parse("kaminari://auth/callback#access_token=test-token").unwrap();
+        assert!(parse_auth_callback(&url).is_err());
+    }
+
+    #[test]
+    fn rejects_callback_with_empty_state() {
+        let url = Url::parse("kaminari://auth/callback#access_token=test-token&state=").unwrap();
+        assert!(parse_auth_callback(&url).is_err());
+    }
+
+    #[test]
+    fn decodes_percent_encoded_token_and_state() {
+        let url = Url::parse("kaminari://auth/callback#access_token=abc%2Fdef%3D&state=st%2Fate")
+            .unwrap();
+        let callback = parse_auth_callback(&url).unwrap();
+        assert_eq!(callback.token, "abc/def=");
+        assert_eq!(callback.state, "st/ate");
+    }
+
+    #[test]
+    fn state_is_random_and_one_time() {
+        let store = AniListAuthState::new();
+        let first = store.begin().unwrap();
+        let second = store.begin().unwrap();
+        assert_eq!(first.len(), AUTH_STATE_BYTES * 2);
+        assert!(first.chars().all(|ch| ch.is_ascii_hexdigit()));
+        assert_ne!(first, second);
+        assert_eq!(store.consume(&second), Ok(()));
+        assert_eq!(store.consume(&second), Err(AuthStateError::Missing));
+    }
+
+    #[test]
+    fn missing_state_is_rejected() {
+        let store = AniListAuthState::new();
+        assert_eq!(store.consume("anything"), Err(AuthStateError::Missing));
+    }
+
+    #[test]
+    fn mismatched_state_is_rejected_and_consumed() {
+        let store = AniListAuthState::new();
+        let state = store.begin().unwrap();
+        assert_eq!(store.consume("wrong"), Err(AuthStateError::Mismatch));
+        assert_eq!(store.consume(&state), Err(AuthStateError::Missing));
+    }
+
+    #[test]
+    fn expired_state_is_rejected_and_consumed() {
+        let store = AniListAuthState::new();
+        let state = store.begin().unwrap();
+        let later = Instant::now() + AUTH_STATE_TTL + Duration::from_secs(1);
+        assert_eq!(
+            store.consume_at(&state, later),
+            Err(AuthStateError::Expired)
+        );
+        assert_eq!(store.consume(&state), Err(AuthStateError::Missing));
+    }
+
+    #[test]
+    fn beginning_a_new_sign_in_replaces_the_old_state() {
+        let store = AniListAuthState::new();
+        let old = store.begin().unwrap();
+        let new = store.begin().unwrap();
+        assert_eq!(store.consume(&old), Err(AuthStateError::Mismatch));
+        assert_eq!(store.consume(&new), Err(AuthStateError::Missing));
+    }
+
+    #[test]
+    fn clearing_state_drops_the_pending_sign_in() {
+        let store = AniListAuthState::new();
+        let state = store.begin().unwrap();
+        store.clear();
+        assert_eq!(store.consume(&state), Err(AuthStateError::Missing));
     }
 
     #[test]
