@@ -92,13 +92,16 @@ The manifest allowlist for compat sources is `*`. The existing network guard sti
 - Removing the extension removes its stored code and preferences. Covered by the extension removal path and storage test.
 - No source list or source code ships with the app. The repo contains no source list. The two live sources were installed by hand for the test.
 - Native `.kext` sources and the public-domain sample keep working. Rechecked after the Promise dispatch change: 24 Popeye results and playback.
-- Rust and frontend tests, fmt, clippy and the style check pass. 115 Rust tests and 80 frontend tests passed at the 0.26.1 check.
+- Rust and frontend tests, fmt, clippy and the style check pass. 117 Rust tests and 83 frontend tests passed at the 0.26.2 check.
 
 ## Measured results
 
 - AniKoto: preview found 3 anime sources in one file, search 26 results in 0.5 s, detail 0.6 s, 220 episodes 0.7 s, resolve 6.1 s, two HLS variants with headers. Episode 1 played 800p with 302 subtitle cues.
 - HiAnime: 28 search results, 220 episodes, ZokoAnime 800p HLS playback. Its remote VTT needed the loopback proxy and a conditional `crossorigin` video attribute; both landed.
 - Native sample: 24 Popeye results. Playback still works after the conditional cross-origin change because the sample has no subtitle tracks.
+- Source settings: AniKoto exposes an Episode thumbnails switch. Turning it on produced 220 distinct TVDB thumbnails for Naruto and no series art fallbacks.
+- Autoplay: Naruto episode 1 ended, the card showed a countdown, and episode 2 started with no error.
+- Recommendations: the Naruto detail returned 12 More like this cards; clicking one opened that title.
 
 ## Deferred
 

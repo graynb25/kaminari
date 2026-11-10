@@ -84,6 +84,8 @@ Supported subset: anime only, no filter UI, no source preference UI, no native W
 
 Host policy: a compat manifest uses `hosts: ["*"]`. Plain HTTP, localhost, private addresses and URL credentials stay blocked. The trust panel states that the source can contact any host and send it what it reads. The host has no access to the Kaminari database, AniList token, files or environment.
 
+Source settings: if the source defines `getSourcePreferences()`, the Sources page exposes a Settings dialog. Switch and single choice list preferences are editable and stored as `pref.<key>` in the extension namespace. `SharedPreferences.get` returns a boolean for the stored strings `"true"` and `"false"`, so switch checks work as written. Multi select and free text preferences are shown but are not editable yet. Source changes apply the next time the show is opened.
+
 ## Registry
 
 A registry is a signed JSON file with a list of extensions. Each entry holds id, name, version, min host, download URL, sha256, signature. Kaminari pins the key per registry URL. Trust levels read signed, sideloaded, disabled. NSFW hides by default behind a setting.

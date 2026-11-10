@@ -128,6 +128,28 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-10 Autoplay, recommendations and source settings
+
+Context. Watching one episode ended at a dead screen, AniList detail pages showed no similar titles, and episode rows repeated the series art because the source returned no episode thumbnail. AniKoto already had a per-episode thumbnail switch, but the compatibility layer had no way to set it.
+
+What we shipped. Autoplay next episode with a five second countdown, a Play next button and a Settings toggle. More like this reads AniList recommendations in the detail query and renders up to 12 clickable cards. The compatibility layer exposes `getSourcePreferences()` through a source settings dialog, stores values as `pref.<key>` and parses `"true"` and `"false"` as booleans. The episode row now shows the source thumbnail only; it no longer substitutes the series cover. The dialog supports switches and single choice lists, and explains that other types are not editable yet.
+
+What we measured. AniKoto's Episode thumbnails switch saved `anikoto_pref_ep_thumbnails=true` and the next Naruto detail loaded 220 TVDB episode images with zero empty tiles. Autoplay reached the end card, showed a 3 second countdown, and started episode 2 at 12 seconds with no error. The Naruto detail returned 12 recommendation cards; clicking My Hero Academia opened its detail. 117 Rust and 83 frontend tests pass.
+
+## 2026-11-10 AniList progress from source playback
+
+Context. Manual episode marks on an AniList detail page enqueued progress, but watching a source show did not, because the source id is not an AniList id.
+
+What we shipped. A Watch handoff now carries the AniList media into the source browser. When a linked episode is marked watched at 95 percent or at the end, the app calls the existing `watched_set` path with the source episode number, bounded by the AniList episode count. The queue is deduplicated per episode for the session. The source detail shows an AniList chip so the link is visible. Source shows opened directly from Sources stay unlinked.
+
+What we measured. The queue and conflict path already have Rust tests. Live progress was not written to the connected account in this session because the project rule is not to exercise AniList writes against the user's account. The linked UI path needs an opt-in live check.
+
+## 2026-11-10 Portable zip
+
+Context. The NSIS installer is the normal distribution, but some users want a folder they can run without installing.
+
+What we shipped. `scripts/package-portable.mjs` copies `Kaminari.exe`, the libmpv `lib` folder, `LICENSE`, `README.md`, `CHANGELOG.md` and a `PORTABLE.txt` into a versioned folder and zips it. It is exposed as `pnpm package:portable`. The build is installer-free, not data-free: settings and the SQLite library still live in the normal Windows app data folder, so replacing the folder keeps user data.
+
 ## 2026-11-10 Long HLS playlist stall
 
 Context. Playback stopped around 28 seconds and the player offered a retry. The stream was a 23 minute VOD episode with 283 HLS segments.

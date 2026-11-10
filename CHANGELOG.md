@@ -4,6 +4,17 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.26.2 - 2026-11-10
+
+- Playback: autoplay next episode with a five second countdown, a Play next button, and a Settings toggle
+- Playback: source shows opened from an AniList Watch handoff queue finished episodes to AniList progress; manual marks already did
+- Detail: More like this recommendations from AniList, clickable into the same detail flow
+- Sources: per-source settings for Mangayomi sources, including AniKoto episode thumbnails; source series art is no longer shown as an episode thumbnail
+- Sources: boolean source preferences round-trip correctly instead of returning the truthy string false
+- Packaging: portable Windows zip beside the NSIS installer
+- Docs: Kaminari is described as a desktop anime app, not an Aniyomi client; the Aniyomi registry remains metadata only
+- Version: bump to 0.26.2
+
 ## 0.26.1 - 2026-11-10
 
 - Playback: keep up to 4096 HLS child URLs per stream and allow 20000 playlist lines, so long VOD episodes no longer evict their first segments and stall at the first missing child
