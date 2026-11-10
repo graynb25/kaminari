@@ -904,7 +904,13 @@
     initialEpisodeId={sourceBrowser.resumeEpisodeId}
     anilistMedia={sourceBrowser.anilistMedia}
     sourceLibrary={sourceLibraryItems}
-    onLibraryChanged={() => void refreshSourceActivity()}
+    onLibraryChanged={() =>
+      void Promise.all([
+        refreshSourceActivity(),
+        refreshLibrary(),
+        refreshContinue(),
+        refreshHistory(),
+      ])}
     onClose={() => (sourceBrowser = null)}
     notify={notify}
   />

@@ -14,7 +14,7 @@ use crate::anilist::{
 };
 use crate::db::{
     ContinueItem, Db, HistoryItem, InstalledSource, JsExtensionRow, LibraryItem,
-    SourceContinueItem, SourceHistoryItem, SourceLibraryItem, SourceProgress,
+    SourceContinueItem, SourceHistoryItem, SourceLibraryItem, SourceProgress, SourceProgressMark,
 };
 use crate::error::AppError;
 use crate::ext_host::{self, ExtPackage, ExtStorage};
@@ -869,6 +869,19 @@ pub fn source_progress_set(
             duration_sec,
             watched,
         )
+        .map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn source_progress_mark_all(
+    state: State<'_, Db>,
+    extension_id: String,
+    show_id: String,
+    episodes: Vec<SourceProgressMark>,
+    watched: bool,
+) -> Result<(), String> {
+    state
+        .source_progress_mark_all(&extension_id, &show_id, &episodes, watched)
         .map_err(ipc_error)
 }
 

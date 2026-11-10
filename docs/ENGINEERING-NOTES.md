@@ -128,6 +128,14 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-10 Source watched marks without playback
+
+Context. Source progress was only written by the player after roughly 90 percent of an episode, or when it ended. The AniList detail page already had Mark all, but that table is separate from source progress. A user who had already watched a show had to replay every episode for the source library and the player to count it.
+
+What we shipped. Source episode rows now have a watched toggle, and the Episodes header has Mark all watched and Clear. Mark all writes every source episode as watched in one SQLite transaction, adds the show to the source library if it was not saved, and queues AniList progress through the highest mapped episode when the show came from Watch. Clear deletes the local source progress rows and does not touch AniList. Progress changes refresh the source library, Continue Watching and the AniList shelves.
+
+What we measured. The public domain sample returned 40 Popeye episodes. Mark all showed 40 watched, the source library card showed 40 watched and episode 40 at 6:02 of 6:02, and the button disabled. Marking episode 1 unwatched showed 39, and marking it again restored 40. Clear returned the page to 0 watched and removed the rows. 118 Rust and 93 frontend tests pass.
+
 ## 2026-11-10 Sources cleanup and first-run checklist
 
 Context. The Sources page still led with an Aniyomi registry reader. Its packages are Android APKs and QuickJS cannot run them, so the panel offered a dead end. A new install also had no in-app explanation of what to do first.

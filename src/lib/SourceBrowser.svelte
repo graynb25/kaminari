@@ -24,6 +24,7 @@
     jsExtensionEpisodes,
     jsExtensionResolve,
     jsExtensionTest,
+    watchedMarkAll,
     watchedSet,
     mpvEmbedStatus,
     playerPlay,
@@ -33,6 +34,7 @@
     sourceLibraryAdd,
     sourceLibraryRemove,
     sourceProgressGet,
+    sourceProgressMarkAll,
     sourceProgressSet,
   } from "./api";
   import { libmpvEnabled, libmpvNeedsProxy } from "./libmpv";
@@ -44,6 +46,7 @@
     type QualityPreference,
   } from "./quality";
   import { autoplayEnabled } from "./autoplay";
+  import { anilistProgressThrough, sourceProgressMarks } from "./sourceProgress";
   import { isHlsStream, proxyFlagEnabled, shouldProxy } from "./streamProxy";
   import type {
     DownloadProgress,
@@ -88,6 +91,7 @@
   let showError = $state<string | null>(null);
   let streams = $state<Record<string, JsStream[]>>({});
   let resolving = $state<string | null>(null);
+  let markBusy = $state(false);
   let streamError = $state<string | null>(null);
   let activePlayback = $state<{
     stream: JsStream;
@@ -118,6 +122,7 @@
         )
       : false,
   );
+  const watchedSourceCount = $derived(progress.filter((row) => row.watched).length);
 
   onMount(() => {
     previousFocus = document.activeElement as HTMLElement | null;
@@ -308,6 +313,117 @@
     }
   }
 
+  async function ensureSourceLibrary() {
+    if (!selected || inSourceLibrary) return;
+    await sourceLibraryAdd({
+      extensionId: extension.id,
+      showId: selected.id,
+      title: selected.title,
+      cover: selected.cover ?? null,
+      year: selected.year ?? null,
+      status: selected.status ?? null,
+    });
+  }
+
+  function anilistEpisodeNumber(episode: JsEpisode): number {
+    const number = Math.max(1, Math.round(episode.number));
+    return anilistMedia?.episodes && anilistMedia.episodes > 0
+      ? Math.min(number, anilistMedia.episodes)
+      : number;
+  }
+
+  async function setSourceEpisodeWatched(episode: JsEpisode, watched: boolean) {
+    if (!selected || markBusy) return;
+    markBusy = true;
+    try {
+      if (watched) await ensureSourceLibrary();
+      const duration = Math.max(0, episode.durationSec ?? 0);
+      if (watched) {
+        await sourceProgressSet({
+          extensionId: extension.id,
+          showId: selected.id,
+          episodeId: episode.id,
+          episodeNumber: Math.round(episode.number),
+          episodeTitle: episode.title ?? null,
+          positionSec: duration,
+          durationSec: duration,
+          watched: true,
+        });
+      } else {
+        await sourceProgressMarkAll({
+          extensionId: extension.id,
+          showId: selected.id,
+          episodes: sourceProgressMarks([episode]),
+          watched: false,
+        });
+      }
+      progress = await sourceProgressGet(extension.id, selected.id);
+      if (watched && anilistMedia) {
+        try {
+          await watchedSet(anilistMedia, anilistEpisodeNumber(episode), true);
+          notify(`Marked episode ${episode.number} watched and queued AniList.`, "success");
+        } catch (error) {
+          notify(`Marked locally, but AniList queue failed: ${errorText(error)}`, "error");
+        }
+      } else {
+        notify(
+          watched
+            ? `Marked episode ${episode.number} watched.`
+            : `Marked episode ${episode.number} unwatched locally.`,
+          "success",
+        );
+      }
+      onLibraryChanged?.();
+    } catch (error) {
+      notify(`Episode update failed: ${errorText(error)}`, "error");
+    } finally {
+      markBusy = false;
+    }
+  }
+
+  async function setAllSourceWatched(watched: boolean) {
+    if (!selected || episodes.length === 0 || markBusy) return;
+    markBusy = true;
+    try {
+      if (watched) await ensureSourceLibrary();
+      await sourceProgressMarkAll({
+        extensionId: extension.id,
+        showId: selected.id,
+        episodes: sourceProgressMarks(episodes),
+        watched,
+      });
+      progress = await sourceProgressGet(extension.id, selected.id);
+      if (watched && anilistMedia) {
+        const through = anilistProgressThrough(anilistMedia.episodes, episodes);
+        if (through > 0) {
+          try {
+            await watchedMarkAll(anilistMedia, through, true);
+            notify(
+              `Marked all ${episodes.length} episodes watched and queued AniList through episode ${through}.`,
+              "success",
+            );
+          } catch (error) {
+            notify(`Marked all locally, but AniList queue failed: ${errorText(error)}`, "error");
+          }
+        } else {
+          notify(`Marked all ${episodes.length} episodes watched.`, "success");
+        }
+      } else {
+        notify(
+          watched
+            ? `Marked all ${episodes.length} episodes watched.`
+            : "Cleared local source progress. AniList progress was not changed.",
+          "success",
+        );
+      }
+      onLibraryChanged?.();
+    } catch (error) {
+      notify(`Episode update failed: ${errorText(error)}`, "error");
+    } finally {
+      markBusy = false;
+    }
+  }
+
   async function saveProgress(position: number, duration: number, watched: boolean) {
     if (!selected || !activePlayback) return;
     const episode = activePlayback.episode;
@@ -328,11 +444,7 @@
 
     if (watched && anilistMedia && !anilistMarked.has(episode.id)) {
       anilistMarked.add(episode.id);
-      const number = Math.max(1, Math.round(episode.number));
-      const bounded =
-        anilistMedia.episodes && anilistMedia.episodes > 0
-          ? Math.min(number, anilistMedia.episodes)
-          : number;
+      const bounded = anilistEpisodeNumber(episode);
       try {
         await watchedSet(anilistMedia, bounded, true);
         notify(`AniList progress queued for episode ${bounded}.`, "info");
@@ -856,12 +968,33 @@
           <Callout tone="danger" class="mt-4">{showError}</Callout>
         {/if}
 
-        <div class="flex items-baseline gap-3 mt-8 mb-3">
-          <h2 class="shelf-title">Episodes</h2>
-          <span class="shelf-count">{episodes.length}</span>
-          <span class="ml-auto text-[10px]" style="color: var(--paper-450); font-family: var(--font-mono);">
-            {progress.filter((row) => row.watched).length} watched
-          </span>
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2 mt-8 mb-3">
+          <div class="flex items-baseline gap-3">
+            <h2 class="shelf-title">Episodes</h2>
+            <span class="shelf-count">{episodes.length}</span>
+          </div>
+          <div class="ml-auto flex flex-wrap items-center gap-1.5">
+            <span class="text-[10px] mr-1" style="color: var(--paper-450); font-family: var(--font-mono);">
+              {watchedSourceCount} watched
+            </span>
+            <button
+              class="btn-ghost px-2.5 py-1.5 text-[11px]"
+              disabled={markBusy || episodes.length === 0 || watchedSourceCount === episodes.length}
+              onclick={() => void setAllSourceWatched(true)}
+              title="Mark every source episode watched without playing it. Queues AniList progress when linked."
+            >
+              <Icon name="check" size={12} />
+              Mark all watched
+            </button>
+            <button
+              class="btn-ghost px-2.5 py-1.5 text-[11px]"
+              disabled={markBusy || watchedSourceCount === 0}
+              onclick={() => void setAllSourceWatched(false)}
+              title="Clear source progress locally. AniList progress is unchanged."
+            >
+              Clear
+            </button>
+          </div>
         </div>
 
         {#if showLoading}
@@ -928,6 +1061,21 @@
                     {/if}
                   </div>
                   <div class="flex items-center gap-1.5 shrink-0">
+                    <button
+                      class="btn-ghost w-8 h-8 grid place-items-center shrink-0"
+                      disabled={markBusy || resolving === episode.id}
+                      onclick={() => void setSourceEpisodeWatched(episode, !(saved?.watched ?? false))}
+                      aria-pressed={saved?.watched ?? false}
+                      aria-label={saved?.watched
+                        ? `Mark episode ${episode.number} unwatched`
+                        : `Mark episode ${episode.number} watched`}
+                      title={saved?.watched
+                        ? `Mark episode ${episode.number} unwatched (local source progress)`
+                        : `Mark episode ${episode.number} watched without playing`}
+                      style={saved?.watched ? "color: var(--volt-300);" : "color: var(--paper-450);"}
+                    >
+                      <Icon name={saved?.watched ? "checkCircle" : "check"} size={14} />
+                    </button>
                     <button
                       class="btn-primary px-3 py-1.5 text-[11px] shrink-0"
                       data-episode-play={episode.id}
@@ -1035,6 +1183,10 @@
             Play uses your preferred quality when the source offers several, and Streams lists
             every quality with Download, Copy and Open in mpv. Downloads keep the folder you pick
             in Settings.
+          </p>
+          <p class="text-xs mt-1" style="color: var(--paper-450);">
+            The check button marks an episode watched without playing it. Mark all watched does the
+            same for every episode and queues AniList progress when this show is linked.
           </p>
         {/if}
       </div>
