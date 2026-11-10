@@ -360,7 +360,7 @@ pub fn run(
     }
     let compat = package.manifest.id.starts_with("mangayomi.");
     let timeout = match op {
-        "search" | "getShow" | "getEpisodes" => {
+        "search" | "getShow" | "getEpisodes" | "getPreferences" => {
             if compat {
                 Duration::from_secs(COMPAT_TIMEOUT_SECS)
             } else {

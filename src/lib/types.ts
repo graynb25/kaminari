@@ -26,6 +26,9 @@ export type Media = {
   format?: string | null;
   status?: string | null;
   episodes?: number | null;
+  recommendations?: {
+    nodes: { mediaRecommendation?: Media | null }[];
+  } | null;
 };
 
 export type Boot = {
@@ -110,6 +113,32 @@ export type MangayomiPreview = {
   sha256: string;
   bytes: number;
   sources: MangayomiSourcePreview[];
+};
+
+export type SourcePreferenceSwitch = {
+  title?: string;
+  summary?: string;
+  value?: boolean;
+};
+
+export type SourcePreferenceList = {
+  title?: string;
+  summary?: string;
+  valueIndex?: number;
+  entries?: string[];
+  values?: string[];
+};
+
+export type SourcePreferenceItem = {
+  key: string;
+  switchPreferenceCompat?: SourcePreferenceSwitch;
+  switchPreference?: SourcePreferenceSwitch;
+  listPreference?: SourcePreferenceList;
+};
+
+export type SourcePreferences = {
+  items: SourcePreferenceItem[];
+  values: Record<string, string>;
 };
 
 export type JsSearchItem = {

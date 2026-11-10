@@ -24,6 +24,7 @@ import type {
   ProxyStatus,
   ProxyStreamInput,
   SourceLibraryItem,
+  SourcePreferences,
   SourceProgress,
   SourceContinueItem,
   SourceHistoryItem,
@@ -133,6 +134,18 @@ export function mangayomiInstall(
   sha256: string,
 ): Promise<string> {
   return invoke<string>("mangayomi_install", { url, sourceIndex, sha256 });
+}
+
+export function jsExtensionPreferences(id: string): Promise<SourcePreferences> {
+  return invoke<SourcePreferences>("js_extension_preferences", { id });
+}
+
+export function jsExtensionSetPreference(
+  id: string,
+  key: string,
+  value: string,
+): Promise<void> {
+  return invoke<void>("js_extension_set_preference", { id, key, value });
 }
 
 export function jsExtensionRemove(id: string): Promise<void> {

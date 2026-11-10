@@ -199,6 +199,7 @@ impl Db {
                 format: row.get(7)?,
                 status: row.get(8)?,
                 episodes: row.get(9)?,
+                recommendations: None,
             };
             Ok(LibraryItem {
                 media,
@@ -364,6 +365,7 @@ impl Db {
                 format: row.get(7)?,
                 status: row.get(8)?,
                 episodes: total_episodes.map(|value| value as i32),
+                recommendations: None,
             };
             Ok(HistoryItem {
                 media,
@@ -482,6 +484,7 @@ impl Db {
                 format: row.get(7)?,
                 status: row.get(8)?,
                 episodes: total_episodes.map(|value| value as i32),
+                recommendations: None,
             };
             Ok(ContinueItem {
                 media,
@@ -1233,6 +1236,7 @@ mod tests {
             format: Some("TV".to_string()),
             status: Some("FINISHED".to_string()),
             episodes: Some(28),
+            recommendations: None,
         }
     }
 

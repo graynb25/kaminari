@@ -143,6 +143,8 @@ fn main() {
             commands::mangayomi_install,
             commands::js_extension_remove,
             commands::js_extension_test,
+            commands::js_extension_preferences,
+            commands::js_extension_set_preference,
             commands::js_extension_detail,
             commands::js_extension_episodes,
             commands::js_extension_resolve,

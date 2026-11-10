@@ -62,6 +62,20 @@ pub struct Media {
     pub format: Option<String>,
     pub status: Option<String>,
     pub episodes: Option<i32>,
+    #[serde(default)]
+    pub recommendations: Option<Recommendations>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Recommendations {
+    pub nodes: Vec<RecommendationNode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecommendationNode {
+    pub media_recommendation: Option<Box<Media>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -628,6 +642,13 @@ fn detail_query() -> String {
 query Detail($id: Int) {
   Media(id: $id, type: ANIME) {
     __MEDIA_FIELDS__
+    recommendations(perPage: 12) {
+      nodes {
+        mediaRecommendation {
+          __MEDIA_FIELDS__
+        }
+      }
+    }
   }
 }
 "#,
@@ -745,6 +766,62 @@ mod tests {
         assert!(!without.contains("$status"));
         assert!(!without.contains("status:"));
         assert!(with.contains("status: $status"));
+    }
+
+    #[test]
+    fn detail_query_includes_recommendations() {
+        let detail = detail_query();
+        assert!(detail.contains("recommendations(perPage: 12)"));
+        assert!(detail.contains("mediaRecommendation"));
+        assert!(!shelf_query(false).contains("recommendations"));
+        assert!(!search_query().contains("recommendations"));
+    }
+
+    #[test]
+    fn parses_recommendations_without_recursion() {
+        let raw = r#"
+          {
+            "data": {
+              "Media": {
+                "id": 15125,
+                "title": { "romaji": "Frieren", "english": "Frieren", "native": null },
+                "coverImage": null,
+                "bannerImage": null,
+                "description": null,
+                "genres": ["Adventure"],
+                "averageScore": 91,
+                "seasonYear": 2023,
+                "format": "TV",
+                "status": "FINISHED",
+                "episodes": 28,
+                "recommendations": {
+                  "nodes": [{
+                    "mediaRecommendation": {
+                      "id": 2,
+                      "title": { "romaji": "Other", "english": "Other", "native": null },
+                      "coverImage": null,
+                      "bannerImage": null,
+                      "description": null,
+                      "genres": null,
+                      "averageScore": null,
+                      "seasonYear": null,
+                      "format": "TV",
+                      "status": "FINISHED",
+                      "episodes": 12
+                    }
+                  }]
+                }
+              }
+            }
+          }
+        "#;
+        let envelope: MediaEnvelope = serde_json::from_str(raw).unwrap();
+        let media = envelope.data.unwrap().media;
+        let nodes = media.recommendations.unwrap().nodes;
+        assert_eq!(nodes.len(), 1);
+        let recommended = nodes[0].media_recommendation.as_ref().unwrap();
+        assert_eq!(recommended.id, 2);
+        assert_eq!(recommended.title.english.as_deref(), Some("Other"));
     }
 
     #[test]

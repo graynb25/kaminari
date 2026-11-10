@@ -16,6 +16,7 @@
     onPlay,
     onToggleWatched,
     onMarkAll,
+    onOpenRecommendation,
   }: {
     media: Media;
     inLibrary: boolean;
@@ -27,9 +28,16 @@
     onPlay: (item: Media) => void;
     onToggleWatched: (episode: number) => void;
     onMarkAll: (watched: boolean) => void;
+    onOpenRecommendation: (item: Media) => void;
   } = $props();
 
   const art = $derived(coverOf(media));
+  const recommendations = $derived(
+    (media.recommendations?.nodes ?? [])
+      .map((node) => node.mediaRecommendation)
+      .filter((item): item is Media => Boolean(item && item.id !== media.id))
+      .slice(0, 12),
+  );
   const episodeCount = $derived(media.episodes && media.episodes > 0 ? Math.min(media.episodes, 200) : 0);
   const watchedCount = $derived(watched.length);
   const percent = $derived(episodeCount > 0 ? Math.round((watchedCount / episodeCount) * 100) : 0);
@@ -369,6 +377,46 @@
         </div>
       </aside>
     </div>
+
+    {#if recommendations.length > 0}
+      <section class="mt-10" aria-label="More like this">
+        <div class="flex items-baseline gap-3 mb-3">
+          <h2 class="shelf-title">More like this</h2>
+          <span class="shelf-count">{recommendations.length}</span>
+        </div>
+        <div class="stagger-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4">
+          {#each recommendations as item (item.id)}
+            <article class="poster-card group">
+              <div class="poster-art aspect-[2/3]">
+                <button
+                  class="absolute inset-0 w-full h-full text-left"
+                  onclick={() => onOpenRecommendation(item)}
+                  aria-label="Open {displayTitle(item)}"
+                >
+                  <Artwork src={coverOf(item)} alt="" loading="lazy">
+                    {#snippet fallback()}
+                      <span
+                        class="w-full h-full grid place-items-center"
+                        style="background: radial-gradient(circle at 30% 20%, var(--accent-wash-strong), transparent 60%), var(--void-800);"
+                      >
+                        <span class="text-4xl font-bold" style="color: var(--paper-500); font-family: var(--font-display);">
+                          {displayTitle(item).slice(0, 1)}
+                        </span>
+                      </span>
+                    {/snippet}
+                  </Artwork>
+                  <span class="poster-scrim" aria-hidden="true"></span>
+                </button>
+              </div>
+              <button class="poster-body" onclick={() => onOpenRecommendation(item)}>
+                <span class="poster-title">{displayTitle(item)}</span>
+                <span class="poster-meta">{metaOf(item)}</span>
+              </button>
+            </article>
+          {/each}
+        </div>
+      </section>
+    {/if}
   </div>
 </div>
 

@@ -24,6 +24,7 @@
     jsExtensionEpisodes,
     jsExtensionResolve,
     jsExtensionTest,
+    watchedSet,
     mpvEmbedStatus,
     playerPlay,
     proxyRegister,
@@ -42,6 +43,7 @@
     QUALITY_OPTIONS,
     type QualityPreference,
   } from "./quality";
+  import { autoplayEnabled } from "./autoplay";
   import { isHlsStream, proxyFlagEnabled, shouldProxy } from "./streamProxy";
   import type {
     DownloadProgress,
@@ -49,6 +51,7 @@
     JsSearchItem,
     JsShowDetail,
     JsStream,
+    Media,
     SourceExtensionRef,
     SourceLibraryItem,
     SourceProgress,
@@ -58,6 +61,7 @@
     extension,
     initialShow = null,
     initialEpisodeId = null,
+    anilistMedia = null,
     sourceLibrary = [],
     onLibraryChanged,
     onClose,
@@ -66,6 +70,7 @@
     extension: SourceExtensionRef;
     initialShow?: JsSearchItem | null;
     initialEpisodeId?: string | null;
+    anilistMedia?: Media | null;
     sourceLibrary?: SourceLibraryItem[];
     onLibraryChanged?: () => void;
     onClose: () => void;
@@ -87,9 +92,11 @@
   let activePlayback = $state<{
     stream: JsStream;
     episode: JsEpisode;
+    nextEpisode: JsEpisode | null;
     startSec: number;
     backend: "mpv" | "web";
   } | null>(null);
+  const autoplayNext = autoplayEnabled();
   let progress = $state<SourceProgress[]>([]);
   let downloadIds = $state<Record<string, string>>({});
   let downloadProgress = $state<Record<string, DownloadProgress>>({});
@@ -101,6 +108,7 @@
   let autoPlayed = false;
   let playbackEpisodeId: string | null = null;
   let progressSave: Promise<void> = Promise.resolve();
+  const anilistMarked = new Set<string>();
 
   const inSourceLibrary = $derived(
     selected
@@ -316,6 +324,22 @@
       });
     } catch {
       // Progress is best effort. Playback stays up.
+    }
+
+    if (watched && anilistMedia && !anilistMarked.has(episode.id)) {
+      anilistMarked.add(episode.id);
+      const number = Math.max(1, Math.round(episode.number));
+      const bounded =
+        anilistMedia.episodes && anilistMedia.episodes > 0
+          ? Math.min(number, anilistMedia.episodes)
+          : number;
+      try {
+        await watchedSet(anilistMedia, bounded, true);
+        notify(`AniList progress queued for episode ${bounded}.`, "info");
+      } catch (error) {
+        anilistMarked.delete(episode.id);
+        notify(`Could not queue AniList progress: ${errorText(error)}`, "error");
+      }
     }
   }
 
@@ -583,10 +607,24 @@
     activePlayback = {
       stream: prepared,
       episode,
+      nextEpisode: nextEpisodeFor(episode),
       startSec: resumeFor(episode.id),
       backend,
     };
     playbackEpisodeId = episode.id;
+  }
+
+  function nextEpisodeFor(episode: JsEpisode): JsEpisode | null {
+    const index = episodes.findIndex((row) => row.id === episode.id);
+    if (index < 0) return null;
+    return episodes[index + 1] ?? null;
+  }
+
+  async function playNext() {
+    const next = activePlayback?.nextEpisode;
+    if (!next) return;
+    await closePlayer();
+    await playEpisode(next);
   }
 
   function fallbackToWebView(message: string) {
@@ -793,6 +831,12 @@
                   <Icon name="package" size={11} />
                   {extension.name}
                 </span>
+                {#if anilistMedia}
+                  <span class="chip text-[11px] px-2.5 py-1" title="Finished episodes are queued to AniList">
+                    <Icon name="check" size={11} />
+                    AniList
+                  </span>
+                {/if}
               </div>
               {#if selected.genres?.length}
                 <div class="flex flex-wrap gap-1.5 mt-2.5">
@@ -847,14 +891,6 @@
                   <div class="episode-thumb shrink-0">
                     {#if episode.thumbnail}
                       <img src={episode.thumbnail} alt="" loading="lazy" decoding="async" />
-                    {:else if selected.banner || selected.cover}
-                      <img
-                        src={selected.banner || selected.cover}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        class="is-fallback"
-                      />
                     {:else}
                       <div class="episode-thumb-empty" aria-hidden="true"></div>
                     {/if}
@@ -1085,6 +1121,7 @@
 </div>
 
 {#if activePlayback}
+  {#key activePlayback.episode.id}
   {#if activePlayback.backend === "mpv"}
     <MpvView
       stream={activePlayback.stream}
@@ -1116,9 +1153,15 @@
       onClose={() => void closePlayer()}
       onOpenExternal={() =>
         void openExternal(activePlayback!.stream, activePlayback!.episode)}
+      nextLabel={activePlayback.nextEpisode
+        ? `Episode ${activePlayback.nextEpisode.number}${activePlayback.nextEpisode.title ? `: ${activePlayback.nextEpisode.title}` : ""}`
+        : null}
+      autoplay={autoplayNext}
+      onNext={() => void playNext()}
       {notify}
     />
   {/if}
+  {/key}
 {/if}
 
 <style>
@@ -1147,11 +1190,6 @@
     height: 100%;
     object-fit: cover;
     display: block;
-  }
-
-  .episode-thumb img.is-fallback {
-    filter: saturate(0.72) brightness(0.9);
-    transform: scale(1.06);
   }
 
   .episode-thumb-empty {

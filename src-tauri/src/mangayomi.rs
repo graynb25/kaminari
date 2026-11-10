@@ -86,7 +86,12 @@ const BOOTSTRAP: &str = r##"
   globalThis.Element = KElement;
 
   class SharedPreferences {
-    get(key) { return globalThis.storage.get("pref." + String(key)); }
+    get(key) {
+      const value = globalThis.storage.get("pref." + String(key));
+      if (value === "true") return true;
+      if (value === "false") return false;
+      return value;
+    }
     set(key, value) { globalThis.storage.set("pref." + String(key), String(value)); }
     remove(key) { globalThis.storage.remove("pref." + String(key)); }
   }
@@ -441,6 +446,12 @@ const ADAPTER_TEMPLATE: &str = r##"
   provider.source = source;
 
   globalThis.kaminari = {
+    async getPreferences() {
+      if (typeof provider.getSourcePreferences !== "function") return [];
+      const prefs = await provider.getSourcePreferences();
+      return Array.isArray(prefs) ? prefs : [];
+    },
+
     async search(query, page) {
       const out = await provider.search(String(query || ""), Number(page) || 1, []);
       const list = out && Array.isArray(out.list) ? out.list : [];

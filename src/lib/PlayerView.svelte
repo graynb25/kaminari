@@ -15,6 +15,9 @@
     onOpenExternal,
     notify,
     onProgress,
+    nextLabel = null,
+    autoplay = true,
+    onNext,
   }: {
     stream: JsStream;
     title: string;
@@ -24,6 +27,9 @@
     onOpenExternal: () => void;
     notify: (text: string, tone?: "info" | "success" | "error") => void;
     onProgress?: (position: number, duration: number, watched: boolean) => void;
+    nextLabel?: string | null;
+    autoplay?: boolean;
+    onNext?: () => void;
   } = $props();
 
   let shell: HTMLDivElement | null = $state(null);
@@ -46,8 +52,37 @@
   let activeSubtitle = $state("Off");
   let hideTimer: number | null = null;
   let clickTimer: number | null = null;
+  let nextTimer: number | null = null;
+  let nextCountdown = $state(0);
   let lastReport = 0;
   let previousFocus: HTMLElement | null = null;
+
+  function clearNextCountdown() {
+    if (nextTimer !== null) {
+      window.clearInterval(nextTimer);
+      nextTimer = null;
+    }
+    nextCountdown = 0;
+  }
+
+  function startNextCountdown() {
+    clearNextCountdown();
+    if (!autoplay || !nextLabel || !onNext) return;
+    nextCountdown = 5;
+    nextTimer = window.setInterval(() => {
+      if (nextCountdown <= 1) {
+        clearNextCountdown();
+        onNext?.();
+      } else {
+        nextCountdown -= 1;
+      }
+    }, 1000);
+  }
+
+  function playNextNow() {
+    clearNextCountdown();
+    onNext?.();
+  }
 
   const subtitles = $derived(stream.subtitles ?? []);
   let subtitleTracks = $state<{ lang: string; label?: string; url: string }[]>([]);
@@ -115,12 +150,14 @@
       buffering = false;
       error = null;
       ended = false;
+      clearNextCountdown();
     };
     const onEnded = () => {
       playing = false;
       ended = true;
       showControls();
       reportProgress(true, true);
+      startNextCountdown();
     };
     const onError = () => {
       buffering = false;
@@ -246,6 +283,7 @@
       reportProgress(true);
       if (hideTimer !== null) window.clearTimeout(hideTimer);
       if (clickTimer !== null) window.clearTimeout(clickTimer);
+      clearNextCountdown();
       hls?.destroy();
       hls = null;
       element.pause();
@@ -317,6 +355,7 @@
     if (!video) return;
     if (ended) {
       ended = false;
+      clearNextCountdown();
       seek(0);
       void video.play();
       return;
@@ -583,13 +622,24 @@
     <div class="absolute inset-0 grid place-items-center p-6" style="background: rgb(0 0 0 / 0.62);">
       <div class="player-glass max-w-sm w-full p-5 rounded-2xl text-center">
         <span class="w-12 h-12 grid place-items-center rounded-full mx-auto" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
-          <Icon name="check" size={22} />
+          <Icon name={nextLabel ? "playCircle" : "check"} size={22} />
         </span>
-        <p class="eyebrow mt-3">Ended</p>
-        <h2 class="text-xl font-semibold mt-1">Playback finished</h2>
-        <p class="text-sm mt-2" style="color: var(--paper-300);">{title}</p>
-        <div class="flex justify-center gap-2 mt-5">
-          <button class="btn-primary px-4 py-2 text-sm" onclick={togglePlay}>
+        <p class="eyebrow mt-3">{nextLabel ? "Up next" : "Ended"}</p>
+        <h2 class="text-xl font-semibold mt-1">
+          {nextLabel ? "Next episode ready" : "Playback finished"}
+        </h2>
+        <p class="text-sm mt-2" style="color: var(--paper-300);">{nextLabel ?? title}</p>
+        {#if nextLabel && nextCountdown > 0}
+          <p class="text-xs mt-1" style="color: var(--paper-450);">Playing in {nextCountdown}s</p>
+        {/if}
+        <div class="flex flex-wrap justify-center gap-2 mt-5">
+          {#if nextLabel}
+            <button class="btn-primary px-4 py-2 text-sm" onclick={playNextNow}>
+              <Icon name="play" size={14} />
+              Play next
+            </button>
+          {/if}
+          <button class="btn-ghost px-4 py-2 text-sm" onclick={togglePlay}>
             <Icon name="refresh" size={14} />
             Replay
           </button>

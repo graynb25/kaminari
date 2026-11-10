@@ -32,6 +32,7 @@
     type ThemeMode,
   } from "./theme";
   import { ACCENTS, getAccent, setAccent, type AccentId } from "./accent";
+  import { autoplayEnabled, setAutoplayEnabled } from "./autoplay";
   import {
     downloadLabel,
     downloadPercent,
@@ -66,6 +67,7 @@
   let dataBusy = $state(false);
   let downloadsFolder = $state("");
   let qualityPreference = $state<QualityPreference>("auto");
+  let autoplayOn = $state(true);
   let folderBusy = $state(false);
   let dataStatus = $state("");
   let dataStatusTone = $state<"success" | "error">("success");
@@ -521,6 +523,7 @@
   onMount(() => {
     downloadsFolder = readDownloadsFolder() ?? "";
     qualityPreference = readQualityPreference();
+    autoplayOn = autoplayEnabled();
     void (async () => {
       try {
         player = await playerStatus();
@@ -903,6 +906,30 @@
                 >
                   <span class="status-dot {proxyOn ? '' : 'is-offline'}" style="width: 4px; height: 4px;" aria-hidden="true"></span>
                   {proxyOn ? "On" : "Off"}
+                </button>
+              </div>
+              <div
+                class="flex flex-wrap items-center justify-between gap-3 py-2.5"
+                style="border-top: 1px solid var(--line);"
+              >
+                <div class="min-w-0">
+                  <p class="text-sm" style="color: var(--paper-50);">Autoplay next episode</p>
+                  <p class="text-xs mt-0.5" style="color: var(--paper-400);">
+                    Starts the next episode when the current one ends. Off shows the end card only.
+                  </p>
+                </div>
+                <button
+                  class="chip text-[10px] px-2 py-1 shrink-0"
+                  aria-label="Autoplay next episode"
+                  aria-pressed={autoplayOn}
+                  onclick={() => {
+                    autoplayOn = !autoplayOn;
+                    setAutoplayEnabled(autoplayOn);
+                  }}
+                  title="Autoplay next episode"
+                >
+                  <span class="status-dot {autoplayOn ? '' : 'is-offline'}" style="width: 4px; height: 4px;" aria-hidden="true"></span>
+                  {autoplayOn ? "On" : "Off"}
                 </button>
               </div>
               <div

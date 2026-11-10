@@ -641,6 +641,58 @@ async fn fetch_mangayomi_source(url: &str) -> Result<(String, String, usize), St
 }
 
 #[tauri::command]
+pub fn js_extension_preferences(state: State<'_, Db>, id: String) -> Result<Value, String> {
+    let stored = state
+        .js_extension(&id)
+        .map_err(ipc_error)?
+        .ok_or_else(|| "extension is not installed".to_string())?;
+    if !stored.manifest.id.starts_with("mangayomi.") {
+        return Ok(json!({ "items": [], "values": {} }));
+    }
+    let items = run_js_extension(state.inner(), &id, "getPreferences", json!([]))?;
+    let mut values = serde_json::Map::new();
+    if let Some(rows) = items.as_array() {
+        for row in rows {
+            let Some(key) = row.get("key").and_then(Value::as_str) else {
+                continue;
+            };
+            if let Some(value) = ExtStorage::get(state.inner(), &id, &format!("pref.{key}")) {
+                values.insert(key.to_string(), Value::String(value));
+            }
+        }
+    }
+    Ok(json!({ "items": items, "values": values }))
+}
+
+#[tauri::command]
+pub fn js_extension_set_preference(
+    state: State<'_, Db>,
+    id: String,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    if key.is_empty()
+        || key.len() > 128
+        || !key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
+    {
+        return Err("preference key is not valid".to_string());
+    }
+    if value.len() > 4096 {
+        return Err("preference value is too large".to_string());
+    }
+    let stored = state
+        .js_extension(&id)
+        .map_err(ipc_error)?
+        .ok_or_else(|| "extension is not installed".to_string())?;
+    if !stored.manifest.id.starts_with("mangayomi.") {
+        return Err("source preferences are only available for Mangayomi sources".to_string());
+    }
+    ExtStorage::set(state.inner(), &id, &format!("pref.{key}"), &value).map_err(ipc_error)
+}
+
+#[tauri::command]
 pub fn js_extension_remove(state: State<'_, Db>, id: String) -> Result<(), String> {
     state.remove_js_extension(&id).map_err(ipc_error)
 }

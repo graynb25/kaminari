@@ -4,6 +4,7 @@
   import Icon from "./Icon.svelte";
   import PageHeader from "./PageHeader.svelte";
   import ProgressBar from "./ProgressBar.svelte";
+  import SourcePreferencesDialog from "./SourcePreferencesDialog.svelte";
   import {
     jsExtensionInstallPath,
     jsExtensionInstallSample,
@@ -52,6 +53,7 @@
   let jsExtensions = $state<JsExtension[]>([]);
   let jsLoading = $state(true);
   let jsBusy = $state<string | null>(null);
+  let prefsExtension = $state<JsExtension | null>(null);
   let jsPath = $state("");
   let jsTestId = $state<string | null>(null);
   let jsTestQuery = $state("Popeye");
@@ -444,6 +446,14 @@
                 </div>
               </div>
               <div class="flex items-center gap-1.5 shrink-0">
+                {#if extension.kind === "mangayomi"}
+                  <button
+                    class="btn-ghost px-2.5 py-1.5 text-[11px]"
+                    onclick={() => (prefsExtension = extension)}
+                  >
+                    Settings
+                  </button>
+                {/if}
                 <button class="btn-primary px-2.5 py-1.5 text-[11px]" onclick={() => onBrowse(extension)}>
                   Browse
                 </button>
@@ -853,4 +863,12 @@
       {/if}
     {/if}
   </section>
+
+  {#if prefsExtension}
+    <SourcePreferencesDialog
+      extension={{ id: prefsExtension.id, name: prefsExtension.name }}
+      onClose={() => (prefsExtension = null)}
+      {notify}
+    />
+  {/if}
 </div>

@@ -67,6 +67,7 @@
     extension: SourceExtensionRef;
     initialShow?: JsSearchItem;
     resumeEpisodeId?: string;
+    anilistMedia?: Media;
   };
 
   type ContinueRow =
@@ -588,6 +589,7 @@
               onPlay={openPlay}
               onToggleWatched={(episode) => void toggleWatched(episode)}
               onMarkAll={(seen) => void markAllWatched(seen)}
+              onOpenRecommendation={(item) => void openDetail(item)}
             />
           {:else if view === "browse"}
             {#if trendingRail.loading}
@@ -852,9 +854,11 @@
     media={sourceMatchMedia}
     onClose={() => (sourceMatchMedia = null)}
     onOpen={(extension, item) => {
+      const linked = sourceMatchMedia;
       sourceBrowser = {
         extension: { id: extension.id, name: extension.name },
         initialShow: item,
+        anilistMedia: linked ?? undefined,
       };
       sourceMatchMedia = null;
     }}
@@ -870,6 +874,7 @@
     extension={sourceBrowser.extension}
     initialShow={sourceBrowser.initialShow}
     initialEpisodeId={sourceBrowser.resumeEpisodeId}
+    anilistMedia={sourceBrowser.anilistMedia}
     sourceLibrary={sourceLibraryItems}
     onLibraryChanged={() => void refreshSourceActivity()}
     onClose={() => (sourceBrowser = null)}
