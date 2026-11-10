@@ -50,6 +50,7 @@
     type ShelfKind,
   } from "./lib/api";
   import { displayTitle, isRateLimitMessage } from "./lib/format";
+  import { mergeContinueRows } from "./lib/continueRows";
   import { onAniListSyncConflict } from "./lib/anilistSync";
   import type {
     Boot,
@@ -76,9 +77,6 @@
     anilistMedia?: Media;
   };
 
-  type ContinueRow =
-    | { kind: "anilist"; at: number; item: ContinueItem }
-    | { kind: "source"; at: number; item: SourceContinueItem };
 
   let title = $state("Kaminari");
   let boot = $state<Boot | null>(null);
@@ -121,13 +119,7 @@
 
   const trendingRail = $derived(rails.trending);
 
-  const continueRows = $derived.by(() => {
-    const rows: ContinueRow[] = [
-      ...continueItems.map((item) => ({ kind: "anilist" as const, at: item.updatedAt, item })),
-      ...sourceContinueItems.map((item) => ({ kind: "source" as const, at: item.updatedAt, item })),
-    ];
-    return rows.sort((a, b) => b.at - a.at);
-  });
+  const continueRows = $derived(mergeContinueRows(continueItems, sourceContinueItems));
   const detailEntry = $derived.by(() => {
     if (!detail) return undefined;
     const id = detail.id;
