@@ -8,7 +8,7 @@ Can Kaminari distribute a Windows NSIS installer that bundles the LGPL component
 
 ## 2. Distribution model
 
-- App: Kaminari 0.26.0, Windows x64, NSIS installer, MIT licensed own code. The installer installs per-user to `%LOCALAPPDATA%\Kaminari`.
+- App: Kaminari 0.26.0, Windows x64, NSIS installer, MIT licensed own code. The installer is about 36.6 MiB and installs per-user to `%LOCALAPPDATA%\Kaminari`.
 - UI and backend: Tauri 2, Rust, Svelte 5, SQLite, QuickJS.
 - Native video: two separate DLLs installed in a `lib` folder next to `kaminari.exe`.
 - `libmpv-wrapper.dll`: C bridge, LGPL-2.1, loaded at runtime with `libloading`.

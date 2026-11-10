@@ -154,9 +154,9 @@ Context. Updates were manual installers. The updater needs a signed Tauri artifa
 
 What we shipped. `tauri-plugin-updater` v2 and `@tauri-apps/plugin-updater`, the `updater:default` capability, `bundle.createUpdaterArtifacts`, the local public key and the GitHub `latest.json` endpoint. Settings shows the current version, a Check for updates button, available version, date and notes, download progress, install, and Restart to apply. A quiet mount check treats an unreachable feed as a non-blocking warning.
 
-What we measured. `cargo test` passed 110 tests before the shim, `pnpm test` passed 62, and the frontend build passed. The live endpoint was not tested because the repository is private and no signed release has been published. The plugin path still needs a real signed artifact, installer run and restart check.
+What we measured. The 0.26.0 signed installer built at 36.58 MiB with a 440-byte `.sig` and a local `latest.json`. The release binary reported version 0.26.0 and the Settings check failed with `Update check failed. Could not fetch a valid release JSON from the remote.` because the repository is private. The failure is caught and shown; the app stayed open. The installer and signature have not been run on a clean VM yet.
 
-What remains. A signed public release with `latest.json`, a clean VM install, an update from an older signed build, and a rollback test. The private key stays outside the repository.
+What remains. A signed public release with `latest.json`, a clean VM install, an update from an older signed build, and a rollback test. The private key stays outside the repository. `docs/RELEASE-UPDATER.md` records the build and publishing steps.
 
 ## 2026-11-10 Stream downloads
 
