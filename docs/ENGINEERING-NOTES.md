@@ -134,6 +134,8 @@ Context. The Sources page still led with an Aniyomi registry reader. Its package
 
 What we shipped. The registry panel, its URL state, list, filters and stat cards are gone from `SourcesView.svelte`. The backend metadata commands remain for a possible future runtime. The four stat cards now show native extensions, Mangayomi sources, allowed hosts and runtime memory. A first-run Getting started modal explains adding a source, finding a title and watching; it is dismissible, stores `kaminari.onboardingDone`, and reopens from Settings, About. Verified in a debug build: the card appears on a fresh profile, Add a source sets the key, the registry text is absent, and the About button reopens the card. 117 Rust and 88 frontend tests pass.
 
+Release check. 0.26.4 was published as a signed release. A host install of 0.26.3 found 0.26.4, downloaded it, closed itself, let the installer replace the files, and the installer reopened 0.26.4. The app reported `You are up to date.` after the update, the library SHA-256 stayed `724969E7BE368118E48B73CFF5B021DB82099979E2648B17ED0DE0113F1E0FF4`, and uninstall kept the database. This is still a host result, not a clean VM result. It does close the Windows in-app update item for the fixed flow.
+
 ## 2026-11-10 Windows updater restart race
 
 Context. The public feed went live, so the signed updater could be tested for real. A host install of 0.26.1 found 0.26.2, downloaded it, and showed Restart to apply.
