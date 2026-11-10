@@ -15,6 +15,8 @@ pub enum AppError {
     RateLimited(u32),
     #[error("player missing: {0}")]
     PlayerMissing(String),
+    #[error("player error: {0}")]
+    Player(String),
     #[error("extension error: {0}")]
     Extension(String),
     #[error("extension timed out after {0} seconds")]

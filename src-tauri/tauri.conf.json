@@ -35,7 +35,8 @@
     },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE0MjE3REI4OTc4RjJFODIKUldTQ0xvK1h1SDBocE1PSXFhdVRMc0VSNVRBZXk1c3grQm4vQjJQQi9jNUFCcEtHejlkanpOdFoK",
-      "endpoints": ["https://github.com/graynb25/kaminari/releases/latest/download/latest.json"]
+      "endpoints": ["https://github.com/graynb25/kaminari/releases/latest/download/latest.json"],
+      "requireSignedVersion": true
     }
   },
   "bundle": {
