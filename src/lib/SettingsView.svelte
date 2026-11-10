@@ -41,6 +41,7 @@
     missingReleaseFeed,
     releaseNotesExcerpt,
     trackDownload,
+    updateInstallMessage,
     type DownloadProgress,
   } from "./updater";
   import type { Boot, PlayerStatus, ProxyStatus } from "./types";
@@ -91,6 +92,7 @@
     | "error";
   type ReleaseInfo = { version: string; date?: string; body?: string };
 
+  const isWindows = typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
   let updatePhase = $state<UpdatePhase>("idle");
   let updateMessage = $state("Not checked yet. Updates use the signed release feed.");
   let updateInfo = $state<ReleaseInfo | null>(null);
@@ -259,14 +261,14 @@
           download = trackDownload(download, event);
           if (event.event === "Finished" && !updaterDisposed) {
             updatePhase = "installed";
-            updateMessage = `Kaminari ${version} is downloaded. Restart to apply it.`;
+            updateMessage = updateInstallMessage(version, isWindows);
           }
         },
-        { restartAfterInstall: false },
+        { restartAfterInstall: isWindows },
       );
       if (updaterDisposed) return;
       updatePhase = "installed";
-      updateMessage = `Kaminari ${version} is downloaded. Restart to apply it.`;
+      updateMessage = updateInstallMessage(version, isWindows);
     } catch (err) {
       if (updaterDisposed) return;
       updatePhase = "error";
@@ -1045,19 +1047,25 @@
                     {/if}
 
                     {#if updatePhase === "installed"}
-                      <button
-                        class="btn-primary px-3 py-2 text-xs mt-2.5"
-                        disabled={updateBusy}
-                        onclick={() => void restartForUpdate()}
-                      >
-                        <Icon name="refresh" size={14} />
-                        Restart to apply
-                      </button>
+                      {#if isWindows}
+                        <p class="text-xs mt-2.5" style="color: var(--paper-450);">
+                          The installer is running. Kaminari will reopen when it finishes.
+                        </p>
+                      {:else}
+                        <button
+                          class="btn-primary px-3 py-2 text-xs mt-2.5"
+                          disabled={updateBusy}
+                          onclick={() => void restartForUpdate()}
+                        >
+                          <Icon name="refresh" size={14} />
+                          Restart to apply
+                        </button>
+                      {/if}
                     {/if}
                   </div>
 
                   <p class="update-note">
-                    Updates are signed and checked before install. The release feed stays empty until a signed release is published on GitHub.
+                    Updates are signed and checked before install. The release feed is live when a signed release is published on GitHub.
                   </p>
                 </div>
               {/if}

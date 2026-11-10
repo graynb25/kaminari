@@ -1,6 +1,6 @@
 ﻿# Releasing updates
 
-Status: the 0.26.2 signed installer exists locally. The update feed is not live because the repository is private. This note records the exact steps so the feed can be published later without rediscovering them.
+Status: the repository is public and the signed release feed is live. `v0.26.2` was the first public signed release. `v0.26.3` is the Windows update-flow fix. This note records the build and publishing steps.
 
 ## Keys
 
@@ -45,13 +45,13 @@ That URL only works when the repository is public and a release marked latest co
 
 ```json
 {
-  "version": "0.26.2",
+  "version": "0.26.3",
   "notes": "Mangayomi sources, preferred playback quality and auto update.",
   "pub_date": "2026-11-10T13:42:47Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "<entire contents of Kaminari_0.26.2_x64-setup.exe.sig>",
-      "url": "https://github.com/graynb25/kaminari/releases/download/v0.26.2/Kaminari_0.26.2_x64-setup.exe"
+      "signature": "<entire contents of Kaminari_0.26.3_x64-setup.exe.sig>",
+      "url": "https://github.com/graynb25/kaminari/releases/download/v0.26.3/Kaminari_0.26.3_x64-setup.exe"
     }
   }
 }
@@ -75,18 +75,17 @@ The portable build is installer-free, not data-free. Settings and the SQLite lib
 
 ## Publishing checklist
 
-1. Keep the repository private until the legal review is done.
-2. When ready, make the repository public or move the release assets and manifest to a public host.
-3. Create a release tagged `v0.26.2` (or the matching version).
-4. Upload the installer, the `.sig` and `latest.json`. Mark the release latest.
-5. Confirm `releases/latest/download/latest.json` returns the manifest.
-6. Install an older signed build on a clean VM, open Settings, check for updates, download, install and restart.
-7. Test a rollback by reinstalling the older installer with the library intact.
+1. Build with the local signing key and the libmpv payload.
+2. Create a release tagged `v0.26.3` (or the matching version).
+3. Upload the installer, the `.sig`, `latest.json`, the portable zip and `SHA256SUMS.txt`. Mark the release latest.
+4. Confirm `releases/latest/download/latest.json` returns the manifest.
+5. Install an older signed build, open Settings, check for updates, download, install and confirm the app reopens.
+6. Test a rollback by reinstalling the older installer with the library intact.
 
-## Current limitation
+## Windows update flow
 
-The 0.26.2 release binary reports:
+Tauri's Windows updater launches the NSIS installer and exits the app. In 0.26.1 and 0.26.2 the UI showed a Restart button while the installer was still replacing files. Restarting at that point could relaunch the old exe and block the installer.
 
-`No public release feed is published for this build. Updates stay local until a signed release exists.`
+0.26.3 passes `restartAfterInstall: true` on Windows and does not show a Restart button. The app closes, the installer replaces the files, and the installer launches the new version. The download must be the signed release; the signature check is unchanged.
 
-This is expected while the repository is private and no signed public release exists. The state is shown as a warning, not a crash, and the app stays open.
+An update from 0.26.1 or 0.26.2 to 0.26.3 can still hit the old UI race. Use the 0.26.3 installer once for that jump, then use the in-app updater for later releases.

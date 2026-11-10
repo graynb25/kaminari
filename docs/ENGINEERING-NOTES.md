@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-10 Windows updater restart race
+
+Context. The public feed went live, so the signed updater could be tested for real. A host install of 0.26.1 found 0.26.2, downloaded it, and showed Restart to apply.
+
+What we measured. Clicking Restart started a new 0.26.1 process while a `Kaminari-0.26.2-installer` process was still running. The installed exe stayed at 0.26.1, the installer stayed alive, and the library hash was unchanged. Tauri's Windows updater launches the NSIS installer and exits the app. The UI passed `restartAfterInstall: false`, so the installer did not restart the new version, and the UI's Restart button raced the file replacement.
+
+What we shipped. 0.26.3 passes `restartAfterInstall: true` on Windows and removes the Restart button there. The app closes, the installer replaces the exe, and the installer launches the new version. Non-Windows keeps the download and Restart path. The updater message is centralized in `updateInstallMessage` and covered by tests. A 0.26.1 or 0.26.2 install should use the 0.26.3 installer once for that jump, then use the fixed in-app flow.
+
+Also in this pass: the public release feed returned 200 and 0.26.2 reported up to date. CI was fixed by tracking `src-tauri/lib/README.md` so the Tauri resource glob has a match in a clean checkout. The tag-triggered release workflow was removed because it cannot provision the local libmpv payload or sign with the local key.
+
 ## 2026-11-10 Secret scan, signing key move and local install test
 
 Context. Before any public repository decision, the full git history needed a secret scan, the updater key needed a safer home, and the installer path needed an install, upgrade and rollback check. Windows Sandbox was the preferred clean VM, but it failed to start twice in this environment.
@@ -152,7 +162,7 @@ Context. Watching one episode ended at a dead screen, AniList detail pages showe
 
 What we shipped. Autoplay next episode with a five second countdown, a Play next button and a Settings toggle. More like this reads AniList recommendations in the detail query and renders up to 12 clickable cards. The compatibility layer exposes `getSourcePreferences()` through a source settings dialog, stores values as `pref.<key>` and parses `"true"` and `"false"` as booleans. The episode row now shows the source thumbnail only; it no longer substitutes the series cover. The dialog supports switches and single choice lists, and explains that other types are not editable yet.
 
-What we measured. AniKoto's Episode thumbnails switch saved `anikoto_pref_ep_thumbnails=true` and the next Naruto detail loaded 220 TVDB episode images with zero empty tiles. Autoplay reached the end card, showed a 3 second countdown, and started episode 2 at 12 seconds with no error. The Naruto detail returned 12 recommendation cards; clicking My Hero Academia opened its detail. 117 Rust and 83 frontend tests pass.
+What we measured. AniKoto's Episode thumbnails switch saved `anikoto_pref_ep_thumbnails=true` and the next Naruto detail loaded 220 TVDB episode images with zero empty tiles. Autoplay reached the end card, showed a 3 second countdown, and started episode 2 at 12 seconds with no error. The Naruto detail returned 12 recommendation cards; clicking My Hero Academia opened its detail. 117 Rust and 85 frontend tests pass.
 
 ## 2026-11-10 AniList progress from source playback
 

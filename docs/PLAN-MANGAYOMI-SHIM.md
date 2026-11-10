@@ -92,7 +92,7 @@ The manifest allowlist for compat sources is `*`. The existing network guard sti
 - Removing the extension removes its stored code and preferences. Covered by the extension removal path and storage test.
 - No source list or source code ships with the app. The repo contains no source list. The two live sources were installed by hand for the test.
 - Native `.kext` sources and the public-domain sample keep working. Rechecked after the Promise dispatch change: 24 Popeye results and playback.
-- Rust and frontend tests, fmt, clippy and the style check pass. 117 Rust tests and 83 frontend tests passed at the 0.26.2 check.
+- Rust and frontend tests, fmt, clippy and the style check pass. 117 Rust tests and 85 frontend tests passed at the 0.26.3 check.
 
 ## Measured results
 
