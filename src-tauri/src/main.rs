@@ -43,6 +43,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_libmpv::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(anilist::AniListClient::new())
         .manage(player::PlayerState::new())
         .manage(mpv_embed::MpvEmbedState::default())

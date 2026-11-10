@@ -32,11 +32,16 @@
       "desktop": {
         "schemes": ["kaminari"]
       }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE0MjE3REI4OTc4RjJFODIKUldTQ0xvK1h1SDBocE1PSXFhdVRMc0VSNVRBZXk1c3grQm4vQjJQQi9jNUFCcEtHejlkanpOdFoK",
+      "endpoints": ["https://github.com/graynb25/kaminari/releases/latest/download/latest.json"]
     }
   },
   "bundle": {
     "active": true,
     "targets": "nsis",
+    "createUpdaterArtifacts": true,
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.icns", "icons/icon.ico"],
     "category": "Entertainment",
     "shortDescription": "Aniyomi, but for PC.",

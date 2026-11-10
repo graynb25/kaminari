@@ -2,9 +2,11 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { confirm, open, save } from "@tauri-apps/plugin-dialog";
+  import { check, type Update } from "@tauri-apps/plugin-updater";
   import BrandMark from "./BrandMark.svelte";
   import Icon from "./Icon.svelte";
   import PageHeader from "./PageHeader.svelte";
+  import ProgressBar from "./ProgressBar.svelte";
   import { playerStatus, proxyStatus } from "./api";
   import {
     anilistAuthLogout,
@@ -24,6 +26,15 @@
     type ThemeMode,
   } from "./theme";
   import { ACCENTS, getAccent, setAccent, type AccentId } from "./accent";
+  import {
+    downloadLabel,
+    downloadPercent,
+    formatReleaseDate,
+    initialDownloadProgress,
+    releaseNotesExcerpt,
+    trackDownload,
+    type DownloadProgress,
+  } from "./updater";
   import type { Boot, PlayerStatus, ProxyStatus } from "./types";
 
   let {
@@ -60,6 +71,42 @@
   let anilistError = $state("");
   let anilistNotice = $state("");
 
+  type UpdatePhase =
+    | "idle"
+    | "checking"
+    | "current"
+    | "available"
+    | "downloading"
+    | "installed"
+    | "error";
+  type ReleaseInfo = { version: string; date?: string; body?: string };
+
+  let updatePhase = $state<UpdatePhase>("idle");
+  let updateMessage = $state("Not checked yet. Updates use the signed release feed.");
+  let updateInfo = $state<ReleaseInfo | null>(null);
+  let updateSoftError = $state(false);
+  let download = $state<DownloadProgress>(initialDownloadProgress());
+  let updaterDisposed = false;
+  let activeUpdate: Update | null = null;
+
+  const updateBusy = $derived(
+    updatePhase === "checking" || updatePhase === "downloading",
+  );
+  const updateTone = $derived(
+    updatePhase === "error"
+      ? updateSoftError
+        ? "warning"
+        : "error"
+      : updatePhase === "current" || updatePhase === "installed"
+        ? "success"
+        : "muted",
+  );
+  const updateStatus = $derived(
+    updatePhase === "downloading" ? downloadLabel(download) : updateMessage,
+  );
+  const updatePercent = $derived(downloadPercent(download));
+  const updateNotes = $derived(updateInfo ? releaseNotesExcerpt(updateInfo.body) : "");
+
   const anilistHasError = $derived(Boolean(anilistError || anilistAuth?.error));
   const anilistStatusText = $derived(
     anilistError ||
@@ -80,7 +127,7 @@
     { id: "settings-app", title: "App", hint: "Version, stack, player" },
     { id: "settings-playback", title: "Playback", hint: "Proxy for protected streams" },
     { id: "settings-data", title: "Data", hint: "Endpoints and local library" },
-    { id: "settings-updates-diagnostics", title: "Updates and diagnostics", hint: "Budgets and export" },
+    { id: "settings-updates-diagnostics", title: "Updates and diagnostics", hint: "Version, budgets, export" },
     { id: "settings-licenses", title: "Licenses", hint: "Packages and their licenses" },
     { id: "settings-about", title: "About", hint: "Build and credits" },
   ];
@@ -133,6 +180,94 @@
     if (typeof value === "string") return value;
     if (Array.isArray(value)) return value[0] ?? null;
     return null;
+  }
+
+  function failureText(err: unknown): string {
+    if (typeof err === "string") return err;
+    if (err instanceof Error) return err.message;
+    return "Unknown error.";
+  }
+
+  async function closeActiveUpdate() {
+    const previous = activeUpdate;
+    activeUpdate = null;
+    if (!previous) return;
+    try {
+      await previous.close();
+    } catch {
+      // The plugin releases the resource when the app closes.
+    }
+  }
+
+  async function checkForUpdates(options: { quiet?: boolean } = {}) {
+    if (updateBusy) return;
+    updateSoftError = Boolean(options.quiet);
+    updatePhase = "checking";
+    updateMessage = "Checking the release feed.";
+    updateInfo = null;
+    download = initialDownloadProgress();
+    await closeActiveUpdate();
+    try {
+      const found = await check();
+      if (updaterDisposed) {
+        if (found) await found.close().catch(() => {});
+        return;
+      }
+      if (!found) {
+        updatePhase = "current";
+        updateMessage = "You are up to date.";
+        return;
+      }
+      activeUpdate = found;
+      updateInfo = { version: found.version, date: found.date, body: found.body };
+      updatePhase = "available";
+      updateMessage = `Kaminari ${found.version} is available.`;
+    } catch (err) {
+      if (updaterDisposed) return;
+      updatePhase = "error";
+      updateMessage = options.quiet
+        ? "Could not reach the release feed. This is expected until a signed release is published. The rest of Kaminari works normally."
+        : `Update check failed. ${failureText(err)} The release feed stays empty until a signed release is published.`;
+    }
+  }
+
+  async function downloadUpdate() {
+    const update = activeUpdate;
+    if (!update || updateBusy) return;
+    const version = updateInfo?.version ?? update.version;
+    updateSoftError = false;
+    updatePhase = "downloading";
+    updateMessage = `Downloading Kaminari ${version}.`;
+    download = initialDownloadProgress();
+    try {
+      await update.downloadAndInstall(
+        (event) => {
+          download = trackDownload(download, event);
+          if (event.event === "Finished" && !updaterDisposed) {
+            updatePhase = "installed";
+            updateMessage = `Kaminari ${version} is downloaded. Restart to apply it.`;
+          }
+        },
+        { restartAfterInstall: false },
+      );
+      if (updaterDisposed) return;
+      updatePhase = "installed";
+      updateMessage = `Kaminari ${version} is downloaded. Restart to apply it.`;
+    } catch (err) {
+      if (updaterDisposed) return;
+      updatePhase = "error";
+      updateMessage = `Update download failed. ${failureText(err)}`;
+    }
+  }
+
+  async function restartForUpdate() {
+    try {
+      await invoke("app_restart");
+    } catch (err) {
+      updatePhase = "error";
+      updateSoftError = false;
+      updateMessage = `Restart failed. ${failureText(err)}`;
+    }
   }
 
   async function backupLibrary() {
@@ -493,6 +628,15 @@
     };
   });
 
+  onMount(() => {
+    updaterDisposed = false;
+    void checkForUpdates({ quiet: true });
+    return () => {
+      updaterDisposed = true;
+      if (updatePhase !== "downloading") void closeActiveUpdate();
+    };
+  });
+
   // Static section shape. The rows that depend on the async boot snapshot
   // resolve through rowValue below, so the template stays reactive.
   const sections = [
@@ -531,8 +675,10 @@
       icon: "refresh",
       rows: [
         { label: "Extension budget", value: "" },
-        { label: "Auto update", value: "One click restart, lands in P3" },
-        { label: "Diagnostics export", value: "Redacted bundle, lands in P3" },
+        {
+          label: "Diagnostics export",
+          value: "Copy redacted diagnostics from error screens. No bundle export yet.",
+        },
       ],
     },
   ];
@@ -770,6 +916,85 @@
                 </div>
               </dl>
             {:else}
+              {#if section.id === "settings-updates-diagnostics"}
+                <div class="update-block">
+                  <div class="flex flex-wrap items-center gap-3">
+                    <div class="min-w-0 flex-1">
+                      <p class="text-sm" style="color: var(--paper-50);">Current version</p>
+                      <p class="update-version mt-0.5">{__APP_VERSION__}</p>
+                    </div>
+                    <button
+                      class="btn-ghost px-3 py-2 text-xs shrink-0"
+                      disabled={updateBusy}
+                      onclick={() => void checkForUpdates()}
+                    >
+                      <Icon name="refresh" size={14} />
+                      {updatePhase === "checking" ? "Checking" : "Check for updates"}
+                    </button>
+                  </div>
+
+                  <div
+                    class="update-status"
+                    class:is-success={updateTone === "success"}
+                    class:is-warning={updateTone === "warning"}
+                    class:is-error={updateTone === "error"}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <p class="update-message">{updateStatus}</p>
+
+                    {#if updatePhase === "available" && updateInfo}
+                      <div class="update-release">
+                        <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                          <p class="text-sm font-semibold" style="color: var(--paper-50);">
+                            Kaminari {updateInfo.version}
+                          </p>
+                          {#if updateInfo.date}
+                            <p class="update-meta">Published {formatReleaseDate(updateInfo.date)}</p>
+                          {/if}
+                        </div>
+                        {#if updateNotes}
+                          <p class="update-notes">{updateNotes}</p>
+                        {/if}
+                        <button
+                          class="btn-ghost px-3 py-2 text-xs mt-2.5"
+                          disabled={updateBusy}
+                          onclick={() => void downloadUpdate()}
+                        >
+                          <Icon name="download" size={14} />
+                          Download and install
+                        </button>
+                      </div>
+                    {/if}
+
+                    {#if updatePhase === "downloading"}
+                      <div class="update-progress">
+                        <ProgressBar
+                          value={updatePercent}
+                          label="Update download progress"
+                          indeterminate={updatePercent === null}
+                          size="sm"
+                        />
+                      </div>
+                    {/if}
+
+                    {#if updatePhase === "installed"}
+                      <button
+                        class="btn-primary px-3 py-2 text-xs mt-2.5"
+                        disabled={updateBusy}
+                        onclick={() => void restartForUpdate()}
+                      >
+                        <Icon name="refresh" size={14} />
+                        Restart to apply
+                      </button>
+                    {/if}
+                  </div>
+
+                  <p class="update-note">
+                    Updates are signed and checked before install. The release feed stays empty until a signed release is published on GitHub.
+                  </p>
+                </div>
+              {/if}
               <dl>
                 {#each section.rows as row, position}
                   <div
@@ -1101,6 +1326,73 @@
 
   .data-status.is-error {
     color: var(--danger);
+  }
+
+  .update-block {
+    padding-bottom: 10px;
+  }
+
+  .update-version {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--paper-50);
+  }
+
+  .update-status {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+    color: var(--text-3);
+  }
+
+  .update-status.is-success {
+    color: var(--success);
+  }
+
+  .update-status.is-warning {
+    color: var(--warning);
+  }
+
+  .update-status.is-error {
+    color: var(--danger);
+  }
+
+  .update-message {
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  .update-release {
+    margin-top: 10px;
+    padding: 10px 11px;
+    border-radius: 11px;
+    background: var(--tint-1);
+    border: 1px solid var(--line);
+  }
+
+  .update-meta {
+    font-size: 11px;
+    color: var(--text-3);
+  }
+
+  .update-notes {
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--text-2);
+    white-space: pre-line;
+  }
+
+  .update-progress {
+    margin-top: 10px;
+  }
+
+  .update-note {
+    margin-top: 8px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-4);
   }
 
   .theme-options {
