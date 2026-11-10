@@ -3,11 +3,13 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::sync::Semaphore;
 
 use crate::anilist::{
     decide_write, AniListAuthStatus, AniListClient, Media, ShelfKind, Viewer, WriteDecision,
@@ -64,6 +66,54 @@ pub struct AniListPushResult {
 const SETTINGS_MAX_BYTES: usize = 64 * 1024;
 const ANILIST_KEYRING_SERVICE: &str = "app.kaminari.desktop";
 const ANILIST_KEYRING_USER: &str = "anilist";
+// One slow source must not occupy the whole blocking pool. Calls beyond this
+// limit wait for a permit before they are handed to spawn_blocking.
+const EXT_MAX_PARALLEL_PER_SOURCE: usize = 2;
+
+struct ExtensionRunLimiter {
+    per_source: Mutex<HashMap<String, Arc<Semaphore>>>,
+}
+
+impl ExtensionRunLimiter {
+    fn new() -> Self {
+        Self {
+            per_source: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn semaphore_for(&self, id: &str) -> Arc<Semaphore> {
+        let mut map = self
+            .per_source
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        map.entry(id.to_string())
+            .or_insert_with(|| Arc::new(Semaphore::new(EXT_MAX_PARALLEL_PER_SOURCE)))
+            .clone()
+    }
+}
+
+fn extension_run_limiter() -> &'static ExtensionRunLimiter {
+    static LIMITER: OnceLock<ExtensionRunLimiter> = OnceLock::new();
+    LIMITER.get_or_init(ExtensionRunLimiter::new)
+}
+
+async fn run_extension_blocking<T, F>(id: &str, task: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    let semaphore = extension_run_limiter().semaphore_for(id);
+    let permit = semaphore
+        .acquire_owned()
+        .await
+        .map_err(|_| "extension runner is unavailable".to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _permit = permit;
+        task()
+    })
+    .await
+    .map_err(|err| format!("extension worker failed: {err}"))?
+}
 
 fn keyring_entry() -> Result<keyring::Entry, String> {
     keyring::Entry::new(ANILIST_KEYRING_SERVICE, ANILIST_KEYRING_USER)
@@ -543,13 +593,18 @@ pub fn js_extension_install_sample(state: State<'_, Db>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn js_extension_install_path(state: State<'_, Db>, path: String) -> Result<(), String> {
-    let bytes = std::fs::read(&path)
-        .map_err(|err| AppError::Extension(format!("cannot read package: {err}")).to_string())?;
-    let package = ext_host::package_from_kext(&bytes).map_err(ipc_error)?;
-    state
-        .install_js_extension(&package.manifest, &package.code, "sideloaded")
-        .map_err(ipc_error)
+pub async fn js_extension_install_path(state: State<'_, Db>, path: String) -> Result<(), String> {
+    let db = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|err| {
+            AppError::Extension(format!("cannot read package: {err}")).to_string()
+        })?;
+        let package = ext_host::package_from_kext(&bytes).map_err(ipc_error)?;
+        db.install_js_extension(&package.manifest, &package.code, "sideloaded")
+            .map_err(ipc_error)
+    })
+    .await
+    .map_err(|err| format!("extension install failed: {err}"))?
 }
 
 #[derive(Debug, Serialize)]
@@ -651,22 +706,31 @@ async fn fetch_mangayomi_source(url: &str) -> Result<(String, String, usize), St
 }
 
 #[tauri::command]
-pub fn js_extension_preferences(state: State<'_, Db>, id: String) -> Result<Value, String> {
-    let stored = state
-        .js_extension(&id)
+pub async fn js_extension_preferences(state: State<'_, Db>, id: String) -> Result<Value, String> {
+    let db = state.inner().clone();
+    let worker_id = id.clone();
+    run_extension_blocking(&id, move || {
+        js_extension_preferences_blocking(&db, &worker_id)
+    })
+    .await
+}
+
+fn js_extension_preferences_blocking(db: &Db, id: &str) -> Result<Value, String> {
+    let stored = db
+        .js_extension(id)
         .map_err(ipc_error)?
         .ok_or_else(|| "extension is not installed".to_string())?;
     if !stored.manifest.id.starts_with("mangayomi.") {
         return Ok(json!({ "items": [], "values": {} }));
     }
-    let items = run_js_extension(state.inner(), &id, "getPreferences", json!([]))?;
+    let items = run_js_extension_blocking(db, id, "getPreferences", json!([]))?;
     let mut values = serde_json::Map::new();
     if let Some(rows) = items.as_array() {
         for row in rows {
             let Some(key) = row.get("key").and_then(Value::as_str) else {
                 continue;
             };
-            if let Some(value) = ExtStorage::get(state.inner(), &id, &format!("pref.{key}")) {
+            if let Some(value) = ExtStorage::get(db, id, &format!("pref.{key}")) {
                 values.insert(key.to_string(), Value::String(value));
             }
         }
@@ -708,42 +772,59 @@ pub fn js_extension_remove(state: State<'_, Db>, id: String) -> Result<(), Strin
 }
 
 #[tauri::command]
-pub fn js_extension_test(
+pub async fn js_extension_test(
     state: State<'_, Db>,
     id: String,
     query: String,
-) -> Result<serde_json::Value, String> {
-    run_js_extension(state.inner(), &id, "search", json!([query, 1]))
+) -> Result<Value, String> {
+    let db = state.inner().clone();
+    run_js_extension(db, id, "search", json!([query, 1])).await
 }
 
 #[tauri::command]
-pub fn js_extension_detail(
+pub async fn js_extension_detail(
     state: State<'_, Db>,
     id: String,
     show_id: String,
 ) -> Result<Value, String> {
-    run_js_extension(state.inner(), &id, "getShow", json!([show_id]))
+    let db = state.inner().clone();
+    run_js_extension(db, id, "getShow", json!([show_id])).await
 }
 
 #[tauri::command]
-pub fn js_extension_episodes(
+pub async fn js_extension_episodes(
     state: State<'_, Db>,
     id: String,
     show_id: String,
 ) -> Result<Value, String> {
-    run_js_extension(state.inner(), &id, "getEpisodes", json!([show_id]))
+    let db = state.inner().clone();
+    run_js_extension(db, id, "getEpisodes", json!([show_id])).await
 }
 
 #[tauri::command]
-pub fn js_extension_resolve(
+pub async fn js_extension_resolve(
     state: State<'_, Db>,
     id: String,
     episode_id: String,
 ) -> Result<Value, String> {
-    run_js_extension(state.inner(), &id, "resolveEpisode", json!([episode_id]))
+    let db = state.inner().clone();
+    run_js_extension(db, id, "resolveEpisode", json!([episode_id])).await
 }
 
-fn run_js_extension(db: &Db, id: &str, op: &str, args: Value) -> Result<Value, String> {
+async fn run_js_extension(
+    db: Db,
+    id: String,
+    op: &'static str,
+    args: Value,
+) -> Result<Value, String> {
+    let worker_id = id.clone();
+    run_extension_blocking(&id, move || {
+        run_js_extension_blocking(&db, &worker_id, op, args)
+    })
+    .await
+}
+
+fn run_js_extension_blocking(db: &Db, id: &str, op: &str, args: Value) -> Result<Value, String> {
     let stored = db
         .js_extension(id)
         .map_err(ipc_error)?

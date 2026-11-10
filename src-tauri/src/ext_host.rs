@@ -27,6 +27,15 @@ const MAX_RESPONSE_BYTES: usize = 5 * 1024 * 1024;
 const MAX_CODE_BYTES: usize = 2 * 1024 * 1024;
 const COMPAT_FETCH_TIMEOUT_SECS: u64 = 30;
 const MAX_FETCH_TIMEOUT_SECS: u64 = 60;
+// html.select runs in Rust, outside the QuickJS memory limit. Cap every field
+// and the whole result; strings are cut on UTF-8 boundaries.
+const MAX_SELECT_NODES: usize = 500;
+const MAX_SELECT_TEXT_BYTES: usize = 64 * 1024;
+const MAX_SELECT_HTML_BYTES: usize = 256 * 1024;
+const MAX_SELECT_ATTRS: usize = 64;
+const MAX_SELECT_ATTR_NAME_BYTES: usize = 256;
+const MAX_SELECT_OUTPUT_BYTES: usize = 1024 * 1024;
+const SELECT_ROW_OVERHEAD_BYTES: usize = 512;
 #[cfg(test)]
 const MAX_STORAGE_BYTES: usize = 1024 * 1024;
 const MAX_KEXT_BYTES: usize = 4 * 1024 * 1024;
@@ -269,6 +278,7 @@ struct HostContext {
     allow: Vec<HostRule>,
     storage: Arc<dyn ExtStorage>,
     fetch_timeout: Duration,
+    deadline: Instant,
 }
 
 #[derive(Debug, Clone)]
@@ -385,6 +395,7 @@ pub fn run(
         }
     };
 
+    let deadline = Instant::now() + timeout;
     let host = Arc::new(HostContext {
         extension_id: package.manifest.id.clone(),
         allow: package.manifest.allowed_rules()?,
@@ -394,12 +405,12 @@ pub fn run(
         } else {
             10
         }),
+        deadline,
     });
 
     let runtime = Runtime::new().map_err(|err| AppError::Extension(err.to_string()))?;
     runtime.set_memory_limit(limits.memory_bytes);
     runtime.set_max_stack_size(limits.stack_bytes);
-    let deadline = Instant::now() + timeout;
     runtime.set_interrupt_handler(Some(Box::new(move || Instant::now() >= deadline)));
 
     let context = Context::full(&runtime).map_err(|err| AppError::Extension(err.to_string()))?;
@@ -690,7 +701,7 @@ impl HostContext {
     }
 
     fn bridge_select(&self, html: &str, selector: &str) -> String {
-        match select(html, selector) {
+        match select(html, selector, self.deadline) {
             Ok(rows) => json!({ "ok": true, "value": rows }).to_string(),
             Err(err) => err.json(),
         }
@@ -743,26 +754,130 @@ impl HostContext {
     }
 }
 
-fn select(html: &str, selector: &str) -> Result<Value, HostError> {
+fn select(html: &str, selector: &str, deadline: Instant) -> Result<Value, HostError> {
+    if Instant::now() >= deadline {
+        return Err(select_deadline_error());
+    }
     let document = Html::parse_document(html);
+    if Instant::now() >= deadline {
+        return Err(select_deadline_error());
+    }
     let selector = Selector::parse(selector)
         .map_err(|_| HostError::new("BAD_SELECTOR", "selector is not valid"))?;
-    let rows: Vec<Value> = document
-        .select(&selector)
-        .map(|element| {
-            let attrs: Map<String, Value> = element
-                .value()
-                .attrs()
-                .map(|(name, value)| (name.to_string(), Value::String(value.to_string())))
-                .collect();
-            json!({
-                "text": element.text().collect::<String>(),
-                "html": element.html(),
-                "attrs": attrs,
-            })
-        })
-        .collect();
+
+    let mut rows = Vec::new();
+    // Account for the JSON array brackets as well as one separator per row.
+    let mut output_bytes = 2usize;
+    for element in document.select(&selector) {
+        if Instant::now() >= deadline {
+            return Err(select_deadline_error());
+        }
+        if rows.len() >= MAX_SELECT_NODES {
+            break;
+        }
+        let remaining = MAX_SELECT_OUTPUT_BYTES.saturating_sub(output_bytes);
+        if remaining <= SELECT_ROW_OVERHEAD_BYTES {
+            break;
+        }
+        let mut content_budget = remaining - SELECT_ROW_OVERHEAD_BYTES;
+        loop {
+            let row = build_select_row(element, content_budget);
+            if Instant::now() >= deadline {
+                return Err(select_deadline_error());
+            }
+            let encoded_len = serde_json::to_string(&row)
+                .map_err(|err| HostError::new("HTML_SELECT", err.to_string()))?
+                .len();
+            if output_bytes + encoded_len < MAX_SELECT_OUTPUT_BYTES {
+                output_bytes += encoded_len + 1;
+                rows.push(row);
+                break;
+            }
+            if content_budget == 0 {
+                break;
+            }
+            // A single huge node should still produce a useful, smaller row.
+            content_budget /= 2;
+        }
+        if rows.len() >= MAX_SELECT_NODES {
+            break;
+        }
+    }
     Ok(Value::Array(rows))
+}
+
+fn build_select_row(element: scraper::ElementRef<'_>, budget: usize) -> Value {
+    let mut remaining = budget;
+
+    let text = collect_text(element, MAX_SELECT_TEXT_BYTES.min(remaining));
+    remaining -= text.len();
+
+    let html_budget = MAX_SELECT_HTML_BYTES.min(remaining);
+    let html = if html_budget == 0 {
+        String::new()
+    } else {
+        truncate_utf8(&element.html(), html_budget).to_string()
+    };
+    remaining -= html.len();
+
+    let mut attrs = Map::new();
+    if remaining > 0 {
+        for (name, value) in element.value().attrs().take(MAX_SELECT_ATTRS) {
+            if remaining == 0 {
+                break;
+            }
+            let name = truncate_utf8(name, MAX_SELECT_ATTR_NAME_BYTES.min(remaining));
+            remaining -= name.len();
+            if remaining == 0 {
+                attrs.insert(name.to_string(), Value::String(String::new()));
+                break;
+            }
+            let value = truncate_utf8(value, remaining);
+            remaining -= value.len();
+            attrs.insert(name.to_string(), Value::String(value.to_string()));
+        }
+    }
+
+    json!({
+        "text": text,
+        "html": html,
+        "attrs": attrs,
+    })
+}
+
+fn collect_text(element: scraper::ElementRef<'_>, max_bytes: usize) -> String {
+    if max_bytes == 0 {
+        return String::new();
+    }
+    let mut text = String::new();
+    for part in element.text() {
+        let remaining = max_bytes.saturating_sub(text.len());
+        if remaining == 0 {
+            break;
+        }
+        if part.len() <= remaining {
+            text.push_str(part);
+        } else {
+            text.push_str(truncate_utf8(part, remaining));
+            break;
+        }
+    }
+    text
+}
+
+fn truncate_utf8(text: &str, max_bytes: usize) -> &str {
+    if text.len() <= max_bytes {
+        return text;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
+fn select_deadline_error() -> HostError {
+    HostError::new("DEADLINE", "html.select exceeded the extension time limit")
 }
 
 fn attr(html: &str, selector: &str, name: &str) -> Result<Option<String>, HostError> {
@@ -1107,6 +1222,80 @@ mod tests {
         .unwrap();
         assert_eq!(out["text"], "Hello");
         assert_eq!(out["id"], "7");
+    }
+
+    #[test]
+    fn html_select_caps_generated_nested_documents() {
+        let depth = 3000;
+        let mut html = String::with_capacity(depth * 1750);
+        html.push_str("<!doctype html><html><body>");
+        for index in 0..depth {
+            html.push_str("<div data-index=\"");
+            html.push_str(&index.to_string());
+            html.push_str("\">");
+            for _ in 0..70 {
+                html.push_str("日本語のテキスト");
+            }
+        }
+        for _ in 0..depth {
+            html.push_str("</div>");
+        }
+        html.push_str("</body></html>");
+        assert!(html.len() > 5_000_000);
+
+        let rows = select(&html, "*", Instant::now() + Duration::from_secs(10)).unwrap();
+        let rows = rows.as_array().unwrap();
+        assert!(!rows.is_empty());
+        assert!(rows.len() <= MAX_SELECT_NODES);
+        let encoded = serde_json::to_string(&Value::Array(rows.clone())).unwrap();
+        assert!(encoded.len() <= MAX_SELECT_OUTPUT_BYTES);
+        for row in rows {
+            assert!(row["text"].as_str().unwrap().len() <= MAX_SELECT_TEXT_BYTES);
+            assert!(row["html"].as_str().unwrap().len() <= MAX_SELECT_HTML_BYTES);
+            assert!(row["attrs"].as_object().unwrap().len() <= MAX_SELECT_ATTRS);
+        }
+    }
+
+    #[test]
+    fn html_select_caps_node_count_and_attributes() {
+        let mut html = String::from("<html><body>");
+        for index in 0..(MAX_SELECT_NODES + 25) {
+            html.push_str("<p class=\"item\"");
+            for attr in 0..(MAX_SELECT_ATTRS + 8) {
+                html.push_str(&format!(" data-{attr}=\"v\""));
+            }
+            html.push_str(">row ");
+            html.push_str(&index.to_string());
+            html.push_str("</p>");
+        }
+        html.push_str("</body></html>");
+
+        let rows = select(&html, ".item", Instant::now() + Duration::from_secs(10)).unwrap();
+        let rows = rows.as_array().unwrap();
+        assert_eq!(rows.len(), MAX_SELECT_NODES);
+        for row in rows {
+            assert_eq!(row["attrs"].as_object().unwrap().len(), MAX_SELECT_ATTRS);
+        }
+    }
+
+    #[test]
+    fn html_select_honors_the_deadline() {
+        let err = select(
+            "<div>Hello</div>",
+            "div",
+            Instant::now() - Duration::from_millis(1),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, "DEADLINE");
+    }
+
+    #[test]
+    fn utf8_truncation_never_splits_characters() {
+        let text = "日".repeat(10);
+        let truncated = truncate_utf8(&text, 8);
+        assert_eq!(truncated, "日日");
+        assert_eq!(truncate_utf8("short", 100), "short");
+        assert_eq!(truncate_utf8(&text, 0), "");
     }
 
     #[test]
