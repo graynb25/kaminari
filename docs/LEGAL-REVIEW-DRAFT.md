@@ -1,6 +1,6 @@
 ﻿# Draft legal review: bundled libmpv
 
-Status: draft for a qualified lawyer. This is not legal advice and it is not a sign-off. Kaminari's maintainer prepared this packet with AI assistance on 2026-11-10 for version 0.26.9. Public distribution should wait for counsel review.
+Status: draft for a qualified lawyer. This is not legal advice and it is not a sign-off. Kaminari's maintainer prepared this packet with AI assistance on 2026-11-10 for version 0.27.0. Public distribution should wait for counsel review.
 
 ## 1. Question for counsel
 
@@ -8,7 +8,7 @@ Can Kaminari distribute a Windows NSIS installer that bundles the LGPL component
 
 ## 2. Distribution model
 
-- App: Kaminari 0.26.9, Windows x64, NSIS installer and portable zip, MIT licensed own code. The installer is about 36.6 MiB and installs per-user to `%LOCALAPPDATA%\Kaminari`.
+- App: Kaminari 0.27.0, Windows x64, NSIS installer and portable zip, MIT licensed own code. The installer is about 36.6 MiB and installs per-user to `%LOCALAPPDATA%\Kaminari`.
 - UI and backend: Tauri 2, Rust, Svelte 5, SQLite, QuickJS.
 - Native video: two separate DLLs installed in a `lib` folder next to `kaminari.exe`.
 - `libmpv-wrapper.dll`: C bridge, LGPL-2.1, loaded at runtime with `libloading`.
@@ -24,7 +24,7 @@ Can Kaminari distribute a Windows NSIS installer that bundles the LGPL component
 
 | Component | Version | License | Form | Source |
 | --- | --- | --- | --- | --- |
-| Kaminari | 0.26.9 | MIT | App code | Project repository |
+| Kaminari | 0.27.0 | MIT | App code | Project repository |
 | tauri-plugin-libmpv | 0.3.2 | MPL-2.0 | Rust crate linked into the exe | https://github.com/nini22P/tauri-plugin-libmpv |
 | libmpv-wrapper | v0.1.1 | LGPL-2.1 | Separate DLL | https://github.com/nini22P/libmpv-wrapper |
 | libmpv (mpv) | v0.42.0-11-g8bc468896e | LGPL-2.1 or later for the `-Dgpl=false` build | Separate DLL | https://github.com/mpv-player/mpv/commit/8bc468896ec711cc5a3ac33dae9cbc0e266bcfa4 |

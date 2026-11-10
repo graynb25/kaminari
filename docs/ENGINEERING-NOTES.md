@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-10 Phase 0 production hardening
+
+Context. The production review found no critical issue but three high-severity host-boundary problems and several launch blockers. The review report is kept outside the public repository because it contains exploit detail.
+
+What we shipped. Extension operations now run on blocking workers with a per-source limit, so a slow source cannot freeze the Tauri main thread. `html.select` caps returned nodes, text, HTML, attributes and total output, with deadline checks and UTF-8 safe truncation. External mpv accepts only absolute http or https URLs without credentials and rejects option-like subtitle URLs. AniList OAuth uses a random one-time state with a ten minute expiry and exact callback matching. Backup restore runs integrity and schema checks, restores through a scratch database, keeps a timestamped safety copy and disables restored extensions until the user reviews them. The updater requires the signed version in the Minisign trusted comment, and the release docs cover offline key custody and asset verification.
+
+What we measured. The combined tree passes 148 Rust tests and 101 frontend tests, plus fmt, clippy, frontend check, build and the style check. The extension host regression generates a 5 MB nested document and asserts the node, text, HTML, attribute and total-output caps. Backup tests cover corrupt, wrong-schema, newer-schema and oversized files, unchanged live data on failure, the safety copy and disabled restored extensions. Player tests cover http and https URLs, credentials, non-HTTP schemes, malformed URLs, leading dashes and unsafe subtitles. OAuth tests cover missing, mismatched and expired state, one-time use and state replacement.
+
+What remains. The legal documents still need the real contact, jurisdiction and counsel review. NSFW source hiding and the clean Windows VM install, update and rollback pass are still open. Windows Authenticode signing and the Phase 1 findings remain.
+
 ## 2026-11-10 Continue Watching dedupe
 
 Context. A show linked to AniList and played through a source produced two Continue Watching cards, one from the AniList progress row and one from the source progress row.
