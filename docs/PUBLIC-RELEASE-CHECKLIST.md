@@ -1,6 +1,6 @@
 # Public release checklist
 
-Status: the repository is public as of 2026-11-10. `v0.26.9` is the current signed release. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled.
+Status: the repository is public as of 2026-11-10. `v0.27.0` is the current signed release. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled.
 
 ## Before public
 
@@ -26,7 +26,21 @@ The repository is public. Current state:
 5. [ ] Confirm two-factor authentication on the maintainer account. This cannot be checked from the repository API.
 6. [x] The tag-triggered release workflow was removed. Releases are built locally with the libmpv payload and signing key.
 7. [x] `v0.26.2` and `v0.26.3` have the signed installer, `.sig`, `latest.json` and portable zip. `v0.26.3` also has `SHA256SUMS.txt`.
-8. [x] Test the in-app update from the previous signed build. 0.26.8 found 0.26.9, downloaded it, closed, let the installer replace the files, reopened 0.26.9 and reported up to date. Continue Watching showed one Naruto card and one Mob Psycho 100 card, not four. The library hash survived. Host only; the clean VM pass is still open.
+8. [x] Test the in-app update from the previous signed build. 0.26.9 found 0.27.0, downloaded it, closed, let the installer replace the files, reopened 0.27.0 and reported up to date. The signed-version requirement accepted the 0.27.0 feed. The library hash survived. Host only; the clean VM pass is still open.
+
+## Production review Phase 0
+
+- [x] H-01: extension commands run off the Tauri main thread with per-source limits.
+- [x] H-02: `html.select` node, text, HTML, attribute and output caps.
+- [x] H-03: external mpv URL and subtitle validation.
+- [x] M-02: AniList OAuth one-time state with expiry.
+- [x] M-07: validated backup restore, safety copy and disabled restored extensions.
+- [x] M-12: updater signed-version binding and key custody documentation.
+- [ ] M-17 legal: replace the placeholder contact, jurisdiction and repository details, then have counsel review.
+- [ ] M-17 NSFW: persist and show NSFW metadata and hide NSFW sources by default.
+- [ ] Clean Windows VM install, update and rollback pass.
+- [ ] Windows Authenticode code signing.
+- [ ] Phase 1 items from the private production review.
 
 ## Release assets
 
