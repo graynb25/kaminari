@@ -136,6 +136,8 @@ What we shipped. Source episode rows now have a watched toggle, and the Episodes
 
 What we measured. The public domain sample returned 40 Popeye episodes. Mark all showed 40 watched, the source library card showed 40 watched and episode 40 at 6:02 of 6:02, and the button disabled. Marking episode 1 unwatched showed 39, and marking it again restored 40. Clear returned the page to 0 watched and removed the rows. 118 Rust and 93 frontend tests pass.
 
+Release check. 0.26.5 was published as a signed release. A host install of 0.26.4 found 0.26.5, downloaded it, closed itself, let the installer replace the files, and the installer reopened 0.26.5. Mark all and the per-episode toggle worked in the release build, the feed reported `You are up to date.`, the library SHA-256 stayed `724969E7BE368118E48B73CFF5B021DB82099979E2648B17ED0DE0113F1E0FF4`, and uninstall kept the database. Host only; the clean VM pass remains open.
+
 ## 2026-11-10 Sources cleanup and first-run checklist
 
 Context. The Sources page still led with an Aniyomi registry reader. Its packages are Android APKs and QuickJS cannot run them, so the panel offered a dead end. A new install also had no in-app explanation of what to do first.

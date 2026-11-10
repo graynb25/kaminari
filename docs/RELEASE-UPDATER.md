@@ -1,6 +1,6 @@
 ﻿# Releasing updates
 
-Status: the repository is public and the signed release feed is live. `v0.26.2` was the first public signed release. `v0.26.3` fixed the Windows update flow and `v0.26.4` adds the Sources cleanup and first-run checklist. This note records the build and publishing steps.
+Status: the repository is public and the signed release feed is live. `v0.26.2` was the first public signed release. `v0.26.3` fixed the Windows update flow, `v0.26.4` hid the Aniyomi registry and added the first-run checklist, and `v0.26.5` added source watched marks. This note records the build and publishing steps.
 
 ## Keys
 
