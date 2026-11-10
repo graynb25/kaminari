@@ -128,6 +128,24 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-10 Secret scan, signing key move and local install test
+
+Context. Before any public repository decision, the full git history needed a secret scan, the updater key needed a safer home, and the installer path needed an install, upgrade and rollback check. Windows Sandbox was the preferred clean VM, but it failed to start twice in this environment.
+
+What we measured. Gitleaks 8.30.1 scanned 114 commits and about 2.18 MB. It found two matches: an `access_token` in an auth parser test and a `token` in a proxy documentation sample. Both were verified fake. The current test uses `test-token`, the doc uses `example-token`, and `.gitleaks.toml` allowlists only the two historical commits. The rerun scanned the same history and reported no leaks.
+
+The updater private key, public key, password and signer output lived in `%APPDATA%\app.kaminari.desktop`, beside the SQLite library. They were moved to `%APPDATA%\kaminari-signing` with inherited ACLs removed and the current user granted full control. The app data folder now has zero signing files. `docs/RELEASE-UPDATER.md` uses the new path.
+
+The host install test, after confirming no Kaminari install was present:
+
+- 0.26.1 installer `/S`: exit 0, installed `kaminari.exe` reported 0.26.1.
+- 0.26.2 installer `/S` over it: exit 0, version 0.26.2, `kaminari.db` SHA-256 unchanged.
+- 0.26.1 installer `/S` as rollback: exit 0, version 0.26.1, database hash unchanged.
+- Uninstaller `/S`: exit 0, install directory removed, database survived.
+- Database SHA-256 before, after upgrade, after rollback and after uninstall: `724969E7BE368118E48B73CFF5B021DB82099979E2648B17ED0DE0113F1E0FF4`.
+
+What remains. This was a host test, not a clean machine. Windows Sandbox produced a server process but no guest or result file on two attempts. The clean VM install, update and rollback pass stays open. The local result does prove the installer version path, the upgrade path, the rollback path, the uninstall path and that app data is not touched.
+
 ## 2026-11-10 Autoplay, recommendations and source settings
 
 Context. Watching one episode ended at a dead screen, AniList detail pages showed no similar titles, and episode rows repeated the series art because the source returned no episode thumbnail. AniKoto already had a per-episode thumbnail switch, but the compatibility layer had no way to set it.

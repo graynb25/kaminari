@@ -46,4 +46,6 @@ The clean VM pass covers:
 4. Reinstall the previous build as a rollback. Confirm the version, marker and database file survive.
 5. When a public signed feed exists, use the in-app Check for updates, download, install and restart path.
 
-The 2026-11-10 Windows Sandbox run is recorded in `docs/ENGINEERING-NOTES.md`.
+Local host result, 2026-11-10: 0.26.1 install, 0.26.2 upgrade and 0.26.1 rollback all exited 0 with the expected file versions. The SQLite hash was identical before, after upgrade, after rollback and after uninstall. Uninstall removed the install directory and kept the data. This is not a clean machine result.
+
+Windows Sandbox failed to produce a guest or result file on two attempts. The clean VM pass remains open. The host result is recorded in `docs/ENGINEERING-NOTES.md`.

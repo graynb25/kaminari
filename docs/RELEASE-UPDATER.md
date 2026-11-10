@@ -6,9 +6,9 @@ Status: the 0.26.2 signed installer exists locally. The update feed is not live 
 
 The updater keypair is outside the repository:
 
-- Private key: `%APPDATA%\app.kaminari.desktop\update-signing.key`
-- Public key: `%APPDATA%\app.kaminari.desktop\update-signing.key.pub`
-- Password: `%APPDATA%\app.kaminari.desktop\update-signing.password`
+- Private key: `%APPDATA%\kaminari-signing\update-signing.key`
+- Public key: `%APPDATA%\kaminari-signing\update-signing.key.pub`
+- Password: `%APPDATA%\kaminari-signing\update-signing.password`
 
 The public key is already in `src-tauri/tauri.conf.json`. Never commit the private key or password. Losing the private key means existing installs cannot verify future updates.
 
@@ -17,8 +17,8 @@ The public key is already in `src-tauri/tauri.conf.json`. Never commit the priva
 Set the private key and password in the environment, then run the Tauri build:
 
 ```powershell
-$keyPath = Join-Path $env:APPDATA "app.kaminari.desktop\update-signing.key"
-$pwPath = Join-Path $env:APPDATA "app.kaminari.desktop\update-signing.password"
+$keyPath = Join-Path $env:APPDATA "kaminari-signing\update-signing.key"
+$pwPath = Join-Path $env:APPDATA "kaminari-signing\update-signing.password"
 $env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content $keyPath -Raw).Trim()
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = (Get-Content $pwPath -Raw).Trim()
 npm exec --yes pnpm@10 -- tauri build

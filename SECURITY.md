@@ -7,7 +7,7 @@ Kaminari is a desktop app that loads JavaScript extensions and talks to AniList.
 - No telemetry. No analytics. No crash upload by default. The app works offline after its first run except for AniList and your chosen sources.
 - OAuth tokens for AniList live in the OS keychain, not in plain text files. Diagnostics bundles redact them.
 - Extensions run sandboxed. They can use `net.fetch`, `html.query`, `crypto.sha256`, `storage`, and `logger`. They cannot read the filesystem, spawn processes, or read env vars live.
-- Updates are signed. The updater checks Minisign signatures against the key in the repo before it installs anything.
+- Updates are signed. The updater checks Minisign signatures against the key in the repo before it installs anything. The updater private key and password stay outside the repository and outside the app data folder, under `%APPDATA%\kaminari-signing` with a restricted ACL.
 
 ## Scope
 

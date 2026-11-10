@@ -92,6 +92,7 @@ Settings, and the footer, open a generated list of every Rust crate, npm package
 - `docs/LEGAL-REVIEW-DRAFT.md`: draft counsel packet for the bundled libmpv artifacts
 - `docs/ENGINEERING-NOTES.md`: measured numbers and decisions that reversed
 - `docs/ROADMAP.md`: what comes next and what done means
+- `docs/PUBLIC-RELEASE-CHECKLIST.md`: pre-public and immediate post-public security steps
 - `docs/TERMS.md`: terms of service for distributed builds
 - `docs/PRIVACY.md`: local-first privacy policy
 - `VERSION`: the single version source
