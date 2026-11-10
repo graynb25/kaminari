@@ -39,9 +39,12 @@ The repository is public. Current state:
 - [ ] M-17 legal: replace the placeholder contact, jurisdiction and repository details, then have counsel review.
 - [x] M-17 NSFW: persist and show NSFW metadata and hide NSFW sources by default.
 - [x] M-18: durable AniList-to-source links and ID-based Continue Watching merge.
+- [x] M-01: dialog-scoped one-use path tokens for settings, backups and package installs.
+- [x] M-03, M-04, M-14: shared safe fetch for registry, Mangayomi and downloads.
+- [x] M-19: bundle SQLite 3.54.1 through rusqlite 0.41.1.
 - [ ] Clean Windows VM install, update and rollback pass.
 - [ ] Windows Authenticode code signing.
-- [ ] Phase 1 items from the private production review.
+- [ ] Remaining Phase 1 items: M-05, M-06, M-08, M-09, M-10, M-11, M-13, M-15, M-16, L-02, L-09 and CI hardening.
 
 ## Release assets
 

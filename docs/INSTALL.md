@@ -38,7 +38,7 @@ The sample is a test source, not a catalog. Install it from Sources if you want 
 
 ## Add a source
 
-Kaminari does not include or name a source. Add a raw Mangayomi JavaScript file from a provider you trust.
+Kaminari does not include or name a source. Add a raw Mangayomi JavaScript file from a provider you trust. For a local `.kext` package, use Choose .kext package instead of a typed path.
 
 1. Open Sources.
 2. Scroll to Mangayomi sources.
@@ -67,8 +67,9 @@ Some sources expose settings. Open the source card menu and choose Settings. Com
 - Autoplay next episode is in Settings. It shows a five second countdown and a Play next button.
 - Remote subtitles are proxied with the stream headers. Inline subtitles become WebView tracks.
 - History has a time range filter, per-row delete and Clear history. Clearing history also clears Continue Watching. Library entries and watched marks stay.
-- Downloads keep a file from a stream when you have the right to keep it. Choose a downloads folder in Settings.
-- Backups restore the library and watch progress. Restored extensions are left disabled until you review them in Sources and enable the ones you trust. Keep the timestamped safety copy next to your library until you are sure the restore is correct.
+- Downloads keep a file from a stream when you have the right to keep it. Choose a downloads folder in Settings. Plain HTTP, private addresses and local network hosts are blocked for registry, source and download fetches.
+- Backups restore the library and watch progress. Restored extensions are left disabled until you review them in Sources and enable the ones you trust. Keep the timestamped safety copy next to your library until you are sure the restore is correct. Backups made by 0.28 or later are not accepted by older builds.
+- NSFW sources are hidden by default. Enable Show NSFW sources in Settings, Privacy to see them in Sources and source search.
 
 ## Updates
 

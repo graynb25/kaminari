@@ -1,9 +1,9 @@
 {
   "generatedAt": "2026-11-10",
-  "appVersion": "0.27.0",
+  "appVersion": "0.28.0",
   "platform": "x86_64-pc-windows-msvc",
   "summary": {
-    "packages": 463,
+    "packages": 462,
     "licenses": 35,
     "notRecorded": 0,
     "proprietary": 0
@@ -17,7 +17,7 @@
           "key": "bundled:Kaminari::MIT",
           "name": "Kaminari",
           "versions": [
-            "0.27.0"
+            "0.28.0"
           ],
           "license": "MIT",
           "source": "https://github.com/graynb25/kaminari"
@@ -968,20 +968,10 @@
           "name": "hashbrown",
           "versions": [
             "0.12.3",
-            "0.14.5",
             "0.17.1"
           ],
           "license": "MIT OR Apache-2.0",
           "source": "https://github.com/rust-lang/hashbrown"
-        },
-        {
-          "key": "rust:hashlink::MIT OR Apache-2.0",
-          "name": "hashlink",
-          "versions": [
-            "0.9.1"
-          ],
-          "license": "MIT OR Apache-2.0",
-          "source": "https://github.com/kyren/hashlink"
         },
         {
           "key": "rust:heck::MIT OR Apache-2.0",
@@ -1367,7 +1357,7 @@
           "key": "rust:libsqlite3-sys::MIT",
           "name": "libsqlite3-sys",
           "versions": [
-            "0.30.1"
+            "0.39.1"
           ],
           "license": "MIT",
           "source": "https://github.com/rusqlite/rusqlite"
@@ -1948,7 +1938,7 @@
           "key": "rust:rusqlite::MIT",
           "name": "rusqlite",
           "versions": [
-            "0.32.1"
+            "0.41.1"
           ],
           "license": "MIT",
           "source": "https://github.com/rusqlite/rusqlite"

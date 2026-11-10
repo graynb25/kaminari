@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-10 Phase 1 local hardening
+
+Context. The production review Phase 1 batch covered NSFW visibility, durable AniList links, the SQLite advisory, dialog-scoped file authority and shared safe fetch for registry, Mangayomi and downloads.
+
+What we shipped. Installed JS extensions expose their NSFW flag and are hidden from Sources and source search until Settings, Privacy enables them. Source library rows carry an AniList id, linked when a show is opened from Watch. Continue Watching merges by that id and keeps the source row as the resume target. The SQLite bundle moved to 3.54.1 through rusqlite 0.41.1. Settings, backup and package paths now use one-use dialog-scoped tokens with canonicalization and reparse-point checks. Registry, Mangayomi and download fetches share a safe resolver with HTTPS enforcement, private-address rejection, redirect checks, DNS pinning and streaming caps.
+
+What we measured. The combined local branch passes 164 Rust tests and 109 frontend tests, plus fmt, clippy, frontend check, build and the style check. `cargo audit --no-yanked` exits 0 with no vulnerability entries; the remaining output is the existing unmaintained or unsound warning set. A local UI smoke test confirmed the NSFW toggle, the `.kext` picker, the Sources list and two Continue Watching cards. Native file dialogs were not exercised interactively.
+
+What changed for users. Plain HTTP, LAN and private-address requests fail for registry, Mangayomi and downloads. Restored extensions stay disabled until reviewed. Backups made by 0.28 or later are rejected by older builds because the schema version is now 2. Linking a source show from AniList Watch adds it to the source library. `ext_host.net.fetch` still uses its existing host allowlist and was not moved to the new resolver.
+
 ## 2026-11-10 Phase 0 production hardening
 
 Context. The production review found no critical issue but three high-severity host-boundary problems and several launch blockers. The review report is kept outside the public repository because it contains exploit detail.

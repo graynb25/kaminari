@@ -4,6 +4,17 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.28.0 - 2026-11-10
+
+- NSFW: installed sources expose their manifest NSFW flag, show a badge, and are hidden from Sources and source search by default. Settings, Privacy adds a Show NSFW sources toggle
+- Sources: add a durable AniList link on source library rows. A source opened from Watch keeps its AniList identity after restart, and Continue Watching merges by ID with the source row as the resume target
+- Sources: install `.kext` packages through a native file picker instead of a free-text path
+- Security: settings, backup and package paths use one-use dialog-scoped tokens, canonical paths and reparse-point checks
+- Security: registry, Mangayomi and download fetches share a safe resolver with HTTPS enforcement, private-address rejection, redirect checks, DNS pinning and streaming caps
+- Security: upgrade rusqlite to 0.41.1 and bundled SQLite to 3.54.1, clearing RUSTSEC-2026-0459
+- Compatibility: schema version 2 adds the source AniList link. Backups from this build are rejected by older builds
+- Version: bump to 0.28.0
+
 ## 0.27.0 - 2026-11-10
 
 - Security: extension searches, details, episodes, preferences and stream resolve run off the Tauri main thread, with a per-source concurrency limit. A slow source no longer freezes the window
