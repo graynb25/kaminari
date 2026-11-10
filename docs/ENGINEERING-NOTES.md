@@ -128,6 +128,28 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-10 Mangayomi source shim
+
+Context. The app had a working QuickJS host and a public-domain sample, but no real anime catalog. The user's core requirement is watching anime through user-supplied extensions, so a Mangayomi compatibility layer was the next feature after downloads and updates.
+
+What we tried. The existing host was synchronous and rejected Promise results with `ASYNC_UNSUPPORTED`. A standalone probe evaluated a Mangayomi-style `DefaultExtension` after a bootstrap, called an async method, and drained the QuickJS microtask queue with `execute_pending_job`. The probe then ran the live AniKoto source against the production bridge shape.
+
+What we measured. AniKoto preview found three anime sources in one 73 KB file. Search returned 26 Naruto results in 0.5 s, detail 0.6 s, 220 episodes 0.7 s, and resolve 6.1 s. Resolve returned two HLS variants with `Referer` and `User-Agent` headers from `fetch.nexabloom.top`. Episode 1 played 800p with 302 subtitle cues. HiAnime returned 28 results and 220 episodes; its ZokoAnime stream played at 800p. HiAnime's remote VTT needed the loopback file proxy and a conditional `crossorigin` video attribute. The native public-domain sample still returned 24 Popeye results and played after the same change.
+
+What we shipped. Promise dispatch in `ext_host`, a wildcard host rule for compat sources, a random bytes bridge and 60 s search/detail timeouts with 120 s resolve. A bootstrap in `mangayomi.rs` provides `MProvider`, `Client`, `SharedPreferences`, `Document`, console, base64, UTF-8, URL, timers and crypto. The adapter maps the four native operations. The Sources page can inspect a raw URL, show metadata and SHA-256, and install only after an explicit trust prompt. Compat manifests use `hosts: ["*"]`; plain HTTP, localhost, private addresses and URL credentials stay blocked. Inline subtitles are converted to WebVTT; remote subtitles are proxied with stream headers. Episodes are sorted chronologically. The native sample remains on its original path.
+
+Limits. Manga, filter UI, source preference UI and native WebAssembly are not supported. Some sources carry their own JavaScript WASM interpreter and work. `edl://` streams are an external mpv path. A shim update does not rewrite an installed wrapper; reinstall the source. Cloudflare challenges are not solved. No source list ships.
+
+## 2026-11-10 Auto update
+
+Context. Updates were manual installers. The updater needs a signed Tauri artifact and a hosted manifest.
+
+What we shipped. `tauri-plugin-updater` v2 and `@tauri-apps/plugin-updater`, the `updater:default` capability, `bundle.createUpdaterArtifacts`, the local public key and the GitHub `latest.json` endpoint. Settings shows the current version, a Check for updates button, available version, date and notes, download progress, install, and Restart to apply. A quiet mount check treats an unreachable feed as a non-blocking warning.
+
+What we measured. `cargo test` passed 110 tests before the shim, `pnpm test` passed 62, and the frontend build passed. The live endpoint was not tested because the repository is private and no signed release has been published. The plugin path still needs a real signed artifact, installer run and restart check.
+
+What remains. A signed public release with `latest.json`, a clean VM install, an update from an older signed build, and a rollback test. The private key stays outside the repository.
+
 ## 2026-11-10 Stream downloads
 
 Context. The source browser could play a stream but not keep it. P3 asks for downloads to a user folder where the user has the rights.

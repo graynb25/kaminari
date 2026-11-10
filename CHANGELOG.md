@@ -4,6 +4,19 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.26.0 - 2026-11-10
+
+- Extensions: install a raw Mangayomi JavaScript anime source from a URL, inspect its metadata and SHA-256, then confirm a third party trust prompt
+- Extensions: Promise and async/await support in the QuickJS host, with a compatibility bootstrap for `MProvider`, `Client`, `SharedPreferences`, `Document`, crypto, timers, base64, UTF-8, URL and console
+- Extensions: map Mangayomi search, detail, chapters and video lists onto the native search, detail, episodes and resolve operations
+- Extensions: compat sources get an explicit any-HTTPS host grant while plain HTTP, localhost, private addresses and URL credentials stay blocked
+- Playback: remote subtitle files are proxied with the stream headers; inline SRT/WebVTT is converted to WebVTT and loaded from a Blob track
+- Playback: compat episodes are sorted chronologically
+- Extensions: AniKoto and HiAnime verified live against the source browser and player
+- Updates: Tauri updater plugin, signed updater artifacts and Settings check, download, install and restart states
+- Build: signed updater artifacts need `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the GitHub feed stays empty until a signed public `latest.json` exists
+- Version: bump to 0.26.0
+
 ## 0.25.0 - 2026-11-10
 
 - Downloads: direct MP4/OGV and simple HLS streams save to a chosen folder with progress, cancel and a one-time content-rights confirmation

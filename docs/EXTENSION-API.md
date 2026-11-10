@@ -1,6 +1,6 @@
 # Extension API
 
-Status: draft v0.1. The native JavaScript host is live, and a real sample source ships in `extensions/public-domain`. The first host runs synchronous methods. Promise support is a later version; until then the host returns `ASYNC_UNSUPPORTED`. See `docs/PLAN-JS-EXTENSIONS.md`. Breaking changes bump `apiVersion`.
+Status: draft v0.1. The native JavaScript host is live, and a real sample source ships in `extensions/public-domain`. Methods may be synchronous or return a Promise. The host drains the QuickJS microtask queue and waits for the result. See `docs/PLAN-JS-EXTENSIONS.md` and `docs/PLAN-MANGAYOMI-SHIM.md`. Breaking changes bump `apiVersion`.
 
 ## Package
 
@@ -64,7 +64,7 @@ export interface Stream {
 }
 ```
 
-All methods are synchronous in v0.1. Throw a typed error with code and message. Host validates results at the boundary and drops bad rows with a log, never a crash.
+Methods may be synchronous or `async`. Throw a typed error with code and message. The host validates results at the boundary and drops bad rows with a log, never a crash.
 
 Bridge globals, frozen: `net.fetch(url, opts)` with timeouts and header presets. `html.query(doc, selector)` for simple parsing. `crypto.sha256(text)` plus hmac and random. `storage.get` and `storage.set` namespaced per extension. `logger.info`, `warn`, `error`. No filesystem. No child process. No env. All bridge calls are synchronous in v0.1.
 
@@ -73,6 +73,16 @@ Bridge globals, frozen: `net.fetch(url, opts)` with timeouts and header presets.
 Use `{ code, message, retryable }`. Codes: `NOT_FOUND`, `RATE_LIMITED`, `AUTH_REQUIRED`, `GEO_BLOCKED`, `EMBED_ONLY`, `PARSE_ERROR`, `HOST_DENIED`, `TIMEOUT`. Keep messages short. The UI shows them as is. Full traces stay in the per source log viewer.
 
 Timeout is 5 seconds, 10 for resolve. Memory cap is 64MB. One bad extension greys out its source. The app stays up.
+
+## Mangayomi compatibility
+
+Kaminari can wrap a raw Mangayomi JavaScript anime source without repacking it. The Sources page downloads the file, shows its `mangayomiSources` metadata and SHA-256, and asks for explicit trust. Install re-downloads the file, verifies the hash and stores a wrapped copy.
+
+The wrapper provides `MProvider`, `Client.get/post`, `SharedPreferences`, `Document`, `Element`, `console`, `window`, `navigator`, `location`, `fetch`, `btoa`, `atob`, `TextEncoder`, `TextDecoder`, `URL`, `URLSearchParams`, `crypto.sha256`, `crypto.getRandomValues` and microtask timers. It maps `search`, `getDetail`, `getVideoList` and the `chapters` array onto the native operations. Episode ids are chapter URLs.
+
+Supported subset: anime only, no filter UI, no source preference UI, no native WebAssembly, no filesystem or process access. Sources may carry their own pure JavaScript WASM interpreter. Inline SRT or WebVTT is converted to WebVTT and loaded from a Blob track in the WebView player. Remote subtitle files are proxied with the stream headers. `edl://` streams are for external mpv.
+
+Host policy: a compat manifest uses `hosts: ["*"]`. Plain HTTP, localhost, private addresses and URL credentials stay blocked. The trust panel states that the source can contact any host and send it what it reads. The host has no access to the Kaminari database, AniList token, files or environment.
 
 ## Registry
 

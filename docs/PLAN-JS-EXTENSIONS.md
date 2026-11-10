@@ -1,6 +1,6 @@
 # Native JS extension host plan
 
-Status: M0 through M4 are done. The host runs search, detail, episodes and resolve against archive.org, resolved streams play in the app, and source shows can be added to the library with resumable progress. External mpv is the fallback. A 2026-11-08 review confirmed Suwayomi is manga-only and cannot run Aniyomi/yuzono anime extensions, so native `.kext` remains the only bundled provider model. Next is a loopback stream proxy, then embedded libmpv. A user-installed server adapter is a separate, optional project. No host code runs outside the bridge. This document is the contract we build against.
+Status: M0 through M4 are done. The host runs search, detail, episodes and resolve against archive.org, resolved streams play in the app, and source shows can be added to the library with resumable progress. External mpv is the fallback. A 2026-11-08 review confirmed Suwayomi is manga-only and cannot run Aniyomi/yuzono anime extensions, so native `.kext` remains the bundled provider model. The loopback proxy and embedded libmpv landed. In 0.26.0 the host also accepts async methods and wraps Mangayomi JavaScript anime sources behind an inspect and trust prompt; AniKoto and HiAnime were tested live. A user-installed server adapter is a separate, optional project. No host code runs outside the bridge. This document is the contract we build against. See `docs/PLAN-MANGAYOMI-SHIM.md` for the compatibility subset.
 
 ## Why this exists
 

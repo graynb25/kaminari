@@ -1,9 +1,9 @@
 {
   "generatedAt": "2026-11-10",
-  "appVersion": "0.25.0",
+  "appVersion": "0.26.0",
   "platform": "x86_64-pc-windows-msvc",
   "summary": {
-    "packages": 451,
+    "packages": 458,
     "licenses": 33,
     "notRecorded": 0,
     "proprietary": 0
@@ -17,7 +17,7 @@
           "key": "bundled:Kaminari::MIT",
           "name": "Kaminari",
           "versions": [
-            "0.25.0"
+            "0.26.0"
           ],
           "license": "MIT",
           "source": "https://github.com/graynb25/kaminari"
@@ -454,7 +454,8 @@
           "key": "rust:constant_time_eq::CC0-1.0 OR MIT-0 OR Apache-2.0",
           "name": "constant_time_eq",
           "versions": [
-            "0.3.1"
+            "0.3.1",
+            "0.6.1"
           ],
           "license": "CC0-1.0 OR MIT-0 OR Apache-2.0",
           "source": "https://github.com/cesarb/constant_time_eq"
@@ -1452,6 +1453,15 @@
           "source": "https://github.com/hyperium/mime"
         },
         {
+          "key": "rust:minisign-verify::MIT",
+          "name": "minisign-verify",
+          "versions": [
+            "0.3.0"
+          ],
+          "license": "MIT",
+          "source": "https://github.com/jedisct1/rust-minisign-verify"
+        },
+        {
           "key": "rust:miniz_oxide::MIT OR Zlib OR Apache-2.0",
           "name": "miniz_oxide",
           "versions": [
@@ -1854,7 +1864,8 @@
           "key": "rust:reqwest::MIT OR Apache-2.0",
           "name": "reqwest",
           "versions": [
-            "0.12.28"
+            "0.12.28",
+            "0.13.5"
           ],
           "license": "MIT OR Apache-2.0",
           "source": "https://github.com/seanmonstar/reqwest"
@@ -1950,6 +1961,15 @@
           "source": "https://github.com/rustls/pki-types"
         },
         {
+          "key": "rust:rustls-platform-verifier::MIT OR Apache-2.0",
+          "name": "rustls-platform-verifier",
+          "versions": [
+            "0.7.1"
+          ],
+          "license": "MIT OR Apache-2.0",
+          "source": "https://github.com/rustls/rustls-platform-verifier"
+        },
+        {
           "key": "rust:rustls-webpki::ISC",
           "name": "rustls-webpki",
           "versions": [
@@ -1957,6 +1977,15 @@
           ],
           "license": "ISC",
           "source": "https://github.com/rustls/webpki"
+        },
+        {
+          "key": "rust:rustversion::MIT OR Apache-2.0",
+          "name": "rustversion",
+          "versions": [
+            "1.0.23"
+          ],
+          "license": "MIT OR Apache-2.0",
+          "source": "https://github.com/dtolnay/rustversion"
         },
         {
           "key": "rust:ryu::Apache-2.0 OR BSL-1.0",
@@ -2469,6 +2498,15 @@
           "source": "https://github.com/tauri-apps/plugins-workspace"
         },
         {
+          "key": "rust:tauri-plugin-updater::Apache-2.0 OR MIT",
+          "name": "tauri-plugin-updater",
+          "versions": [
+            "2.14.1"
+          ],
+          "license": "Apache-2.0 OR MIT",
+          "source": "https://github.com/tauri-apps/plugins-workspace"
+        },
+        {
           "key": "rust:tauri-runtime::Apache-2.0 OR MIT",
           "name": "tauri-runtime",
           "versions": [
@@ -2503,6 +2541,15 @@
           ],
           "license": "MIT",
           "source": "https://github.com/tauri-apps/winres"
+        },
+        {
+          "key": "rust:tempfile::MIT OR Apache-2.0",
+          "name": "tempfile",
+          "versions": [
+            "3.27.0"
+          ],
+          "license": "MIT OR Apache-2.0",
+          "source": "https://github.com/Stebalien/tempfile"
         },
         {
           "key": "rust:tendril::MIT/Apache-2.0",
@@ -2764,6 +2811,15 @@
           ],
           "license": "MIT",
           "source": "https://github.com/seanmonstar/try-lock"
+        },
+        {
+          "key": "rust:typed-path::MIT OR Apache-2.0",
+          "name": "typed-path",
+          "versions": [
+            "0.13.0"
+          ],
+          "license": "MIT OR Apache-2.0",
+          "source": "https://github.com/chipsenkbeil/typed-path"
         },
         {
           "key": "rust:typeid::MIT OR Apache-2.0",
@@ -3283,7 +3339,8 @@
           "key": "rust:zip::MIT",
           "name": "zip",
           "versions": [
-            "2.6.1"
+            "2.6.1",
+            "9.5.0"
           ],
           "license": "MIT",
           "source": "https://github.com/zip-rs/zip2"
@@ -3525,6 +3582,15 @@
           "name": "@tauri-apps/plugin-dialog",
           "versions": [
             "2.8.4"
+          ],
+          "license": "MIT OR Apache-2.0",
+          "source": "https://github.com/tauri-apps/plugins-workspace"
+        },
+        {
+          "key": "javascript:@tauri-apps/plugin-updater::MIT OR Apache-2.0",
+          "name": "@tauri-apps/plugin-updater",
+          "versions": [
+            "2.14.1"
           ],
           "license": "MIT OR Apache-2.0",
           "source": "https://github.com/tauri-apps/plugins-workspace"
