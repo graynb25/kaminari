@@ -108,7 +108,10 @@ if ($platform.url -notlike "*Kaminari_${version}_x64-setup.exe") {
 $signatureText = [Text.Encoding]::UTF8.GetString(
   [Convert]::FromBase64String((Get-Content $signature -Raw).Trim())
 )
-$signedVersion = [regex]::Match($signatureText, 'version:(\S+)').Groups[1].Value
+$signedVersion = [regex]::Match(
+  $signatureText,
+  '(?m)^trusted comment:.*version:(\S+)'
+).Groups[1].Value
 if ($signedVersion -ne $version) {
   throw "signature carries version '$signedVersion', build is $version"
 }
