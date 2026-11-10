@@ -20,9 +20,9 @@
   import {
     readQualityPreference,
     saveQualityPreference,
-    QUALITY_OPTIONS,
     type QualityPreference,
   } from "./quality";
+  import QualitySelect from "./QualitySelect.svelte";
   import { proxyFlagEnabled, setProxyFlag } from "./streamProxy";
   import { applySettings, collectSettings, parseSettings } from "./settingsBackup";
   import {
@@ -973,21 +973,14 @@
                     Picks the closest stream when a source offers several. Auto keeps source order.
                   </p>
                 </div>
-                <select
-                  class="h-8 rounded-lg px-2 text-xs outline-none shrink-0"
-                  style="background: var(--input-bg); border: 1px solid var(--line); color: var(--text-1);"
+                <QualitySelect
                   value={qualityPreference}
-                  onchange={(event) => {
-                    qualityPreference = (event.currentTarget as HTMLSelectElement)
-                      .value as QualityPreference;
-                    saveQualityPreference(qualityPreference);
+                  onChange={(value) => {
+                    qualityPreference = value;
+                    saveQualityPreference(value);
                   }}
-                  aria-label="Preferred playback quality"
-                >
-                  {#each QUALITY_OPTIONS as option}
-                    <option value={option.value}>{option.label}</option>
-                  {/each}
-                </select>
+                  label="Preferred playback quality"
+                />
               </div>
               <dl>
                 <div class="flex flex-col sm:flex-row sm:items-baseline gap-1 py-2.5" style="border-top: 1px solid var(--line);">
