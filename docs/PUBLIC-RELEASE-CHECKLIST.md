@@ -1,6 +1,6 @@
 # Public release checklist
 
-Status: the repository is public as of 2026-11-10. `v0.26.5` is the current signed release. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled.
+Status: the repository is public as of 2026-11-10. `v0.26.6` is the current signed release. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled.
 
 ## Before public
 
@@ -10,7 +10,7 @@ Status: the repository is public as of 2026-11-10. `v0.26.5` is the current sign
 - [x] Keep `VERSION`, the installer and the portable zip reproducible from the repository.
 - [x] Remove the tag-triggered release workflow. It cannot sign or ship the local libmpv payload. Releases are built and uploaded from the maintainer machine.
 - [ ] Have counsel review `docs/LEGAL-REVIEW-DRAFT.md` and the Terms.
-- [ ] Run a dependency and license audit after the final release build.
+- [x] Run a dependency and license audit after the final release build. Dependabot alerts were reviewed on 2026-11-10; zip, Vite and Vitest were upgraded, glib was dismissed as Linux-only, and deepmerge as a build-time low severity report. Licenses were regenerated for 0.26.6.
 - [x] Confirm no source list, media, APK or user database is tracked.
 - [x] Confirm the CI secret scan passes on the exact release commit.
 - [x] Prepare a short takedown and security response process.

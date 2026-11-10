@@ -136,6 +136,8 @@ What we shipped. `zip` moved from 2.6.1 to 9.5.0. Its `ZipFile::name()` now retu
 
 What remains. glib 0.18.5 is a Linux-only transitive GTK dependency; the Windows build does not compile it. The alert is dismissed as not used for this Windows app. deepmerge 4.3.1 has a low-severity prototype poisoning report and no patched release; it is a build-time Svelte plugin dependency, so the alert is dismissed as tolerable risk. The zip, Vite, Vitest, mocker and tinypool alerts close when the dependency graph refreshes.
 
+Release check. 0.26.6 was published as a signed release. A host install of 0.26.5 found 0.26.6, downloaded it, closed itself, and the installer reopened 0.26.6. A real `.kext` built from the public-domain sample installed from the Sources path field with zip 9.5.0. The feed reported `You are up to date.`, the library SHA-256 stayed `724969E7BE368118E48B73CFF5B021DB82099979E2648B17ED0DE0113F1E0FF4`, and uninstall kept the database.
+
 ## 2026-11-10 Source watched marks without playback
 
 Context. Source progress was only written by the player after roughly 90 percent of an episode, or when it ended. The AniList detail page already had Mark all, but that table is separate from source progress. A user who had already watched a show had to replay every episode for the source library and the player to count it.
