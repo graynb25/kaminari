@@ -140,6 +140,14 @@ What we shipped. Promise dispatch in `ext_host`, a wildcard host rule for compat
 
 Limits. Manga, filter UI, source preference UI and native WebAssembly are not supported. Some sources carry their own JavaScript WASM interpreter and work. `edl://` streams are an external mpv path. A shim update does not rewrite an installed wrapper; reinstall the source. Cloudflare challenges are not solved. No source list ships.
 
+## 2026-11-10 Preferred playback quality
+
+Context. A source can return several streams for one episode. The Play button used the first one, so a 480p dub could start ahead of a 1080p sub even when the user wanted a specific height.
+
+What we shipped. A stored `kaminari.preferredQuality` preference with Auto, Best, 4K, 1080p, 720p, 480p and 360p choices. Settings has the full control and the show page has a quick selector. Auto keeps source order. Best picks the highest measured height. A numbered choice picks an exact match, then the highest below the target, then the lowest above it. Selection stays inside the first stream's server and audio variant, so changing quality does not silently switch from sub to dub. The preference is included in settings export and import.
+
+What we measured. 75 frontend tests pass, including height parsing for `800p`, `1920x1080`, `1080p` and `4K`, exact and nearest selection, variant preservation, and settings fallback. A live AniKoto show selected a 720p stream and the player reported `HLS · 720p - HD-1 [Sub]`.
+
 ## 2026-11-10 Auto update
 
 Context. Updates were manual installers. The updater needs a signed Tauri artifact and a hosted manifest.

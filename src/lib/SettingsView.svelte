@@ -17,6 +17,12 @@
   } from "./anilistAuth";
   import { anilistSyncPending, anilistSyncPush } from "./anilistSync";
   import { readDownloadsFolder, saveDownloadsFolder } from "./downloads";
+  import {
+    readQualityPreference,
+    saveQualityPreference,
+    QUALITY_OPTIONS,
+    type QualityPreference,
+  } from "./quality";
   import { proxyFlagEnabled, setProxyFlag } from "./streamProxy";
   import { applySettings, collectSettings, parseSettings } from "./settingsBackup";
   import {
@@ -58,6 +64,7 @@
   let manualActive = false;
   let dataBusy = $state(false);
   let downloadsFolder = $state("");
+  let qualityPreference = $state<QualityPreference>("auto");
   let folderBusy = $state(false);
   let dataStatus = $state("");
   let dataStatusTone = $state<"success" | "error">("success");
@@ -508,6 +515,7 @@
 
   onMount(() => {
     downloadsFolder = readDownloadsFolder() ?? "";
+    qualityPreference = readQualityPreference();
     void (async () => {
       try {
         player = await playerStatus();
@@ -891,6 +899,32 @@
                   <span class="status-dot {proxyOn ? '' : 'is-offline'}" style="width: 4px; height: 4px;" aria-hidden="true"></span>
                   {proxyOn ? "On" : "Off"}
                 </button>
+              </div>
+              <div
+                class="flex flex-wrap items-center justify-between gap-3 py-2.5"
+                style="border-top: 1px solid var(--line);"
+              >
+                <div class="min-w-0">
+                  <p class="text-sm" style="color: var(--paper-50);">Preferred playback quality</p>
+                  <p class="text-xs mt-0.5" style="color: var(--paper-400);">
+                    Picks the closest stream when a source offers several. Auto keeps source order.
+                  </p>
+                </div>
+                <select
+                  class="h-8 rounded-lg px-2 text-xs outline-none shrink-0"
+                  style="background: var(--input-bg); border: 1px solid var(--line); color: var(--text-1);"
+                  value={qualityPreference}
+                  onchange={(event) => {
+                    qualityPreference = (event.currentTarget as HTMLSelectElement)
+                      .value as QualityPreference;
+                    saveQualityPreference(qualityPreference);
+                  }}
+                  aria-label="Preferred playback quality"
+                >
+                  {#each QUALITY_OPTIONS as option}
+                    <option value={option.value}>{option.label}</option>
+                  {/each}
+                </select>
               </div>
               <dl>
                 <div class="flex flex-col sm:flex-row sm:items-baseline gap-1 py-2.5" style="border-top: 1px solid var(--line);">

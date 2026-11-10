@@ -1,6 +1,12 @@
 // Settings export and import. Plain JSON, small enough to inspect by hand.
 
 import { getAccent, parseAccent, setAccent, type AccentId } from "./accent";
+import {
+  parseQualityPreference,
+  readQualityPreference,
+  saveQualityPreference,
+  type QualityPreference,
+} from "./quality";
 import { proxyFlagEnabled, setProxyFlag } from "./streamProxy";
 import { getThemeMode, setThemeMode, type ThemeMode } from "./theme";
 
@@ -12,6 +18,7 @@ export type SettingsData = {
   theme: ThemeMode;
   accent: AccentId;
   proxy: boolean;
+  quality: QualityPreference;
 };
 
 const FORMAT = "kaminari-settings";
@@ -26,6 +33,7 @@ export function collectSettings(): SettingsData {
     theme: getThemeMode(),
     accent: getAccent(),
     proxy: proxyFlagEnabled(),
+    quality: readQualityPreference(),
   };
 }
 
@@ -64,6 +72,7 @@ export function parseSettings(raw: string): SettingsData {
     theme,
     accent: parseAccent(typeof record.accent === "string" ? record.accent : null),
     proxy: record.proxy,
+    quality: parseQualityPreference(record.quality),
   };
 }
 
@@ -71,4 +80,5 @@ export function applySettings(data: SettingsData): void {
   setThemeMode(data.theme);
   setAccent(data.accent);
   setProxyFlag(data.proxy);
+  saveQualityPreference(data.quality);
 }

@@ -23,6 +23,12 @@ describe("parseSettings", () => {
     expect(data.theme).toBe("dark");
     expect(data.accent).toBe("ocean");
     expect(data.proxy).toBe(true);
+    expect(data.quality).toBe("auto");
+  });
+
+  it("reads a saved quality preference and falls back to auto", () => {
+    expect(parseSettings(settings({ quality: "720" })).quality).toBe("720");
+    expect(parseSettings(settings({ quality: "4k" })).quality).toBe("auto");
   });
 
   it("rejects invalid JSON", () => {

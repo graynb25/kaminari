@@ -12,6 +12,7 @@ Every visible change gets a line here. Keep lines short and specific.
 - Extensions: compat sources get an explicit any-HTTPS host grant while plain HTTP, localhost, private addresses and URL credentials stay blocked
 - Playback: remote subtitle files are proxied with the stream headers; inline SRT/WebVTT is converted to WebVTT and loaded from a Blob track
 - Playback: compat episodes are sorted chronologically
+- Playback: preferred quality setting and a show page selector pick the closest stream in the same server and audio variant, with Auto, Best, 4K, 1080p, 720p, 480p and 360p choices
 - Extensions: AniKoto and HiAnime verified live against the source browser and player
 - Updates: Tauri updater plugin, signed updater artifacts and Settings check, download, install and restart states
 - Build: signed updater artifacts need `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the GitHub feed stays empty until a signed public `latest.json` exists

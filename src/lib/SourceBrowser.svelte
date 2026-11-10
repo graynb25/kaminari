@@ -35,6 +35,13 @@
     sourceProgressSet,
   } from "./api";
   import { libmpvEnabled, libmpvNeedsProxy } from "./libmpv";
+  import {
+    pickStream,
+    readQualityPreference,
+    saveQualityPreference,
+    QUALITY_OPTIONS,
+    type QualityPreference,
+  } from "./quality";
   import { isHlsStream, proxyFlagEnabled, shouldProxy } from "./streamProxy";
   import type {
     DownloadProgress,
@@ -66,6 +73,7 @@
   } = $props();
 
   let query = $state("");
+  let qualityPreference = $state<QualityPreference>(readQualityPreference());
   let results = $state<JsSearchItem[]>([]);
   let loading = $state(false);
   let error = $state<string | null>(null);
@@ -590,7 +598,13 @@
   async function playEpisode(episode: JsEpisode) {
     const cached = streams[episode.id];
     const list = cached && cached.length > 0 ? cached : await resolve(episode);
-    if (list.length > 0) await playStream(list[0], episode);
+    const picked = pickStream(list, qualityPreference);
+    if (picked) await playStream(picked, episode);
+  }
+
+  function chooseQuality(value: string) {
+    qualityPreference = value as QualityPreference;
+    saveQualityPreference(qualityPreference);
   }
 
   function toggleStreams(episode: JsEpisode) {
@@ -733,6 +747,20 @@
             <Icon name={inSourceLibrary ? "check" : "plus"} size={14} />
             {inSourceLibrary ? "In Library" : "Library"}
           </button>
+          <label class="ml-auto flex items-center gap-2 text-[11px]" style="color: var(--paper-450);">
+            Quality
+            <select
+              class="h-8 rounded-lg px-2 text-xs outline-none"
+              style="background: var(--input-bg); border: 1px solid var(--line); color: var(--text-1);"
+              value={qualityPreference}
+              onchange={(event) => chooseQuality((event.currentTarget as HTMLSelectElement).value)}
+              aria-label="Preferred playback quality"
+            >
+              {#each QUALITY_OPTIONS as option}
+                <option value={option.value}>{option.label}</option>
+              {/each}
+            </select>
+          </label>
         </div>
 
         <div class="relative overflow-hidden rounded-3xl" style="border: 1px solid var(--line-strong); box-shadow: var(--shadow-pop);">
@@ -968,8 +996,9 @@
             <Callout tone="danger" class="mt-3">{streamError}</Callout>
           {/if}
           <p class="text-xs mt-3" style="color: var(--paper-450);">
-            Play starts the first stream in the in-app player. Streams lists every quality, with
-            Download, Copy and Open in mpv. Downloads keep the folder you pick in Settings.
+            Play uses your preferred quality when the source offers several, and Streams lists
+            every quality with Download, Copy and Open in mpv. Downloads keep the folder you pick
+            in Settings.
           </p>
         {/if}
       </div>
