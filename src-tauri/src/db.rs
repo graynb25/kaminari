@@ -1,5 +1,6 @@
 // SQLite helpers. One file, WAL, migrations checked in.
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -8,7 +9,7 @@ use rusqlite::backup::Backup;
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
-use crate::anilist::{CoverImage, Media, MediaTitle};
+use crate::anilist::{AniListListEntry, CoverImage, Media, MediaTitle};
 use crate::error::{AppError, AppResult};
 use crate::ext_host::{ExtStorage, Manifest};
 use crate::registry::LegacyExtension;
@@ -226,6 +227,40 @@ impl Db {
             params![id, status],
         )?;
         Ok(())
+    }
+
+    pub fn sync_anilist_entries(&self, entries: &[AniListListEntry]) -> AppResult<usize> {
+        let mut conn = self.conn.lock().map_err(|_| db_locked())?;
+        let tx = conn.transaction()?;
+        let mut synced = HashSet::new();
+        for entry in entries {
+            let Some(status) = anilist_library_status(&entry.status) else {
+                continue;
+            };
+            upsert_media(&tx, &entry.media)?;
+            tx.execute(
+                "INSERT INTO library(anilist_id, status, added_at, updated_at)
+                 VALUES (?1, ?2, unixepoch(), unixepoch())
+                 ON CONFLICT(anilist_id) DO UPDATE SET
+                    status = excluded.status,
+                    updated_at = unixepoch()",
+                params![entry.media.id, status],
+            )?;
+            let mut progress = entry.progress.max(0);
+            if let Some(episodes) = entry.media.episodes.filter(|episodes| *episodes > 0) {
+                progress = progress.min(i64::from(episodes));
+            }
+            for episode in 1..=progress {
+                tx.execute(
+                    "INSERT OR IGNORE INTO watched(anilist_id, episode, watched_at)
+                     VALUES (?1, ?2, unixepoch())",
+                    params![entry.media.id, episode],
+                )?;
+            }
+            synced.insert(entry.media.id);
+        }
+        tx.commit()?;
+        Ok(synced.len())
     }
 
     pub fn history_list(&self, limit: usize) -> AppResult<Vec<HistoryItem>> {
@@ -879,6 +914,17 @@ fn replace_file(temp: &std::path::Path, target: &std::path::Path) -> std::io::Re
     }
 }
 
+fn anilist_library_status(status: &str) -> Option<&'static str> {
+    match status {
+        "CURRENT" | "REPEATING" => Some("watching"),
+        "PLANNING" => Some("planning"),
+        "COMPLETED" => Some("completed"),
+        "PAUSED" => Some("paused"),
+        "DROPPED" => Some("dropped"),
+        _ => None,
+    }
+}
+
 fn upsert_media(conn: &Connection, media: &Media) -> AppResult<()> {
     let genres = media
         .genres
@@ -1279,6 +1325,76 @@ mod tests {
         let cleared = db.mark_all_watched(&media, 28, false).unwrap();
         assert!(cleared.is_empty());
         assert!(db.continue_watching(10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn sync_anilist_entries_is_idempotent_and_keeps_local_rows() {
+        let db = Db::new(":memory:").unwrap();
+
+        let mut current = sample_media();
+        current.id = 15125;
+        current.episodes = Some(12);
+        let mut completed = sample_media();
+        completed.id = 21;
+        completed.title.romaji = Some("One Piece".to_string());
+        completed.title.english = None;
+        completed.episodes = Some(12);
+
+        let mut local = sample_media();
+        local.id = 99;
+        local.title.romaji = Some("Local only".to_string());
+        local.title.english = None;
+        db.add_to_library(&local, "paused").unwrap();
+
+        let entries = vec![
+            AniListListEntry {
+                media: current.clone(),
+                status: "CURRENT".to_string(),
+                progress: 3,
+            },
+            AniListListEntry {
+                media: completed.clone(),
+                status: "COMPLETED".to_string(),
+                progress: 15,
+            },
+        ];
+
+        assert_eq!(db.sync_anilist_entries(&entries).unwrap(), 2);
+        let items = db.list_library().unwrap();
+        assert_eq!(items.len(), 3);
+        let current_row = items
+            .iter()
+            .find(|item| item.media.id == current.id)
+            .unwrap();
+        assert_eq!(current_row.status, "watching");
+        assert_eq!(current_row.watched_count, 3);
+        let completed_row = items
+            .iter()
+            .find(|item| item.media.id == completed.id)
+            .unwrap();
+        assert_eq!(completed_row.status, "completed");
+        assert_eq!(completed_row.watched_count, 12);
+        assert!(db.history_list(10).unwrap().is_empty());
+
+        // A local episode above server progress survives the next pull.
+        db.set_watched(&current, 5, true).unwrap();
+        assert_eq!(db.sync_anilist_entries(&entries).unwrap(), 2);
+        let items = db.list_library().unwrap();
+        assert_eq!(items.len(), 3);
+        let current_row = items
+            .iter()
+            .find(|item| item.media.id == current.id)
+            .unwrap();
+        assert_eq!(current_row.status, "watching");
+        assert_eq!(current_row.watched_count, 4);
+        let completed_row = items
+            .iter()
+            .find(|item| item.media.id == completed.id)
+            .unwrap();
+        assert_eq!(completed_row.status, "completed");
+        assert_eq!(completed_row.watched_count, 12);
+        let local_row = items.iter().find(|item| item.media.id == 99).unwrap();
+        assert_eq!(local_row.status, "paused");
     }
 
     #[test]

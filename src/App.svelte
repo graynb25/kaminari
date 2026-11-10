@@ -787,6 +787,9 @@
               boot={boot}
               onOpenShortcuts={() => (shortcutsOpen = true)}
               onOpenLicenses={() => (licensesOpen = true)}
+              onDataChanged={() => {
+                void refreshLibrary();
+              }}
             />
           {/if}
             </div>

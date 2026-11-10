@@ -1,6 +1,7 @@
 // AniList client with token bucket. Public ceiling near 90 per minute.
 // Sustained 60 per minute, burst to 90. Honors Retry-After.
 
+use std::collections::HashSet;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -61,6 +62,14 @@ pub struct Media {
     pub format: Option<String>,
     pub status: Option<String>,
     pub episodes: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AniListListEntry {
+    pub media: Media,
+    pub status: String,
+    pub progress: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,6 +173,38 @@ struct ViewerData {
 #[derive(Debug, Deserialize)]
 struct ViewerEnvelope {
     data: Option<ViewerData>,
+    errors: Option<Vec<GraphQlError>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MediaListEntryResponse {
+    status: String,
+    #[serde(default)]
+    progress: i64,
+    media: Media,
+}
+
+#[derive(Debug, Deserialize)]
+struct MediaListGroup {
+    #[serde(default)]
+    entries: Vec<MediaListEntryResponse>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MediaListCollection {
+    #[serde(default)]
+    lists: Vec<MediaListGroup>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MediaListData {
+    #[serde(rename = "MediaListCollection")]
+    collection: MediaListCollection,
+}
+
+#[derive(Debug, Deserialize)]
+struct MediaListEnvelope {
+    data: Option<MediaListData>,
     errors: Option<Vec<GraphQlError>>,
 }
 
@@ -369,6 +410,40 @@ impl AniListClient {
             avatar: viewer.avatar.and_then(|avatar| avatar.large),
         })
     }
+
+    pub async fn media_list(&self, viewer_id: i64) -> AppResult<Vec<AniListListEntry>> {
+        let json = self
+            .post(
+                &media_list_query(),
+                serde_json::json!({ "userId": viewer_id }),
+            )
+            .await?;
+        let envelope: MediaListEnvelope =
+            serde_json::from_value(json).map_err(|err| AppError::Net(err.to_string()))?;
+        list_entries(envelope)
+    }
+}
+
+fn list_entries(envelope: MediaListEnvelope) -> AppResult<Vec<AniListListEntry>> {
+    if let Some(errors) = envelope.errors {
+        return Err(AppError::Net(graphql_message(errors)));
+    }
+    let mut entries = Vec::new();
+    let mut seen = HashSet::new();
+    if let Some(data) = envelope.data {
+        for group in data.collection.lists {
+            for entry in group.entries {
+                if seen.insert(entry.media.id) {
+                    entries.push(AniListListEntry {
+                        media: entry.media,
+                        status: entry.status,
+                        progress: entry.progress,
+                    });
+                }
+            }
+        }
+    }
+    Ok(entries)
 }
 
 fn graphql_message(errors: Vec<GraphQlError>) -> String {
@@ -454,6 +529,26 @@ query Viewer {
 }
 "#
     .to_string()
+}
+
+fn media_list_query() -> String {
+    media_query(
+        r#"
+query MediaList($userId: Int!) {
+  MediaListCollection(userId: $userId, type: ANIME) {
+    lists {
+      entries {
+        status
+        progress
+        media {
+          __MEDIA_FIELDS__
+        }
+      }
+    }
+  }
+}
+"#,
+    )
 }
 
 #[cfg(test)]
@@ -571,5 +666,62 @@ mod tests {
             viewer.avatar.and_then(|avatar| avatar.large).as_deref(),
             Some("https://img.example/kite.jpg")
         );
+    }
+
+    #[test]
+    fn parses_media_list_collection_into_entries() {
+        let raw = r##"{
+          "data": {
+            "MediaListCollection": {
+              "lists": [{
+                "entries": [{
+                  "status": "CURRENT",
+                  "progress": 5,
+                  "media": {
+                    "id": 15125,
+                    "title": { "romaji": "Sousou no Frieren", "english": null, "native": null },
+                    "coverImage": { "extraLarge": "https://img.example/frieren.jpg", "large": null, "color": null },
+                    "bannerImage": null,
+                    "description": null,
+                    "genres": ["Adventure"],
+                    "averageScore": 91,
+                    "seasonYear": 2023,
+                    "format": "TV",
+                    "status": "FINISHED",
+                    "episodes": 28
+                  }
+                }, {
+                  "status": "COMPLETED",
+                  "progress": 12,
+                  "media": {
+                    "id": 21,
+                    "title": { "romaji": "One Piece", "english": null, "native": null },
+                    "coverImage": null,
+                    "bannerImage": null,
+                    "description": null,
+                    "genres": null,
+                    "averageScore": null,
+                    "seasonYear": null,
+                    "format": "TV",
+                    "status": "RELEASING",
+                    "episodes": null
+                  }
+                }]
+              }]
+            }
+          }
+        }"##;
+        let envelope: MediaListEnvelope = serde_json::from_str(raw).unwrap();
+        let entries = list_entries(envelope).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].media.id, 15125);
+        assert_eq!(entries[0].status, "CURRENT");
+        assert_eq!(entries[0].progress, 5);
+        assert_eq!(
+            entries[0].media.title.romaji.as_deref(),
+            Some("Sousou no Frieren")
+        );
+        assert_eq!(entries[1].media.id, 21);
+        assert_eq!(entries[1].status, "COMPLETED");
     }
 }

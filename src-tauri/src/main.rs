@@ -106,6 +106,7 @@ fn main() {
             commands::anilist_auth_start,
             commands::anilist_auth_status,
             commands::anilist_auth_logout,
+            commands::anilist_sync_pull,
             commands::library_list,
             commands::library_add,
             commands::library_remove,

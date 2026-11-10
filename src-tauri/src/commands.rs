@@ -41,6 +41,13 @@ pub struct BackupExport {
     pub bytes: u64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AniListSyncResult {
+    pub titles: usize,
+    pub viewer_name: String,
+}
+
 const SETTINGS_MAX_BYTES: usize = 64 * 1024;
 const ANILIST_KEYRING_SERVICE: &str = "app.kaminari.desktop";
 const ANILIST_KEYRING_USER: &str = "anilist";
@@ -267,6 +274,24 @@ pub async fn anilist_auth_status(
 pub fn anilist_auth_logout(state: State<'_, AniListClient>) -> Result<(), String> {
     state.clear_token();
     remove_anilist_token()
+}
+
+#[tauri::command]
+pub async fn anilist_sync_pull(
+    state: State<'_, AniListClient>,
+    db: State<'_, Db>,
+) -> Result<AniListSyncResult, String> {
+    let token = load_anilist_token()?
+        .filter(|token| !token.trim().is_empty())
+        .ok_or_else(|| "Connect AniList first.".to_string())?;
+    state.set_token(&token);
+    let viewer = state.viewer().await.map_err(ipc_error)?;
+    let entries = state.media_list(viewer.id).await.map_err(ipc_error)?;
+    let titles = db.sync_anilist_entries(&entries).map_err(ipc_error)?;
+    Ok(AniListSyncResult {
+        titles,
+        viewer_name: viewer.name,
+    })
 }
 
 #[tauri::command]

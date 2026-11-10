@@ -28,10 +28,12 @@
     boot,
     onOpenShortcuts,
     onOpenLicenses,
+    onDataChanged,
   }: {
     boot: Boot | null;
     onOpenShortcuts?: () => void;
     onOpenLicenses: () => void;
+    onDataChanged?: () => void;
   } = $props();
 
   let player = $state<PlayerStatus | null>(null);
@@ -48,17 +50,21 @@
   let anilistAuth = $state<AniListAuthStatus | null>(null);
   let anilistBusy = $state(false);
   let anilistWaiting = $state(false);
+  let anilistSyncing = $state(false);
   let anilistError = $state("");
+  let anilistNotice = $state("");
 
   const anilistHasError = $derived(Boolean(anilistError || anilistAuth?.error));
   const anilistStatusText = $derived(
     anilistError ||
       (anilistWaiting
         ? "Waiting for AniList approval in your browser."
-        : anilistAuth?.error ?? ""),
+        : anilistNotice || anilistAuth?.error || ""),
   );
   const anilistStatusError = $derived(
-    Boolean(anilistError || (!anilistWaiting && anilistAuth?.error)),
+    Boolean(
+      anilistError || (!anilistWaiting && !anilistNotice && anilistAuth?.error),
+    ),
   );
 
   type NavItem = { id: string; title: string; hint: string };
@@ -235,6 +241,7 @@
   async function connectAniList() {
     if (anilistBusy || anilistWaiting) return;
     anilistError = "";
+    anilistNotice = "";
     if (anilistAuth?.error) {
       anilistAuth = { ...anilistAuth, error: null };
     }
@@ -251,9 +258,10 @@
   }
 
   async function disconnectAniList() {
-    if (anilistBusy) return;
+    if (anilistBusy || anilistSyncing) return;
     anilistBusy = true;
     anilistError = "";
+    anilistNotice = "";
     try {
       await anilistAuthLogout();
       anilistAuth = { connected: false, viewer: null, error: null };
@@ -262,6 +270,27 @@
       anilistError = errorText(err);
     } finally {
       anilistBusy = false;
+    }
+  }
+
+  async function syncAniList() {
+    if (anilistBusy || anilistSyncing) return;
+    anilistError = "";
+    anilistNotice = "";
+    if (anilistAuth?.error) {
+      anilistAuth = { ...anilistAuth, error: null };
+    }
+    anilistSyncing = true;
+    try {
+      const result = await invoke<{ titles: number; viewerName: string }>(
+        "anilist_sync_pull",
+      );
+      anilistNotice = `Synced ${result.titles} titles from AniList.`;
+      onDataChanged?.();
+    } catch (err) {
+      anilistError = errorText(err);
+    } finally {
+      anilistSyncing = false;
     }
   }
 
@@ -370,6 +399,7 @@
           anilistAuth = status;
           anilistWaiting = false;
           anilistError = "";
+          anilistNotice = "";
         });
         if (disposed) stop();
         else unlisten = stop;
@@ -704,7 +734,15 @@
                       </div>
                       <button
                         class="btn-ghost px-3 py-2 text-xs"
-                        disabled={anilistBusy}
+                        disabled={anilistBusy || anilistSyncing}
+                        onclick={syncAniList}
+                      >
+                        <Icon name="refresh" size={14} />
+                        {anilistSyncing ? "Syncing" : "Sync from AniList"}
+                      </button>
+                      <button
+                        class="btn-ghost px-3 py-2 text-xs"
+                        disabled={anilistBusy || anilistSyncing}
                         onclick={disconnectAniList}
                       >
                         <Icon name="xCircle" size={14} />
