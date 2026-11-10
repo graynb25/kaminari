@@ -1,11 +1,24 @@
 ﻿<script lang="ts">
   import { onMount, tick } from "svelte";
+  import { confirm, open } from "@tauri-apps/plugin-dialog";
   import Callout from "./Callout.svelte";
   import EmptyState from "./EmptyState.svelte";
   import Icon from "./Icon.svelte";
   import MpvView from "./MpvView.svelte";
   import PlayerView from "./PlayerView.svelte";
   import ProgressBar from "./ProgressBar.svelte";
+  import {
+    downloadCancel,
+    downloadConsentAccepted,
+    downloadFileName,
+    downloadKind,
+    downloadRowKey,
+    downloadStart,
+    onDownloadProgress,
+    readDownloadsFolder,
+    saveDownloadsFolder,
+    setDownloadConsent,
+  } from "./downloads";
   import {
     jsExtensionDetail,
     jsExtensionEpisodes,
@@ -24,6 +37,7 @@
   import { libmpvEnabled, libmpvNeedsProxy } from "./libmpv";
   import { isHlsStream, proxyFlagEnabled, shouldProxy } from "./streamProxy";
   import type {
+    DownloadProgress,
     JsEpisode,
     JsSearchItem,
     JsShowDetail,
@@ -69,6 +83,9 @@
     backend: "mpv" | "web";
   } | null>(null);
   let progress = $state<SourceProgress[]>([]);
+  let downloadIds = $state<Record<string, string>>({});
+  let downloadProgress = $state<Record<string, DownloadProgress>>({});
+  let downloadPending = $state<string | null>(null);
   let searchInput: HTMLInputElement | null = $state(null);
   let dialog: HTMLDivElement | null = $state(null);
   let closeButton: HTMLButtonElement | null = $state(null);
@@ -117,6 +134,30 @@
         ).find((element) => element.dataset.sourceShow === key);
         target?.focus();
       });
+    };
+  });
+
+  onMount(() => {
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    void onDownloadProgress((entry) => {
+      downloadProgress = { ...downloadProgress, [entry.id]: entry };
+      if (entry.state === "done") {
+        notify(entry.message ?? "Download saved.", "success");
+      } else if (entry.state === "error") {
+        notify(entry.message ?? "Download failed.", "error");
+      }
+    })
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      })
+      .catch(() => {
+        // The row still shows the last known state without live events.
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
     };
   });
 
@@ -329,6 +370,135 @@
       notify("Stream URL copied.", "success");
     } catch {
       notify("Could not copy the URL.", "error");
+    }
+  }
+
+  function errorText(error: unknown): string {
+    if (typeof error === "string") return error;
+    if (error instanceof Error) return error.message;
+    return "Unknown error.";
+  }
+
+  async function ensureDownloadConsent(): Promise<boolean> {
+    if (downloadConsentAccepted()) return true;
+    try {
+      const accepted = await confirm(
+        "Only download content you have the right to keep.",
+        { title: "Download stream", kind: "warning" },
+      );
+      if (!accepted) return false;
+      setDownloadConsent(true);
+      return true;
+    } catch (error) {
+      notify(`Could not open the download prompt: ${errorText(error)}`, "error");
+      return false;
+    }
+  }
+
+  async function chooseDownloadFolder(): Promise<string | null> {
+    try {
+      const picked = await open({
+        title: "Choose downloads folder",
+        directory: true,
+        multiple: false,
+      });
+      if (typeof picked !== "string" || !picked.trim()) return null;
+      saveDownloadsFolder(picked);
+      return picked;
+    } catch (error) {
+      notify(`Could not open the folder picker: ${errorText(error)}`, "error");
+      return null;
+    }
+  }
+
+  async function downloadsFolder(): Promise<string | null> {
+    const saved = readDownloadsFolder();
+    if (saved) return saved;
+    return chooseDownloadFolder();
+  }
+
+  function downloadFor(episode: JsEpisode, stream: JsStream): DownloadProgress | null {
+    const id = downloadIds[downloadRowKey(episode.id, stream)];
+    return id ? (downloadProgress[id] ?? null) : null;
+  }
+
+  function formatDownloadBytes(bytes: number): string {
+    if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function downloadLabel(entry: DownloadProgress): string {
+    if (entry.state === "done") {
+      return entry.path ? `Saved to ${entry.path}` : "Saved.";
+    }
+    if (entry.state === "error") {
+      return entry.message ?? "Download failed.";
+    }
+    if (entry.state === "cancelled") {
+      return entry.message ?? "Download cancelled.";
+    }
+    const received = formatDownloadBytes(entry.received);
+    if (entry.total && entry.total > 0) {
+      return `${received} of ${formatDownloadBytes(entry.total)}`;
+    }
+    return received;
+  }
+
+  async function startDownload(stream: JsStream, episode: JsEpisode) {
+    const kind = downloadKind(stream);
+    if (!kind) {
+      notify("Only MP4, OGV and simple HLS streams can be downloaded.", "info");
+      return;
+    }
+    const key = downloadRowKey(episode.id, stream);
+    if (downloadFor(episode, stream)?.state === "running" || downloadPending === key) {
+      return;
+    }
+    downloadPending = key;
+    try {
+      if (!(await ensureDownloadConsent())) return;
+      const folder = await downloadsFolder();
+      if (!folder) return;
+      const started = await downloadStart({
+        url: stream.url,
+        proxiedUrl: stream.proxiedUrl ?? null,
+        headers: stream.headers ?? null,
+        kind,
+        folder,
+        fileName: downloadFileName(
+          selected?.title ?? "Kaminari",
+          episode.number,
+          stream,
+        ),
+      });
+      downloadIds = { ...downloadIds, [key]: started.id };
+      if (!downloadProgress[started.id]) {
+        downloadProgress = {
+          ...downloadProgress,
+          [started.id]: {
+            id: started.id,
+            received: 0,
+            total: null,
+            state: "running",
+            path: null,
+            message: null,
+          },
+        };
+      }
+    } catch (error) {
+      notify(`Download could not start: ${errorText(error)}`, "error");
+    } finally {
+      downloadPending = null;
+    }
+  }
+
+  async function cancelDownload(id: string) {
+    try {
+      await downloadCancel(id);
+    } catch (error) {
+      notify(`Download could not be cancelled: ${errorText(error)}`, "error");
     }
   }
 
@@ -699,27 +869,70 @@
                 {#if streams[episode.id]}
                   <div class="px-3 pb-3 space-y-1.5" style="border-top: 1px solid var(--line); padding-top: 10px;">
                     {#each streams[episode.id] as stream}
-                      <div class="flex items-center gap-2 px-2.5 py-2 rounded-lg" style="background: var(--well-bg); border: 1px solid var(--line);">
-                        <span class="chip chip-volt text-[9px] px-1.5 py-0.5 shrink-0">
-                          {stream.type.toUpperCase()}
-                        </span>
-                        {#if stream.quality}
-                          <span class="text-[10px] font-semibold shrink-0" style="color: var(--paper-300);">{stream.quality}</span>
+                      {@const download = downloadFor(episode, stream)}
+                      {@const kind = downloadKind(stream)}
+                      <div class="rounded-lg" style="background: var(--well-bg); border: 1px solid var(--line);">
+                        <div class="flex flex-wrap items-center gap-2 px-2.5 py-2">
+                          <span class="chip chip-volt text-[9px] px-1.5 py-0.5 shrink-0">
+                            {stream.type.toUpperCase()}
+                          </span>
+                          {#if stream.quality}
+                            <span class="text-[10px] font-semibold shrink-0" style="color: var(--paper-300);">{stream.quality}</span>
+                          {/if}
+                          <span class="text-[10px] truncate flex-1" style="color: var(--paper-450); font-family: var(--font-mono);" title={stream.url}>
+                            {hostOf(stream.url)}
+                          </span>
+                          <button class="btn-primary px-2.5 py-1 text-[10px] shrink-0" onclick={() => void playStream(stream, episode)}>
+                            <Icon name="play" size={10} />
+                            {episodeAction(episode)}
+                          </button>
+                          {#if kind}
+                            <button
+                              class="btn-ghost px-2.5 py-1 text-[10px] shrink-0"
+                              disabled={download?.state === "running" || downloadPending !== null}
+                              onclick={() => void startDownload(stream, episode)}
+                              aria-label="Download {kind.toUpperCase()} stream"
+                            >
+                              <Icon name="download" size={10} />
+                              Download
+                            </button>
+                          {/if}
+                          <button class="btn-ghost px-2.5 py-1 text-[10px] shrink-0" onclick={() => void copyStream(stream.url)}>
+                            <Icon name="copy" size={10} />
+                            Copy
+                          </button>
+                          <button class="btn-ghost px-2.5 py-1 text-[10px] shrink-0" onclick={() => void openExternal(stream, episode)} aria-label="Open in mpv">
+                            <Icon name="external" size={10} />
+                          </button>
+                        </div>
+                        {#if download}
+                          <div class="px-2.5 pb-2">
+                            <ProgressBar
+                              label="Download progress"
+                              value={download.total && download.total > 0 ? download.received : null}
+                              max={download.total && download.total > 0 ? download.total : 100}
+                              indeterminate={download.state === "running" && !download.total}
+                              tone={download.state === "error" ? "danger" : download.state === "done" ? "success" : "accent"}
+                              size="xs"
+                            />
+                            <div class="flex flex-wrap items-center gap-2 mt-1.5">
+                              <span
+                                class="text-[10px] min-w-0 break-all"
+                                style="color: {download.state === 'error' ? 'var(--danger)' : 'var(--paper-450)'};"
+                              >
+                                {downloadLabel(download)}
+                              </span>
+                              {#if download.state === "running"}
+                                <button class="btn-ghost px-2 py-0.5 text-[10px] shrink-0" onclick={() => void cancelDownload(download.id)}>
+                                  <Icon name="close" size={9} />
+                                  Cancel
+                                </button>
+                              {:else if download.state === "done" && kind === "hls"}
+                                <span class="text-[10px]" style="color: var(--paper-450);">Open this HLS file in mpv.</span>
+                              {/if}
+                            </div>
+                          </div>
                         {/if}
-                        <span class="text-[10px] truncate flex-1" style="color: var(--paper-450); font-family: var(--font-mono);" title={stream.url}>
-                          {hostOf(stream.url)}
-                        </span>
-                        <button class="btn-primary px-2.5 py-1 text-[10px] shrink-0" onclick={() => void playStream(stream, episode)}>
-                          <Icon name="play" size={10} />
-                          {episodeAction(episode)}
-                        </button>
-                        <button class="btn-ghost px-2.5 py-1 text-[10px] shrink-0" onclick={() => void copyStream(stream.url)}>
-                          <Icon name="copy" size={10} />
-                          Copy
-                        </button>
-                        <button class="btn-ghost px-2.5 py-1 text-[10px] shrink-0" onclick={() => void openExternal(stream, episode)} aria-label="Open in mpv">
-                          <Icon name="external" size={10} />
-                        </button>
                       </div>
                     {/each}
                   </div>
@@ -731,8 +944,8 @@
             <Callout tone="danger" class="mt-3">{streamError}</Callout>
           {/if}
           <p class="text-xs mt-3" style="color: var(--paper-450);">
-            Play starts the first stream in the in-app player. Streams lists every quality, with Copy
-            and Open in mpv for the ones the WebView cannot decode.
+            Play starts the first stream in the in-app player. Streams lists every quality, with
+            Download, Copy and Open in mpv. Downloads keep the folder you pick in Settings.
           </p>
         {/if}
       </div>

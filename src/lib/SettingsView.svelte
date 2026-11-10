@@ -14,6 +14,7 @@
     type AniListAuthStatus,
   } from "./anilistAuth";
   import { anilistSyncPending, anilistSyncPush } from "./anilistSync";
+  import { readDownloadsFolder, saveDownloadsFolder } from "./downloads";
   import { proxyFlagEnabled, setProxyFlag } from "./streamProxy";
   import { applySettings, collectSettings, parseSettings } from "./settingsBackup";
   import {
@@ -45,6 +46,8 @@
   let activeId = $state("settings-appearance");
   let manualActive = false;
   let dataBusy = $state(false);
+  let downloadsFolder = $state("");
+  let folderBusy = $state(false);
   let dataStatus = $state("");
   let dataStatusTone = $state<"success" | "error">("success");
   let restartNeeded = $state(false);
@@ -151,6 +154,29 @@
       setDataStatus("error", errorText(err));
     } finally {
       dataBusy = false;
+    }
+  }
+
+  async function changeDownloadsFolder() {
+    if (folderBusy) return;
+    resetDataStatus();
+    folderBusy = true;
+    try {
+      const path = pickedPath(
+        await open({
+          title: "Choose downloads folder",
+          directory: true,
+          multiple: false,
+        }),
+      );
+      if (!path) return;
+      saveDownloadsFolder(path);
+      downloadsFolder = path;
+      setDataStatus("success", "Downloads folder saved.");
+    } catch (err) {
+      setDataStatus("error", errorText(err));
+    } finally {
+      folderBusy = false;
     }
   }
 
@@ -346,6 +372,7 @@
   }
 
   onMount(() => {
+    downloadsFolder = readDownloadsFolder() ?? "";
     void (async () => {
       try {
         player = await playerStatus();
@@ -755,6 +782,25 @@
                 {/each}
               </dl>
               {#if section.id === "settings-data"}
+                <div class="flex flex-wrap items-center gap-3 py-3" style="border-top: 1px solid var(--line);">
+                  <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
+                    <Icon name="folder" size={15} />
+                  </span>
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm" style="color: var(--paper-50);">Downloads folder</p>
+                    <p class="text-xs mt-0.5 break-all" style="color: var(--paper-400); font-family: var(--font-mono);">
+                      {downloadsFolder || "Not set. Kaminari asks when you start a download."}
+                    </p>
+                  </div>
+                  <button
+                    class="btn-ghost px-3 py-2 text-xs"
+                    disabled={folderBusy}
+                    onclick={changeDownloadsFolder}
+                  >
+                    <Icon name="folder" size={14} />
+                    {downloadsFolder ? "Change" : "Choose"}
+                  </button>
+                </div>
                 <div class="anilist-account" style="border-top: 1px solid var(--line);">
                   <div class="flex flex-wrap items-center gap-3 pt-3">
                     {#if anilistAuth?.viewer}

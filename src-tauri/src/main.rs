@@ -5,6 +5,7 @@
 mod anilist;
 mod commands;
 mod db;
+mod download;
 mod error;
 mod ext_host;
 mod mpv_embed;
@@ -45,6 +46,7 @@ fn main() {
         .manage(anilist::AniListClient::new())
         .manage(player::PlayerState::new())
         .manage(mpv_embed::MpvEmbedState::default())
+        .manage(download::DownloadState::default())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
@@ -165,7 +167,10 @@ fn main() {
             commands::backup_restore,
             commands::settings_export,
             commands::settings_read,
-            commands::app_restart
+            commands::app_restart,
+            download::download_start,
+            download::download_cancel,
+            download::downloads_list
         ])
         .run(tauri::generate_context!())
         .expect("error starting Kaminari");

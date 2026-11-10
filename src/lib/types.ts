@@ -139,6 +139,26 @@ export type JsStream = {
   proxyId?: string | null;
 };
 
+export type DownloadStatus = "running" | "done" | "cancelled" | "error";
+
+export type DownloadRequest = {
+  url: string;
+  proxiedUrl?: string | null;
+  headers?: Record<string, string> | null;
+  kind?: string | null;
+  folder: string;
+  fileName: string;
+};
+
+export type DownloadProgress = {
+  id: string;
+  received: number;
+  total: number | null;
+  state: DownloadStatus;
+  path: string | null;
+  message: string | null;
+};
+
 export type ProxyStatus = {
   port: number;
   entries: number;
