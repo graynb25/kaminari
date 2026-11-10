@@ -8,6 +8,7 @@ Status: the repository is private. This checklist separates what can be done now
 - [x] Add a private security advisory link and a public takedown issue template in `.github/ISSUE_TEMPLATE/`.
 - [x] Keep the update private key and password outside the repository.
 - [x] Keep `VERSION`, the installer and the portable zip reproducible from the repository.
+- [x] Remove the tag-triggered release workflow. It cannot sign or ship the local libmpv payload. Releases are built and uploaded from the maintainer machine.
 - [ ] Have counsel review `docs/LEGAL-REVIEW-DRAFT.md` and the Terms.
 - [ ] Run a dependency and license audit after the final release build.
 - [ ] Confirm no source list, media, APK or user database is tracked.

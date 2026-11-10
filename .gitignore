@@ -4,8 +4,10 @@ dist/
 src-tauri/target/
 src-tauri/gen/
 
-# Dev-only libmpv DLLs, never committed
-src-tauri/lib/
+# Dev-only libmpv DLLs, never committed.
+# The README keeps the Tauri resource glob valid in a clean CI checkout.
+src-tauri/lib/*
+!src-tauri/lib/README.md
 
 # Local data and logs
 *.sqlite

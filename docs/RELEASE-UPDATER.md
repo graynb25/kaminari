@@ -12,6 +12,10 @@ The updater keypair is outside the repository:
 
 The public key is already in `src-tauri/tauri.conf.json`. Never commit the private key or password. Losing the private key means existing installs cannot verify future updates.
 
+## Why the tag workflow was removed
+
+The old `.github/workflows/release.yml` ran `tauri-action` on `v*` tags. It failed on a clean runner because the pinned libmpv DLLs are intentionally local and the signing key is not in GitHub. Releases are built and uploaded from the maintainer machine with the steps below. Do not add a tag-triggered release workflow unless it also provisions the libmpv payload and the signing secrets.
+
 ## Build a signed installer
 
 Set the private key and password in the environment, then run the Tauri build:

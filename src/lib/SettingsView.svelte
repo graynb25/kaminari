@@ -1262,7 +1262,7 @@
         <div class="min-w-0 flex-1">
           <p class="text-sm font-semibold">Kaminari {__APP_VERSION__}</p>
           <p class="text-xs mt-0.5" style="color: var(--paper-400);">
-            Anime desktop. Tauri 2, Svelte 5 Runes, QuickJS host, local SQLite library.
+            Windows anime player. AniList discovery, user-installed sources, local SQLite library. Not an Aniyomi client.
           </p>
         </div>
       </section>

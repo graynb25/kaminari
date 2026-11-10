@@ -56,7 +56,9 @@ When an AniList title is opened through Watch, finished source episodes are queu
 
 Windows is the first target. macOS and Linux come later.
 
-## Run it
+## Install
+
+New to Kaminari? Read [docs/INSTALL.md](docs/INSTALL.md) for the installer, portable zip, first run, adding a source without a bundled source list, and troubleshooting.
 
 ```bash
 pnpm install
@@ -84,6 +86,7 @@ Settings, and the footer, open a generated list of every Rust crate, npm package
 
 ## Docs
 
+- `docs/INSTALL.md`: install, portable build, first run, sources and troubleshooting
 - `docs/ARCHITECTURE.md`: how the pieces fit
 - `docs/DESIGN-SPEC.md`: tokens, components, motion
 - `docs/EXTENSION-API.md`: public contract for extension authors, plus Aniyomi registry mapping
