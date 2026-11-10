@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-09 AniList write queue
+
+Context. Read sync and account connect were done, but local status and progress changes had no path back to AniList.
+
+What we shipped. `anilist_sync_queue` with one row per media. Status changes, watched changes and mark all enqueue the latest status and watched count, replacing the previous row and resetting attempts and last_error. Library add and remove do not enqueue. A 30 second background push and a manual Sync now use the keychain token, query the server entry, and apply one conflict rule: if the server entry is newer than the queued row, the server wins and the local row is dropped with a tracing warning; matching entries are dropped without a write; everything else calls SaveMediaListEntry. Network and rate errors keep the row and update attempts and last_error. Settings shows the pending count and a Sync now button.
+
+What we measured. Unit tests cover enqueue and replacement, add/remove not enqueueing, watched progress, failure counters, conflict decisions, MediaList and mutation parsing, and status mapping. 97 Rust and 54 frontend tests pass. In the real app the queue was 0 before and after a read pull, pending was 0, a background tick after 35 seconds made no writes, and the connected account stayed untouched.
+
+What we did not do. No live SaveMediaListEntry test, by request. The 0.24.0 installer was not built before parking; the 0.23.0 installer is the latest on disk. Downloads, auto update, and the P1 VM and legal checks remain.
+
 ## 2026-11-09 AniList read sync
 
 Context. OAuth connect landed, but the local library had no path to pull the viewer's AniList list.

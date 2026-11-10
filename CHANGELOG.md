@@ -4,6 +4,12 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.24.0 - 2026-11-09
+
+- AniList: offline status and progress queue with retry and server-wins conflict handling
+- AniList: background push every 30 seconds, pending count and Sync now in Settings
+- Version: bump to 0.24.0
+
 ## 0.23.0 - 2026-11-09
 
 - AniList: pull the viewer's anime list into the local library with mapped statuses and watched progress
