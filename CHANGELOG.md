@@ -4,6 +4,12 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.26.6 - 2026-11-10
+
+- Security: update the zip crate to 9.5.0 and handle its fallible entry names. This clears the critical zip parser and extraction advisories for `.kext` package loading
+- Tooling: update Vite to 6.4.6 and Vitest to 5.1.0. This removes the vulnerable Vite 5 copy under Vitest and clears the Vitest, @vitest/mocker and tinypool advisories
+- Version: bump to 0.26.6
+
 ## 0.26.5 - 2026-11-10
 
 - Source episodes: add Mark all watched and a watched toggle on every episode, so existing progress can be entered without replaying a full episode. Mark all also queues AniList progress when the source show came from Watch; Clear resets local source progress only
