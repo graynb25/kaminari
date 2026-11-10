@@ -4,6 +4,13 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.26.4 - 2026-11-10
+
+- Sources: remove the Aniyomi registry panel until an APK runtime exists. The page now shows native extensions and Mangayomi sources only, with stat cards for native extensions, Mangayomi sources, allowed hosts and runtime memory
+- Onboarding: add a first-run Getting started checklist for adding a source, finding a title, and watching. It is dismissible and reopens from Settings, About
+- Docs: update the install guide, README, design notes and privacy page for the hidden registry and the new checklist
+- Version: bump to 0.26.4
+
 ## 0.26.3 - 2026-11-10
 
 - Updates: fix the Windows update flow. The app now closes, lets the NSIS installer replace the old exe, and restarts itself; the old build showed a Restart button while the installer was still writing

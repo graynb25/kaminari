@@ -50,11 +50,13 @@
     boot,
     onOpenShortcuts,
     onOpenLicenses,
+    onOpenOnboarding,
     onDataChanged,
   }: {
     boot: Boot | null;
     onOpenShortcuts?: () => void;
     onOpenLicenses: () => void;
+    onOpenOnboarding?: () => void;
     onDataChanged?: () => void;
   } = $props();
 
@@ -1273,6 +1275,12 @@
             Windows anime player. AniList discovery, user-installed sources, local SQLite library. Not an Aniyomi client.
           </p>
         </div>
+        {#if onOpenOnboarding}
+          <button class="btn-ghost px-3.5 py-2 text-xs" onclick={onOpenOnboarding}>
+            <Icon name="sparkles" size={14} />
+            Getting started
+          </button>
+        {/if}
       </section>
     </div>
   </div>

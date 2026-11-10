@@ -30,6 +30,10 @@ The portable build is installer-free, not data-free. Settings and the SQLite lib
 
 Browse works without an account. AniList account connection is optional and lives in Settings. The app starts with the public-domain sample extension available but not installed, and no anime source.
 
+A Getting started checklist appears on first launch: add a source, find a title, then watch. Choose Skip for now to dismiss it. Reopen it any time from Settings, About, Getting started.
+
+There is no Aniyomi registry browser. Those packages are Android APKs and cannot run here, so the page shows only native extensions and Mangayomi sources.
+
 The sample is a test source, not a catalog. Install it from Sources if you want to verify the QuickJS host, then run Test search with `Popeye`.
 
 ## Add a source

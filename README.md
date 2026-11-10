@@ -6,7 +6,7 @@ A desktop anime app for Windows first, with care in every pixel. Fast startup. K
 
 > Ships no content, no source list. It talks to AniList for data, and to extensions you choose to install for more. That is the whole idea.
 
-Kaminari is not an Aniyomi client. Aniyomi runs Android APK extensions and needs Android. Kaminari runs on Windows, reads AniList, and plays user-installed Mangayomi JavaScript sources through QuickJS. The Aniyomi registry is shown for metadata only, and APKs are never downloaded or executed.
+Kaminari is not an Aniyomi client. Aniyomi runs Android APK extensions and needs Android. Kaminari runs on Windows, reads AniList, and plays user-installed Mangayomi JavaScript sources through QuickJS. The Aniyomi registry is not exposed, because its packages are Android APKs. APKs are never downloaded or executed.
 
 ![status](https://img.shields.io/badge/status-design--spec-blue) ![tauri](https://img.shields.io/badge/tauri-2.x-teal) ![svelte](https://img.shields.io/badge/svelte-5-orange) ![license](https://img.shields.io/badge/license-MIT-green) ![windows](https://img.shields.io/badge/windows-first-0078D6)
 
@@ -34,7 +34,7 @@ Palette to playback, captured from the same build:
 - **Interface:** Svelte 5 with Runes plus TypeScript plus Tailwind CSS 4
 - **Data:** AniList GraphQL for titles, posters, scores, tracking
 - **Player:** in-app WebView playback for MP4 and HLS, with external mpv as the fallback for formats the WebView cannot play
-- **Extensions:** sandboxed JS modules through QuickJS, local `.kext` packages, Aniyomi registry metadata
+- **Extensions:** sandboxed JS modules through QuickJS, local `.kext` packages, user-installed Mangayomi sources
 
 ## Why this stack
 
@@ -44,7 +44,7 @@ If you already know React, the Rust side does not care. The contract stays the s
 
 ## Status
 
-Working today: cinematic browse with five AniList rails, Top 10 Today, Ctrl K palette, detail pages, a local AniList library, watched episode tracking, Continue Watching, an Aniyomi registry reader that stores source metadata, a native JavaScript extension host with a source browser, details, episodes and stream resolve, third-party Mangayomi anime sources behind an inspect and trust prompt, a Watch handoff that finds an AniList title in the installed sources, More like this AniList recommendations, per-source settings and per-episode thumbnails, an in-app player for MP4 and HLS with remote and inline subtitles, preferred playback quality and autoplay next episode, a loopback stream proxy for headers, cookies, HLS media and master playlists, stream downloads for direct MP4/OGV and simple HLS, a source library with resumable playback progress, source Continue Watching and merged history, System, Dark and Light themes with five accent presets, AniList account connect with keychain token storage and anime list pull, an offline AniList status and progress queue with conflict handling, settings export and import, a portable SQLite library backup and restore, a Windows tray menu with show and quit, signed auto update wiring, and an in-app license list generated from the build.
+Working today: cinematic browse with five AniList rails, Top 10 Today, Ctrl K palette, detail pages, a local AniList library, watched episode tracking, Continue Watching, a first-run Getting started checklist, a native JavaScript extension host with a source browser, details, episodes and stream resolve, third-party Mangayomi anime sources behind an inspect and trust prompt, a Watch handoff that finds an AniList title in the installed sources, More like this AniList recommendations, per-source settings and per-episode thumbnails, an in-app player for MP4 and HLS with remote and inline subtitles, preferred playback quality and autoplay next episode, a loopback stream proxy for headers, cookies, HLS media and master playlists, stream downloads for direct MP4/OGV and simple HLS, a source library with resumable playback progress, source Continue Watching and merged history, System, Dark and Light themes with five accent presets, AniList account connect with keychain token storage and anime list pull, an offline AniList status and progress queue with conflict handling, settings export and import, a portable SQLite library backup and restore, a Windows tray menu with show and quit, signed auto update wiring, and an in-app license list generated from the build.
 
 Mangayomi sources are added by URL on the Sources page. Kaminari downloads the JavaScript, shows the source metadata and SHA-256, and asks for explicit trust before storing it. It ships no source list and does not review third-party code. The compatibility layer supports the anime subset used by sources such as AniKoto and HiAnime: search, detail, chapters, video lists, `Client`, `SharedPreferences` and `Document`. Manga sources, a filter UI and native WebAssembly are not supported. See `docs/PLAN-MANGAYOMI-SHIM.md`.
 
