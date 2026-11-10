@@ -365,6 +365,8 @@ mod tests {
             "file:///C:/video.mkv",
             "data:text/vtt;base64,AAAA",
             "https://",
+            "https://?query=1",
+            "https://#fragment",
             "https://exa mple.com/video.m3u8",
             "https://example.com:notaport/video.m3u8",
             "https://example.com/\n--script=x.lua",
@@ -381,6 +383,7 @@ mod tests {
     fn rejects_urls_with_a_leading_dash() {
         for url in [
             "-v",
+            "--",
             "--script=https://example.com/x.lua",
             "  --config-dir=C:\\temp",
             " -https://example.com/video.m3u8",
@@ -436,6 +439,20 @@ mod tests {
         let error = PlayerState::new()
             .play(&request)
             .expect_err("unsafe playback URL must be rejected");
+        assert!(matches!(error, AppError::Player(_)));
+    }
+
+    #[test]
+    fn play_rejects_an_unsafe_subtitle_before_looking_for_mpv() {
+        let mut request = request();
+        request.subtitles = Some(vec![PlaybackSubtitle {
+            url: "file:///C:/secret.srt".to_string(),
+            lang: "en".to_string(),
+            label: None,
+        }]);
+        let error = PlayerState::new()
+            .play(&request)
+            .expect_err("unsafe subtitle URL must be rejected");
         assert!(matches!(error, AppError::Player(_)));
     }
 

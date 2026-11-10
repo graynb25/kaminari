@@ -25,7 +25,7 @@ This closes the replay path: an attacker who can edit `latest.json` (a compromis
 - Rebuild and re-sign every release. Never reuse a `.sig` from another build.
 - Generate `latest.json` from the same build and never edit its `version` by hand.
 - The `.sig` must belong to the installer at the manifest's `url`, not to a different architecture or build.
-- Releases signed before the Tauri CLI started recording the version will not satisfy `requireSignedVersion`. Build the next release with a current CLI and publish a fresh signature.
+- Releases signed before the Tauri CLI started recording the version will not satisfy `requireSignedVersion`. The pinned Tauri CLI (`2.12.4` in `pnpm-lock.yaml`) records it; build the next release with that CLI or newer and publish a fresh signature.
 - The signed-version check does not replace the signature check; both run on every update.
 
 ## Why the tag workflow was removed
@@ -63,19 +63,19 @@ That URL only works when the repository is public and a release marked latest co
 
 ```json
 {
-  "version": "0.26.3",
-  "notes": "Mangayomi sources, preferred playback quality and auto update.",
-  "pub_date": "2026-11-10T13:42:47Z",
+  "version": "<version>",
+  "notes": "Release notes for this version.",
+  "pub_date": "<ISO-8601 timestamp>",
   "platforms": {
     "windows-x86_64": {
-      "signature": "<entire contents of Kaminari_0.26.3_x64-setup.exe.sig>",
-      "url": "https://github.com/graynb25/kaminari/releases/download/v0.26.3/Kaminari_0.26.3_x64-setup.exe"
+      "signature": "<contents of Kaminari_<version>_x64-setup.exe.sig>",
+      "url": "https://github.com/graynb25/kaminari/releases/download/v<version>/Kaminari_<version>_x64-setup.exe"
     }
   }
 }
 ```
 
-`signature` is the entire `.sig` file as a JSON string, so embedded newlines must be escaped. The upload must use the exact asset name in `url`. The updater downloads the installer, verifies the signature and the signed version against the manifest, and only then installs.
+`signature` is the contents of the `.sig` file as a JSON string. Tauri writes the `.sig` file as a single base64 line; copy it verbatim and do not reformat or line-wrap it. The upload must use the exact asset name in `url`. The updater downloads the installer, verifies the signature and the signed version against the manifest, and only then installs.
 
 A local copy is written to `src-tauri/target/release/bundle/nsis/latest.json` after a build. It is an artifact, not source.
 
@@ -105,6 +105,14 @@ if ($platform.url -notlike "*Kaminari_${version}_x64-setup.exe") {
   throw "latest.json url does not point at this installer"
 }
 
+$signatureText = [Text.Encoding]::UTF8.GetString(
+  [Convert]::FromBase64String((Get-Content $signature -Raw).Trim())
+)
+$signedVersion = [regex]::Match($signatureText, 'version:(\S+)').Groups[1].Value
+if ($signedVersion -ne $version) {
+  throw "signature carries version '$signedVersion', build is $version"
+}
+
 Get-FileHash $installer, $signature, $manifestPath -Algorithm SHA256 |
   ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) } |
   Set-Content (Join-Path $nsis "SHA256SUMS.txt") -Encoding ascii
@@ -112,7 +120,23 @@ Get-FileHash $installer, $signature, $manifestPath -Algorithm SHA256 |
 
 Add the portable zip to `SHA256SUMS.txt` after it is built. Do not rebuild or replace the installer after recording hashes; if anything changes, delete the hashes and repeat the whole build and verification.
 
-After publishing, download every asset back from the release and compare it with `SHA256SUMS.txt`. Confirm that `releases/latest/download/latest.json` serves the same manifest. A release whose feed and assets disagree is treated as broken: fix it with a new version, never by editing assets in place.
+To verify the installer signature cryptographically in the same PowerShell session, decode the base64 `.sig` and run minisign (if installed) with the public key line:
+
+```powershell
+$sigPath = Join-Path $env:TEMP "kaminari-update.sig"
+[IO.File]::WriteAllBytes(
+  $sigPath,
+  [Convert]::FromBase64String((Get-Content $signature -Raw).Trim())
+)
+$config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+$pubText = [Text.Encoding]::UTF8.GetString(
+  [Convert]::FromBase64String($config.plugins.updater.pubkey)
+)
+$pub = ($pubText -split "`n")[1].Trim()
+minisign -Vm $installer -x $sigPath -P $pub
+```
+
+The updater repeats the signature and signed-version checks at install time. After publishing, download every asset back from the release and compare it with `SHA256SUMS.txt`. Confirm that `releases/latest/download/latest.json` serves the same manifest. A release whose feed and assets disagree is treated as broken: fix it with a new version, never by editing assets in place.
 
 ## Portable zip
 
