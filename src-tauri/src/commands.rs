@@ -933,6 +933,8 @@ pub fn backup_export(state: State<'_, Db>, path: String) -> Result<BackupExport,
     Ok(BackupExport { path, bytes })
 }
 
+/// Restores a validated backup. The live database is copied to a timestamped
+/// safety file first, and restored extensions are left disabled until reviewed.
 #[tauri::command]
 pub fn backup_restore(state: State<'_, Db>, path: String) -> Result<(), String> {
     state.restore_from(&path).map_err(ipc_error)
