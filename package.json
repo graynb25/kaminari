@@ -1,6 +1,6 @@
 {
   "name": "kaminari",
-  "version": "0.26.7",
+  "version": "0.26.8",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.34.9",

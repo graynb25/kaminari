@@ -45,6 +45,12 @@
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.icns", "icons/icon.ico"],
     "category": "Entertainment",
     "shortDescription": "Anime desktop player with AniList and user sources.",
-    "resources": ["lib/**/*"]
+    "resources": ["lib/**/*"],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico"
+      }
+    }
   }
 }

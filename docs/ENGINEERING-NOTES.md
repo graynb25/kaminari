@@ -128,6 +128,12 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-10 Installer icon
+
+Context. The app executable had the Kaminari icon, but the NSIS setup executable showed the default NSIS icon in Explorer and download lists.
+
+What we shipped. `bundle.windows.nsis.installerIcon` and `uninstallerIcon` now point at `icons/icon.ico`. After the 0.26.8 build, extracting the associated icon from `Kaminari_0.26.8_x64-setup.exe` returned the 32px Kaminari bolt instead of the generic NSIS icon.
+
 ## 2026-11-10 Player quality, privacy and history polish
 
 Context. The preferred quality control was a native select. On Windows its popup opened white with pale text, which made the options hard to read. The player had no quality control. History had no time filter or row actions, and Clear history used an OS confirmation dialog. Incognito lived under Playback.
