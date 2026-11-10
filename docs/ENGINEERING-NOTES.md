@@ -136,6 +136,8 @@ What we shipped. Player views have a gear menu that lists the current episode's 
 
 What we measured. AniKoto returned two Naruto streams, 800p HD-1 Sub and 480p HD-1 Dub. The gear menu switched to 480p at the current position and moved the active row. The Settings and source quality popovers opened in-app, dark, readable and inside the viewport. Incognito left the 6:05 resume point unchanged after playback, showed badges in the source page and player, and disabled the mark controls. History showed 101 events; filtering to Today worked, deleting one row changed the count to 100, the in-app modal appeared, and confirming Clear emptied both `continue_watching` and `source_continue`. After a source Clear then Mark all, `source_continue` returned Naruto episode 220 with `watched=true`; after an AniList Clear then Mark all, `continue_watching` returned Naruto episode 220. Coming Soon returned 24 unreleased titles; Dandadan 3rd Season saved to the library as Planning. 121 Rust and 97 frontend tests pass.
 
+Release check. 0.26.7 was published as a signed release. A host install of 0.26.6 found 0.26.7, downloaded it, closed itself, and the installer reopened 0.26.7. The release build showed Settings, Privacy, the in-app quality popover and the empty History state, and the feed reported `You are up to date.` The library SHA-256 stayed `66B2266E81DD218B801760F5828081EBBBEEB4F4108A2A36A42DCFCD0742C01A`, and uninstall kept the database. Host only; the clean VM pass remains open.
+
 ## 2026-11-10 Dependency security pass
 
 Context. Dependabot was opening three kinds of jobs: the zip 9.5.0 pull request failed to compile, Vitest could not reach a fixed `@vitest/mocker`, and glib could not reach 0.20 from the current GTK stack.
