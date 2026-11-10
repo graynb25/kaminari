@@ -92,6 +92,7 @@
     airing: { items: [], loading: true, error: null },
     top: { items: [], loading: true, error: null },
     popular: { items: [], loading: true, error: null },
+    upcoming: { items: [], loading: true, error: null },
   });
   let view = $state<View>("browse");
   let detail = $state<Media | null>(null);
@@ -299,6 +300,7 @@
       loadRail("airing", "airing", 1),
       loadRail("top", "top", 1),
       loadRail("popular", "popular", 1),
+      loadRail("upcoming", "upcoming", 1),
     ]);
   }
 
@@ -400,7 +402,7 @@
         await removeFromLibrary(item.id);
         notify(`Removed ${name} from your library.`, "success");
       } else {
-        await addToLibrary(item, "watching");
+        await addToLibrary(item, item.status === "NOT_YET_RELEASED" ? "planning" : "watching");
         notify(`Saved ${name} to your library.`, "success");
       }
       await refreshLibrary();
@@ -799,6 +801,16 @@
                   onToggleLibrary={toggleLibrary}
                   onPlay={openPlay}
                   onRetry={() => void loadRail("trendingMore", "trending", 2)}
+                />
+
+                <Rail
+                  title="Coming Soon"
+                  state={rails.upcoming}
+                  isInLibrary={isInLibrary}
+                  onOpen={(item) => void openDetail(item)}
+                  onToggleLibrary={toggleLibrary}
+                  onPlay={openPlay}
+                  onRetry={() => void loadRail("upcoming", "upcoming", 1)}
                 />
 
                 <Rail

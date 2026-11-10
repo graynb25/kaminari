@@ -47,7 +47,7 @@ export function detail(id: number): Promise<Media> {
   return invoke<Media>("anilist_detail", { id });
 }
 
-export type ShelfKind = "trending" | "airing" | "top" | "popular";
+export type ShelfKind = "trending" | "airing" | "top" | "popular" | "upcoming";
 
 export function shelf(kind: ShelfKind, page = 1): Promise<Media[]> {
   return invoke<Media[]>("anilist_shelf", { kind, page });
