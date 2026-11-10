@@ -88,7 +88,7 @@ Source settings: if the source defines `getSourcePreferences()`, the Sources pag
 
 ## Registry
 
-A registry is a signed JSON file with a list of extensions. Each entry holds id, name, version, min host, download URL, sha256, signature. Kaminari pins the key per registry URL. Trust levels read signed, sideloaded, disabled. NSFW hides by default behind a setting.
+A registry is a signed JSON file with a list of extensions. Each entry holds id, name, version, min host, download URL, sha256, signature. Kaminari pins the key per registry URL. Trust levels read signed, sideloaded, disabled. NSFW sources are installed but hidden from the Sources page and source search while Settings > Privacy > Show NSFW sources is off, which is the default.
 
 ### Registry compatibility: Aniyomi style index
 

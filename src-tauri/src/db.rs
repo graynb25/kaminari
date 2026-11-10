@@ -21,7 +21,7 @@ const MAX_BACKUP_BYTES: u64 = 1024 * 1024 * 1024;
 
 /// Bumped whenever a migration changes the on-disk schema. A backup from a
 /// newer version is rejected instead of being silently run against older code.
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 /// Tables and columns that every Kaminari backup must contain before it can
 /// replace the live library. Newer tables are validated separately when they
@@ -165,6 +165,7 @@ pub struct JsExtensionRow {
     pub trust: String,
     pub installed_at: i64,
     pub hosts: Vec<String>,
+    pub nsfw: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -183,6 +184,7 @@ pub struct SourceLibraryItem {
     pub cover: Option<String>,
     pub year: Option<i32>,
     pub status: Option<String>,
+    pub anilist_id: Option<i64>,
     pub added_at: i64,
     pub watched_count: i64,
     pub last_episode_id: Option<String>,
@@ -220,6 +222,7 @@ pub struct SourceContinueItem {
     pub show_id: String,
     pub title: String,
     pub cover: Option<String>,
+    pub anilist_id: Option<i64>,
     pub episode_id: String,
     pub episode_number: i64,
     pub episode_title: Option<String>,
@@ -628,6 +631,9 @@ impl Db {
             let manifest_raw: String = row.get(7)?;
             let manifest = serde_json::from_str::<Manifest>(&manifest_raw).ok();
             let id: String = row.get(0)?;
+            let (hosts, nsfw) = manifest
+                .map(|manifest| (manifest.permissions.hosts, manifest.nsfw))
+                .unwrap_or_default();
             Ok(JsExtensionRow {
                 kind: if id.starts_with("mangayomi.") {
                     "mangayomi".to_string()
@@ -641,9 +647,8 @@ impl Db {
                 enabled: row.get::<_, i64>(4)? != 0,
                 trust: row.get(5)?,
                 installed_at: row.get(6)?,
-                hosts: manifest
-                    .map(|manifest| manifest.permissions.hosts)
-                    .unwrap_or_default(),
+                hosts,
+                nsfw,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -706,6 +711,7 @@ impl Db {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn source_library_add(
         &self,
         extension_id: &str,
@@ -714,19 +720,30 @@ impl Db {
         cover: Option<&str>,
         year: Option<i32>,
         status: Option<&str>,
+        anilist_id: Option<i64>,
     ) -> AppResult<()> {
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         conn.execute(
             "INSERT INTO source_library(
-                extension_id, show_id, title, cover, year, status, added_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, unixepoch(), unixepoch())
+                extension_id, show_id, title, cover, year, status, anilist_id,
+                added_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch(), unixepoch())
              ON CONFLICT(extension_id, show_id) DO UPDATE SET
                 title = excluded.title,
                 cover = excluded.cover,
                 year = excluded.year,
                 status = excluded.status,
+                anilist_id = COALESCE(excluded.anilist_id, source_library.anilist_id),
                 updated_at = unixepoch()",
-            params![extension_id, show_id, title, cover, year, status],
+            params![
+                extension_id,
+                show_id,
+                title,
+                cover,
+                year,
+                status,
+                anilist_id
+            ],
         )?;
         Ok(())
     }
@@ -736,7 +753,8 @@ impl Db {
         let mut statement = conn.prepare(
             "SELECT sl.extension_id,
                     COALESCE(je.name, sl.extension_id),
-                    sl.show_id, sl.title, sl.cover, sl.year, sl.status, sl.added_at,
+                    sl.show_id, sl.title, sl.cover, sl.year, sl.status, sl.anilist_id,
+                    sl.added_at,
                     (SELECT COUNT(*) FROM source_progress sp
                      WHERE sp.extension_id = sl.extension_id AND sp.show_id = sl.show_id AND sp.watched = 1),
                     (SELECT episode_id FROM source_progress sp
@@ -764,12 +782,13 @@ impl Db {
                 cover: row.get(4)?,
                 year: row.get(5)?,
                 status: row.get(6)?,
-                added_at: row.get(7)?,
-                watched_count: row.get(8)?,
-                last_episode_id: row.get(9)?,
-                last_episode: row.get(10)?,
-                last_position: row.get(11)?,
-                last_duration: row.get(12)?,
+                anilist_id: row.get(7)?,
+                added_at: row.get(8)?,
+                watched_count: row.get(9)?,
+                last_episode_id: row.get(10)?,
+                last_episode: row.get(11)?,
+                last_position: row.get(12)?,
+                last_duration: row.get(13)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -966,7 +985,7 @@ impl Db {
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         let mut statement = conn.prepare(
             "SELECT sp.extension_id, COALESCE(je.name, sp.extension_id),
-                    sp.show_id, sl.title, sl.cover,
+                    sp.show_id, sl.title, sl.cover, sl.anilist_id,
                     sp.episode_id, sp.episode_number, sp.episode_title,
                     sp.position_sec, sp.duration_sec, sp.watched, sp.updated_at
              FROM (
@@ -992,13 +1011,14 @@ impl Db {
                 show_id: row.get(2)?,
                 title: row.get(3)?,
                 cover: row.get(4)?,
-                episode_id: row.get(5)?,
-                episode_number: row.get(6)?,
-                episode_title: row.get(7)?,
-                position_sec: row.get(8)?,
-                duration_sec: row.get(9)?,
-                watched: row.get::<_, i64>(10)? != 0,
-                updated_at: row.get(11)?,
+                anilist_id: row.get(5)?,
+                episode_id: row.get(6)?,
+                episode_number: row.get(7)?,
+                episode_title: row.get(8)?,
+                position_sec: row.get(9)?,
+                duration_sec: row.get(10)?,
+                watched: row.get::<_, i64>(11)? != 0,
+                updated_at: row.get(12)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -1426,6 +1446,13 @@ fn apply_migrations(conn: &Connection) -> AppResult<()> {
     conn.execute_batch(include_str!("../migrations/0004_source_library.sql"))?;
     conn.execute_batch(include_str!("../migrations/0005_anilist_sync.sql"))?;
     conn.execute_batch(include_str!("../migrations/0006_source_history.sql"))?;
+    if !has_column(conn, "source_library", "anilist_id")? {
+        conn.execute(
+            "ALTER TABLE source_library ADD COLUMN anilist_id INTEGER",
+            [],
+        )?;
+    }
+    conn.execute_batch(include_str!("../migrations/0007_source_anilist.sql"))?;
     if !has_column(conn, "source_progress", "continue_visible")? {
         conn.execute(
             "ALTER TABLE source_progress
@@ -1783,6 +1810,7 @@ mod tests {
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].id, "app.kaminari.publicdomain");
         assert_eq!(list[0].hosts, vec!["https://archive.org/*"]);
+        assert!(!list[0].nsfw);
         assert!(db.js_extension(&package.manifest.id).unwrap().is_some());
 
         ExtStorage::set(&db, &package.manifest.id, "token", "abc").unwrap();
@@ -1794,6 +1822,20 @@ mod tests {
         db.remove_js_extension(&package.manifest.id).unwrap();
         assert!(db.list_js_extensions().unwrap().is_empty());
         assert_eq!(ExtStorage::get(&db, &package.manifest.id, "token"), None);
+    }
+
+    #[test]
+    fn list_js_extensions_exposes_manifest_nsfw() {
+        let db = Db::new(":memory:").unwrap();
+        let package = crate::ext_host::sample_package().unwrap();
+        let mut manifest = package.manifest.clone();
+        manifest.nsfw = true;
+        db.install_js_extension(&manifest, &package.code, "sideloaded")
+            .unwrap();
+
+        let list = db.list_js_extensions().unwrap();
+        assert_eq!(list.len(), 1);
+        assert!(list[0].nsfw);
     }
 
     #[test]
@@ -1810,12 +1852,50 @@ mod tests {
             Some("https://example.com/cover.jpg"),
             Some(1933),
             Some("finished"),
+            Some(9),
         )
         .unwrap();
         let items = db.source_library_list().unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].extension_name, "Public Domain Animation");
+        assert_eq!(items[0].anilist_id, Some(9));
         assert_eq!(items[0].watched_count, 0);
+
+        // A later metadata refresh without a link must not clear the durable
+        // link, while an explicit new link replaces it.
+        db.source_library_add(
+            &package.manifest.id,
+            "show-1",
+            "Popeye",
+            Some("https://example.com/cover.jpg"),
+            Some(1933),
+            Some("finished"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(db.source_library_list().unwrap()[0].anilist_id, Some(9));
+        db.source_library_add(
+            &package.manifest.id,
+            "show-1",
+            "Popeye",
+            Some("https://example.com/cover.jpg"),
+            Some(1933),
+            Some("finished"),
+            Some(10),
+        )
+        .unwrap();
+        assert_eq!(db.source_library_list().unwrap()[0].anilist_id, Some(10));
+        // Restore the original link used by the rest of this test.
+        db.source_library_add(
+            &package.manifest.id,
+            "show-1",
+            "Popeye",
+            Some("https://example.com/cover.jpg"),
+            Some(1933),
+            Some("finished"),
+            Some(9),
+        )
+        .unwrap();
 
         db.source_progress_set(
             &package.manifest.id,
@@ -1842,6 +1922,7 @@ mod tests {
         assert_eq!(continue_items.len(), 1);
         assert_eq!(continue_items[0].episode_number, 1);
         assert_eq!(continue_items[0].position_sec, 120.0);
+        assert_eq!(continue_items[0].anilist_id, Some(9));
         let history = db.source_history(10).unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].episode_id, "ep-1");
@@ -1904,6 +1985,7 @@ mod tests {
             "Popeye",
             None,
             Some(1933),
+            None,
             None,
         )
         .unwrap();
@@ -1982,6 +2064,7 @@ mod tests {
             "Popeye",
             None,
             Some(1933),
+            None,
             None,
         )
         .unwrap();
@@ -2074,6 +2157,7 @@ mod tests {
             None,
             Some(1933),
             None,
+            None,
         )
         .unwrap();
         db.source_progress_set(
@@ -2128,6 +2212,40 @@ mod tests {
     }
 
     #[test]
+    fn migration_adds_anilist_link_to_source_library() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(include_str!("../migrations/0001_init.sql"))
+            .unwrap();
+        conn.execute_batch(include_str!("../migrations/0004_source_library.sql"))
+            .unwrap();
+        conn.execute(
+            "INSERT INTO source_library(
+                extension_id, show_id, title, added_at, updated_at
+             ) VALUES ('ext.one', 'show-1', 'Popeye', 1, 1)",
+            [],
+        )
+        .unwrap();
+
+        apply_migrations(&conn).unwrap();
+        assert!(has_column(&conn, "source_library", "anilist_id").unwrap());
+        let anilist_id: Option<i64> = conn
+            .query_row(
+                "SELECT anilist_id FROM source_library WHERE show_id = 'show-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(anilist_id, None);
+
+        // Startup replays migrations; the added column and row must survive.
+        apply_migrations(&conn).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM source_library", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
     fn source_history_backfill_runs_once() {
         let db = Db::new(":memory:").unwrap();
         let package = crate::ext_host::sample_package().unwrap();
@@ -2139,6 +2257,7 @@ mod tests {
             "Popeye",
             None,
             Some(1933),
+            None,
             None,
         )
         .unwrap();
@@ -2576,6 +2695,7 @@ mod tests {
                     None,
                     Some(1933),
                     Some("finished"),
+                    Some(15125),
                 )
                 .unwrap();
             source
@@ -2613,6 +2733,7 @@ mod tests {
         let source_library = db.source_library_list().unwrap();
         assert_eq!(source_library.len(), 1);
         assert_eq!(source_library[0].show_id, "show-1");
+        assert_eq!(source_library[0].anilist_id, Some(15125));
         assert_eq!(
             db.source_progress_get(&package.manifest.id, "show-1")
                 .unwrap()

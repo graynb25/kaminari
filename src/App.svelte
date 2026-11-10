@@ -75,6 +75,7 @@
     initialShow?: JsSearchItem;
     resumeEpisodeId?: string;
     anilistMedia?: Media;
+    anilistId?: number | null;
   };
 
 
@@ -346,6 +347,7 @@
     title: string;
     cover?: string | null;
     year?: number | null;
+    anilistId?: number | null;
     resumeEpisodeId?: string;
   }) {
     sourceBrowser = {
@@ -357,6 +359,7 @@
         year: item.year ?? null,
       },
       resumeEpisodeId: item.resumeEpisodeId,
+      anilistId: item.anilistId ?? null,
     };
   }
 
@@ -367,6 +370,7 @@
       showId: item.showId,
       title: item.title,
       cover: item.cover,
+      anilistId: item.anilistId,
       resumeEpisodeId: item.episodeId,
     });
   }
@@ -379,6 +383,7 @@
       title: item.title,
       cover: item.cover,
       year: item.year,
+      anilistId: item.anilistId,
       resumeEpisodeId: item.lastEpisodeId ?? undefined,
     });
   }
@@ -760,10 +765,24 @@
                           <button class="btn-ghost px-3 py-1.5 text-[11px] shrink-0" onclick={() => goView("library")}>Open library</button>
                         </div>
                       {:else}
-                        {#each continueRows as row (row.kind === "anilist" ? `a:${row.item.media.id}` : `s:${row.item.extensionId}:${row.item.showId}`)}
+                        {#each continueRows as row (row.kind === "anilist" ? `a:${row.item.media.id}` : row.kind === "linked" ? `l:${row.anilist.media.id}` : `s:${row.item.extensionId}:${row.item.showId}`)}
                           <div class="w-[300px] md:w-[320px] shrink-0">
                             {#if row.kind === "anilist"}
                               <ContinueCard item={row.item} onOpen={(item) => void openDetail(item)} />
+                            {:else if row.kind === "linked"}
+                              <ContinueCard
+                                item={row.anilist}
+                                episode={row.source.episodeNumber}
+                                tag={row.suggested
+                                  ? "TITLE MATCH"
+                                  : row.source.watched
+                                    ? "REWATCH"
+                                    : "RESUME"}
+                                hint={row.suggested
+                                  ? `Title match from ${row.source.extensionName}. Open the source to resume.`
+                                  : `Resumes ${row.source.extensionName}.`}
+                                onOpen={() => openSourceContinue(row.source)}
+                              />
                             {:else}
                               <SourceContinueCard item={row.item} onOpen={openSourceContinue} />
                             {/if}
@@ -966,6 +985,7 @@
         extension: { id: extension.id, name: extension.name },
         initialShow: item,
         anilistMedia: linked ?? undefined,
+        anilistId: linked?.id ?? null,
       };
       sourceMatchMedia = null;
     }}
@@ -982,6 +1002,7 @@
     initialShow={sourceBrowser.initialShow}
     initialEpisodeId={sourceBrowser.resumeEpisodeId}
     anilistMedia={sourceBrowser.anilistMedia}
+    anilistId={sourceBrowser.anilistId}
     sourceLibrary={sourceLibraryItems}
     incognito={incognito}
     onLibraryChanged={() =>

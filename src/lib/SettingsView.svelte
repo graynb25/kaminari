@@ -33,6 +33,7 @@
   } from "./theme";
   import { ACCENTS, getAccent, setAccent, type AccentId } from "./accent";
   import { autoplayEnabled, setAutoplayEnabled } from "./autoplay";
+  import { setShowNsfwEnabled, showNsfwEnabled } from "./nsfw";
   import {
     downloadLabel,
     downloadPercent,
@@ -75,6 +76,7 @@
   let downloadsFolder = $state("");
   let qualityPreference = $state<QualityPreference>("auto");
   let autoplayOn = $state(true);
+  let showNsfw = $state(showNsfwEnabled());
   let folderBusy = $state(false);
   let dataStatus = $state("");
   let dataStatusTone = $state<"success" | "error">("success");
@@ -144,7 +146,7 @@
     { id: "settings-appearance", title: "Appearance", hint: "Theme and preview" },
     { id: "settings-app", title: "App", hint: "Version, stack, player" },
     { id: "settings-playback", title: "Playback", hint: "Proxy for protected streams" },
-    { id: "settings-privacy", title: "Privacy", hint: "Incognito and local tracking" },
+    { id: "settings-privacy", title: "Privacy", hint: "Incognito and NSFW sources" },
     { id: "settings-data", title: "Data", hint: "Endpoints and local library" },
     { id: "settings-updates-diagnostics", title: "Updates and diagnostics", hint: "Version, budgets, export" },
     { id: "settings-licenses", title: "Licenses", hint: "Packages and their licenses" },
@@ -1014,6 +1016,31 @@
                 Incognito is local to this device. Turn it off here when you want playback to count
                 again. The player shows an Incognito badge while it is active.
               </p>
+              <div
+                class="flex flex-wrap items-center justify-between gap-3 py-2.5 mt-3"
+                style="border-top: 1px solid var(--line);"
+              >
+                <div class="min-w-0">
+                  <p class="text-sm" style="color: var(--paper-50);">Show NSFW sources</p>
+                  <p class="text-xs mt-0.5" style="color: var(--paper-400);">
+                    Off by default. NSFW sources stay installed but are hidden from the Sources page
+                    and from source search while this is off.
+                  </p>
+                </div>
+                <button
+                  class="chip text-[10px] px-2 py-1 shrink-0"
+                  aria-label="Show NSFW sources"
+                  aria-pressed={showNsfw}
+                  onclick={() => {
+                    showNsfw = !showNsfw;
+                    setShowNsfwEnabled(showNsfw);
+                  }}
+                  title="Show NSFW sources"
+                >
+                  <span class="status-dot {showNsfw ? '' : 'is-offline'}" style="width: 4px; height: 4px;" aria-hidden="true"></span>
+                  {showNsfw ? "On" : "Off"}
+                </button>
+              </div>
               <div class="mt-4 pt-3" style="border-top: 1px solid var(--line);">
                 <p class="text-sm" style="color: var(--paper-50);">History and Continue Watching</p>
                 <p class="text-xs mt-0.5" style="color: var(--paper-400);">

@@ -263,6 +263,7 @@ export function sourceLibraryAdd(item: {
   cover?: string | null;
   year?: number | null;
   status?: string | null;
+  anilistId?: number | null;
 }): Promise<void> {
   return invoke<void>("source_library_add", {
     extensionId: item.extensionId,
@@ -271,6 +272,7 @@ export function sourceLibraryAdd(item: {
     cover: item.cover,
     year: item.year,
     status: item.status,
+    anilistId: item.anilistId ?? null,
   });
 }
 

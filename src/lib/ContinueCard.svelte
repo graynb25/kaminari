@@ -4,7 +4,19 @@
   import { coverOf, displayTitle } from "./format";
   import type { ContinueItem, Media } from "./types";
 
-  let { item, onOpen }: { item: ContinueItem; onOpen: (media: Media) => void } = $props();
+  let {
+    item,
+    onOpen,
+    episode = item.episode,
+    hint = null,
+    tag = "RESUME",
+  }: {
+    item: ContinueItem;
+    onOpen: (media: Media) => void;
+    episode?: number;
+    hint?: string | null;
+    tag?: string;
+  } = $props();
 
   const art = $derived(item.media.bannerImage || coverOf(item.media));
   const percent = $derived(
@@ -14,7 +26,8 @@
 
 <button
   class="library-source-card group block w-full text-left"
-  aria-label="Resume {displayTitle(item.media)}, episode {item.episode}"
+  aria-label="Resume {displayTitle(item.media)}, episode {episode}"
+  title={hint ?? undefined}
   onclick={() => onOpen(item.media)}
 >
   <div class="library-source-art">
@@ -27,10 +40,10 @@
 
     <span class="absolute top-2.5 left-2.5 inline-flex items-center gap-1.5 h-6 px-2 rounded-full text-[10px] font-semibold on-art is-accent mono">
       <span class="status-dot" style="width: 4px; height: 4px;" aria-hidden="true"></span>
-      EP {item.episode}
+      EP {episode}
     </span>
     <span class="absolute top-2.5 right-2.5 inline-flex items-center h-6 px-2 rounded-full text-[9px] font-semibold tracking-wider on-art is-muted">
-      RESUME
+      {tag}
     </span>
 
     <span class="absolute right-3 bottom-3 h-9 w-9 grid place-items-center rounded-full" style="background: linear-gradient(180deg, var(--volt-400), var(--volt-500)); color: #fff; box-shadow: 0 6px 20px var(--accent-shadow-strong);" aria-hidden="true">

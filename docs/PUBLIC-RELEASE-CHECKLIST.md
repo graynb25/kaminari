@@ -37,7 +37,8 @@ The repository is public. Current state:
 - [x] M-07: validated backup restore, safety copy and disabled restored extensions.
 - [x] M-12: updater signed-version binding and key custody documentation.
 - [ ] M-17 legal: replace the placeholder contact, jurisdiction and repository details, then have counsel review.
-- [ ] M-17 NSFW: persist and show NSFW metadata and hide NSFW sources by default.
+- [x] M-17 NSFW: persist and show NSFW metadata and hide NSFW sources by default.
+- [x] M-18: durable AniList-to-source links and ID-based Continue Watching merge.
 - [ ] Clean Windows VM install, update and rollback pass.
 - [ ] Windows Authenticode code signing.
 - [ ] Phase 1 items from the private production review.

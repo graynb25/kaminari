@@ -922,6 +922,7 @@ pub fn source_library_list(state: State<'_, Db>) -> Result<Vec<SourceLibraryItem
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn source_library_add(
     state: State<'_, Db>,
     extension_id: String,
@@ -930,6 +931,7 @@ pub fn source_library_add(
     cover: Option<String>,
     year: Option<i32>,
     status: Option<String>,
+    anilist_id: Option<i64>,
 ) -> Result<(), String> {
     state
         .source_library_add(
@@ -939,6 +941,7 @@ pub fn source_library_add(
             cover.as_deref(),
             year,
             status.as_deref(),
+            anilist_id,
         )
         .map_err(ipc_error)
 }

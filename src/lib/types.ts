@@ -96,6 +96,7 @@ export type JsExtension = {
   trust: string;
   installedAt: number;
   hosts: string[];
+  nsfw: boolean;
 };
 
 export type MangayomiSourcePreview = {
@@ -275,6 +276,7 @@ export type SourceLibraryItem = {
   cover?: string | null;
   year?: number | null;
   status?: string | null;
+  anilistId?: number | null;
   addedAt: number;
   watchedCount: number;
   lastEpisodeId?: string | null;
@@ -306,6 +308,7 @@ export type SourceContinueItem = {
   showId: string;
   title: string;
   cover?: string | null;
+  anilistId?: number | null;
   episodeId: string;
   episodeNumber: number;
   episodeTitle?: string | null;

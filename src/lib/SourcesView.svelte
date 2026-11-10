@@ -14,6 +14,7 @@
     mangayomiInstall,
     mangayomiPreview,
   } from "./api";
+  import { filterNsfwSources, showNsfwEnabled } from "./nsfw";
   import type {
     Boot,
     JsExtension,
@@ -53,14 +54,27 @@
   const memShort = $derived(
     boot ? `${Math.round(boot.limits.extMemoryBytes / 1024 / 1024)}MB` : "Loading",
   );
+  const showNsfw = showNsfwEnabled();
+  const visibleExtensions = $derived(filterNsfwSources(jsExtensions, showNsfw));
+  const hiddenNsfwCount = $derived(jsExtensions.length - visibleExtensions.length);
+  const visiblePreviewSources = $derived(
+    mangayomiPreviewState
+      ? filterNsfwSources(mangayomiPreviewState.sources, showNsfw)
+      : [],
+  );
+  const hiddenPreviewCount = $derived(
+    mangayomiPreviewState
+      ? mangayomiPreviewState.sources.length - visiblePreviewSources.length
+      : 0,
+  );
   const nativeCount = $derived(
-    jsExtensions.filter((extension) => extension.kind !== "mangayomi").length,
+    visibleExtensions.filter((extension) => extension.kind !== "mangayomi").length,
   );
   const mangayomiCount = $derived(
-    jsExtensions.filter((extension) => extension.kind === "mangayomi").length,
+    visibleExtensions.filter((extension) => extension.kind === "mangayomi").length,
   );
   const hostCount = $derived(
-    jsExtensions.reduce((sum, extension) => sum + extension.hosts.length, 0),
+    visibleExtensions.reduce((sum, extension) => sum + extension.hosts.length, 0),
   );
 
   onMount(() => {
@@ -309,9 +323,28 @@
           <p class="text-xs mt-0.5" style="color: var(--paper-300);">Install the sample to run a real search through the host.</p>
         </div>
       </div>
+    {:else if visibleExtensions.length === 0}
+      <div class="surface px-5 py-6 flex items-center gap-4">
+        <span class="w-10 h-10 grid place-items-center rounded-xl shrink-0" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
+          <Icon name="eyeOff" size={18} />
+        </span>
+        <div>
+          <p class="text-sm font-semibold">Installed sources are hidden</p>
+          <p class="text-xs mt-0.5" style="color: var(--paper-300);">
+            {hiddenNsfwCount} {hiddenNsfwCount === 1 ? "source is" : "sources are"} marked NSFW.
+            Turn on Show NSFW sources in Settings to see {hiddenNsfwCount === 1 ? "it" : "them"}.
+          </p>
+        </div>
+      </div>
     {:else}
+      {#if hiddenNsfwCount > 0}
+        <Callout tone="info" class="mb-3">
+          {hiddenNsfwCount} NSFW {hiddenNsfwCount === 1 ? "source is" : "sources are"} hidden.
+          Turn on Show NSFW sources in Settings to show {hiddenNsfwCount === 1 ? "it" : "them"}.
+        </Callout>
+      {/if}
       <div class="space-y-3">
-        {#each jsExtensions as extension (extension.id)}
+        {#each visibleExtensions as extension (extension.id)}
           <article class="surface p-4">
             <div class="flex items-start gap-3">
               <div class="source-tile" aria-hidden="true">JS</div>
@@ -325,6 +358,9 @@
                     <span class="chip text-[10px] px-2 py-0.5">Native</span>
                   {/if}
                   <span class="chip chip-volt text-[10px] px-2 py-0.5">{extension.trust}</span>
+                  {#if extension.nsfw}
+                    <span class="chip chip-volt text-[10px] px-2 py-0.5">NSFW</span>
+                  {/if}
                 </div>
                 <p class="text-[11px] mt-0.5 truncate" style="color: var(--paper-450); font-family: var(--font-mono);" title={extension.id}>
                   {extension.id}
@@ -497,8 +533,19 @@
             mangayomiPreviewState.bytes / 1024,
           )} KB
         </p>
-        <div class="space-y-2 mt-3">
-          {#each mangayomiPreviewState.sources as source (source.index)}
+        {#if hiddenPreviewCount > 0}
+          <Callout tone="info" class="mt-3">
+            {hiddenPreviewCount} NSFW {hiddenPreviewCount === 1 ? "source is" : "sources are"} hidden.
+            Turn on Show NSFW sources in Settings to inspect {hiddenPreviewCount === 1 ? "it" : "them"}.
+          </Callout>
+        {/if}
+        {#if visiblePreviewSources.length === 0}
+          <p class="text-xs mt-3" style="color: var(--paper-450);">
+            Every source in this package is marked NSFW and hidden by your setting.
+          </p>
+        {:else}
+          <div class="space-y-2 mt-3">
+            {#each visiblePreviewSources as source (source.index)}
             <div
               class="rounded-xl p-3 flex flex-col sm:flex-row sm:items-center gap-3"
               style="background: var(--well-bg); border: 1px solid var(--line);"
@@ -530,7 +577,8 @@
               </button>
             </div>
           {/each}
-        </div>
+          </div>
+        {/if}
       {/if}
     </div>
   </section>
