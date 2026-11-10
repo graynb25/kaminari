@@ -43,6 +43,7 @@
     type ShelfKind,
   } from "./lib/api";
   import { displayTitle, isRateLimitMessage } from "./lib/format";
+  import { onAniListSyncConflict } from "./lib/anilistSync";
   import type {
     Boot,
     ContinueItem,
@@ -449,6 +450,32 @@
       await refreshSourceActivity();
       await loadBrowse();
     })();
+  });
+
+  onMount(() => {
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    void (async () => {
+      try {
+        const stop = await onAniListSyncConflict((result) => {
+          if (disposed) return;
+          notify(
+            result.conflicts === 1
+              ? "AniList had a newer change for 1 title. The AniList value was kept."
+              : `AniList had newer changes for ${result.conflicts} titles. The AniList values were kept.`,
+            "info",
+          );
+        });
+        if (disposed) stop();
+        else unlisten = stop;
+      } catch {
+        // Settings still reports conflicts when the event listener is unavailable.
+      }
+    })();
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
   });
 
   // Keep the content at the top when the route or the open title changes.

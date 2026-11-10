@@ -72,6 +72,54 @@ pub struct AniListListEntry {
     pub progress: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaListEntry {
+    pub status: String,
+    pub progress: i64,
+    #[serde(default)]
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteDecision {
+    Push,
+    SkipServerNewer,
+    SkipMatching,
+}
+
+pub fn anilist_status(status: &str) -> Option<&'static str> {
+    match status {
+        "watching" => Some("CURRENT"),
+        "planning" => Some("PLANNING"),
+        "completed" => Some("COMPLETED"),
+        "paused" => Some("PAUSED"),
+        "dropped" => Some("DROPPED"),
+        _ => None,
+    }
+}
+
+pub fn decide_write(
+    local_status: &str,
+    local_progress: i64,
+    local_updated_at: i64,
+    server: Option<&MediaListEntry>,
+) -> WriteDecision {
+    let Some(server) = server else {
+        return WriteDecision::Push;
+    };
+    if server.updated_at > local_updated_at {
+        return WriteDecision::SkipServerNewer;
+    }
+    if anilist_status(local_status) == Some(server.status.as_str())
+        && local_progress == server.progress
+    {
+        WriteDecision::SkipMatching
+    } else {
+        WriteDecision::Push
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Viewer {
@@ -205,6 +253,30 @@ struct MediaListData {
 #[derive(Debug, Deserialize)]
 struct MediaListEnvelope {
     data: Option<MediaListData>,
+    errors: Option<Vec<GraphQlError>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MediaListEntryData {
+    #[serde(rename = "MediaList")]
+    entry: Option<MediaListEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MediaListEntryEnvelope {
+    data: Option<MediaListEntryData>,
+    errors: Option<Vec<GraphQlError>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SavedMediaListEntryData {
+    #[serde(rename = "SaveMediaListEntry")]
+    entry: MediaListEntry,
+}
+
+#[derive(Debug, Deserialize)]
+struct SavedMediaListEntryEnvelope {
+    data: Option<SavedMediaListEntryData>,
     errors: Option<Vec<GraphQlError>>,
 }
 
@@ -422,6 +494,50 @@ impl AniListClient {
             serde_json::from_value(json).map_err(|err| AppError::Net(err.to_string()))?;
         list_entries(envelope)
     }
+
+    pub async fn media_list_entry(&self, media_id: i64) -> AppResult<Option<MediaListEntry>> {
+        let json = self
+            .post(
+                media_list_entry_query(),
+                serde_json::json!({ "mediaId": media_id }),
+            )
+            .await?;
+        let envelope: MediaListEntryEnvelope =
+            serde_json::from_value(json).map_err(|err| AppError::Net(err.to_string()))?;
+        if let Some(errors) = envelope.errors {
+            return Err(AppError::Net(graphql_message(errors)));
+        }
+        Ok(envelope.data.and_then(|data| data.entry))
+    }
+
+    pub async fn save_media_list_entry(
+        &self,
+        media_id: i64,
+        status: &str,
+        progress: i64,
+    ) -> AppResult<MediaListEntry> {
+        let status = anilist_status(status)
+            .ok_or_else(|| AppError::Blocked(format!("Unknown status: {status}")))?;
+        let json = self
+            .post(
+                save_media_list_entry_query(),
+                serde_json::json!({
+                    "mediaId": media_id,
+                    "status": status,
+                    "progress": progress,
+                }),
+            )
+            .await?;
+        let envelope: SavedMediaListEntryEnvelope =
+            serde_json::from_value(json).map_err(|err| AppError::Net(err.to_string()))?;
+        if let Some(errors) = envelope.errors {
+            return Err(AppError::Net(graphql_message(errors)));
+        }
+        envelope
+            .data
+            .map(|data| data.entry)
+            .ok_or_else(|| AppError::Net("AniList returned no list entry".to_string()))
+    }
 }
 
 fn list_entries(envelope: MediaListEnvelope) -> AppResult<Vec<AniListListEntry>> {
@@ -549,6 +665,30 @@ query MediaList($userId: Int!) {
 }
 "#,
     )
+}
+
+fn media_list_entry_query() -> &'static str {
+    r#"
+query MediaList($mediaId: Int) {
+  MediaList(mediaId: $mediaId, type: ANIME) {
+    status
+    progress
+    updatedAt
+  }
+}
+"#
+}
+
+fn save_media_list_entry_query() -> &'static str {
+    r#"
+mutation SaveMediaListEntry($mediaId: Int, $status: MediaListStatus, $progress: Int) {
+  SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress) {
+    status
+    progress
+    updatedAt
+  }
+}
+"#
 }
 
 #[cfg(test)]
@@ -723,5 +863,115 @@ mod tests {
         );
         assert_eq!(entries[1].media.id, 21);
         assert_eq!(entries[1].status, "COMPLETED");
+    }
+
+    #[test]
+    fn parses_media_list_entry_response() {
+        let raw = r#"{
+          "data": {
+            "MediaList": {
+              "status": "CURRENT",
+              "progress": 7,
+              "updatedAt": 1700000000
+            }
+          }
+        }"#;
+        let envelope: MediaListEntryEnvelope = serde_json::from_str(raw).unwrap();
+        assert!(envelope.errors.is_none());
+        let entry = envelope.data.unwrap().entry.unwrap();
+        assert_eq!(entry.status, "CURRENT");
+        assert_eq!(entry.progress, 7);
+        assert_eq!(entry.updated_at, 1700000000);
+    }
+
+    #[test]
+    fn parses_missing_media_list_entry_as_none() {
+        let raw = r#"{ "data": { "MediaList": null } }"#;
+        let envelope: MediaListEntryEnvelope = serde_json::from_str(raw).unwrap();
+        assert!(envelope.data.unwrap().entry.is_none());
+    }
+
+    #[test]
+    fn parses_save_media_list_entry_response() {
+        let raw = r#"{
+          "data": {
+            "SaveMediaListEntry": {
+              "status": "COMPLETED",
+              "progress": 28,
+              "updatedAt": 1700000010
+            }
+          }
+        }"#;
+        let envelope: SavedMediaListEntryEnvelope = serde_json::from_str(raw).unwrap();
+        assert!(envelope.errors.is_none());
+        let entry = envelope.data.unwrap().entry;
+        assert_eq!(entry.status, "COMPLETED");
+        assert_eq!(entry.progress, 28);
+        assert_eq!(entry.updated_at, 1700000010);
+    }
+
+    #[test]
+    fn local_statuses_map_to_anilist_values() {
+        assert_eq!(anilist_status("watching"), Some("CURRENT"));
+        assert_eq!(anilist_status("planning"), Some("PLANNING"));
+        assert_eq!(anilist_status("completed"), Some("COMPLETED"));
+        assert_eq!(anilist_status("paused"), Some("PAUSED"));
+        assert_eq!(anilist_status("dropped"), Some("DROPPED"));
+        assert_eq!(anilist_status("bogus"), None);
+    }
+
+    #[test]
+    fn conflict_rule_skips_a_newer_server_entry() {
+        let server = MediaListEntry {
+            status: "CURRENT".to_string(),
+            progress: 9,
+            updated_at: 200,
+        };
+        assert_eq!(
+            decide_write("watching", 3, 100, Some(&server)),
+            WriteDecision::SkipServerNewer
+        );
+    }
+
+    #[test]
+    fn conflict_rule_skips_a_matching_entry() {
+        let server = MediaListEntry {
+            status: "COMPLETED".to_string(),
+            progress: 12,
+            updated_at: 100,
+        };
+        assert_eq!(
+            decide_write("completed", 12, 100, Some(&server)),
+            WriteDecision::SkipMatching
+        );
+        assert_eq!(
+            decide_write("completed", 12, 200, Some(&server)),
+            WriteDecision::SkipMatching
+        );
+    }
+
+    #[test]
+    fn conflict_rule_pushes_when_server_is_missing_or_older() {
+        assert_eq!(decide_write("watching", 3, 100, None), WriteDecision::Push);
+
+        let older = MediaListEntry {
+            status: "CURRENT".to_string(),
+            progress: 1,
+            updated_at: 50,
+        };
+        assert_eq!(
+            decide_write("watching", 3, 100, Some(&older)),
+            WriteDecision::Push
+        );
+
+        let same_time_different = MediaListEntry {
+            status: "PAUSED".to_string(),
+            progress: 1,
+            updated_at: 100,
+        };
+        assert_eq!(
+            decide_write("watching", 3, 100, Some(&same_time_different)),
+            WriteDecision::Push
+        );
     }
 }

@@ -28,6 +28,17 @@ pub struct LibraryItem {
     pub watched_count: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AniListSyncRow {
+    pub anilist_id: i64,
+    pub status: String,
+    pub progress: i64,
+    pub updated_at: i64,
+    pub attempts: i64,
+    pub last_error: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContinueItem {
@@ -222,9 +233,56 @@ impl Db {
             return Err(AppError::Blocked(format!("Unknown status: {status}")));
         }
         let conn = self.conn.lock().map_err(|_| db_locked())?;
-        conn.execute(
+        let changed = conn.execute(
             "UPDATE library SET status = ?2, updated_at = unixepoch() WHERE anilist_id = ?1",
             params![id, status],
+        )?;
+        if changed > 0 {
+            enqueue_anilist_sync(&conn, id, status)?;
+        }
+        Ok(())
+    }
+
+    pub fn pending_anilist_sync(&self) -> AppResult<Vec<AniListSyncRow>> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let mut statement = conn.prepare(
+            "SELECT anilist_id, status, progress, updated_at, attempts, last_error
+             FROM anilist_sync_queue
+             ORDER BY updated_at, anilist_id",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(AniListSyncRow {
+                anilist_id: row.get(0)?,
+                status: row.get(1)?,
+                progress: row.get(2)?,
+                updated_at: row.get(3)?,
+                attempts: row.get(4)?,
+                last_error: row.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn pending_anilist_sync_count(&self) -> AppResult<usize> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        pending_anilist_sync_count(&conn)
+    }
+
+    pub fn remove_anilist_sync(&self, anilist_id: i64) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        conn.execute(
+            "DELETE FROM anilist_sync_queue WHERE anilist_id = ?1",
+            params![anilist_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn fail_anilist_sync(&self, anilist_id: i64, error: &str) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        conn.execute(
+            "UPDATE anilist_sync_queue SET attempts = attempts + 1, last_error = ?2
+             WHERE anilist_id = ?1",
+            params![anilist_id, error],
         )?;
         Ok(())
     }
@@ -327,6 +385,7 @@ impl Db {
             ensure_library_entry(&conn, media.id)?;
         }
         apply_watched(&conn, media.id, episode, watched)?;
+        enqueue_anilist_sync(&conn, media.id, &current_library_status(&conn, media.id)?)?;
         read_watched(&conn, media.id)
     }
 
@@ -374,6 +433,7 @@ impl Db {
                 params![media.id],
             )?;
         }
+        enqueue_anilist_sync(&conn, media.id, &current_library_status(&conn, media.id)?)?;
         read_watched(&conn, media.id)
     }
 
@@ -897,6 +957,7 @@ fn apply_migrations(conn: &Connection) -> AppResult<()> {
     conn.execute_batch(include_str!("../migrations/0002_watched.sql"))?;
     conn.execute_batch(include_str!("../migrations/0003_js_extensions.sql"))?;
     conn.execute_batch(include_str!("../migrations/0004_source_library.sql"))?;
+    conn.execute_batch(include_str!("../migrations/0005_anilist_sync.sql"))?;
     Ok(())
 }
 
@@ -981,6 +1042,50 @@ fn ensure_library_entry(conn: &Connection, anilist_id: i64) -> AppResult<()> {
         params![anilist_id],
     )?;
     Ok(())
+}
+
+fn current_library_status(conn: &Connection, anilist_id: i64) -> AppResult<String> {
+    let status: Option<String> = conn
+        .query_row(
+            "SELECT status FROM library WHERE anilist_id = ?1",
+            params![anilist_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(status.unwrap_or_else(|| "watching".to_string()))
+}
+
+fn enqueue_anilist_sync(conn: &Connection, anilist_id: i64, status: &str) -> AppResult<()> {
+    let progress = watched_count(conn, anilist_id)?;
+    conn.execute(
+        "INSERT INTO anilist_sync_queue(
+            anilist_id, status, progress, updated_at, attempts, last_error
+         ) VALUES (?1, ?2, ?3, unixepoch(), 0, NULL)
+         ON CONFLICT(anilist_id) DO UPDATE SET
+            status = excluded.status,
+            progress = excluded.progress,
+            updated_at = unixepoch(),
+            attempts = 0,
+            last_error = NULL",
+        params![anilist_id, status, progress],
+    )?;
+    Ok(())
+}
+
+fn watched_count(conn: &Connection, anilist_id: i64) -> AppResult<i64> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM watched WHERE anilist_id = ?1",
+        params![anilist_id],
+        |row| row.get(0),
+    )
+    .map_err(AppError::from)
+}
+
+fn pending_anilist_sync_count(conn: &Connection) -> AppResult<usize> {
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM anilist_sync_queue", [], |row| {
+        row.get(0)
+    })?;
+    Ok(count as usize)
 }
 
 fn apply_watched(conn: &Connection, anilist_id: i64, episode: i64, watched: bool) -> AppResult<()> {
@@ -1325,6 +1430,70 @@ mod tests {
         let cleared = db.mark_all_watched(&media, 28, false).unwrap();
         assert!(cleared.is_empty());
         assert!(db.continue_watching(10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn library_add_and_remove_do_not_enqueue() {
+        let db = Db::new(":memory:").unwrap();
+        let media = sample_media();
+        db.add_to_library(&media, "watching").unwrap();
+        assert!(db.pending_anilist_sync().unwrap().is_empty());
+        assert_eq!(db.pending_anilist_sync_count().unwrap(), 0);
+
+        db.remove_from_library(media.id).unwrap();
+        assert!(db.pending_anilist_sync().unwrap().is_empty());
+        assert_eq!(db.pending_anilist_sync_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn queue_replaces_the_previous_change_and_tracks_watched_count() {
+        let db = Db::new(":memory:").unwrap();
+        let media = sample_media();
+        db.add_to_library(&media, "watching").unwrap();
+
+        db.set_library_status(media.id, "completed").unwrap();
+        let rows = db.pending_anilist_sync().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].anilist_id, media.id);
+        assert_eq!(rows[0].status, "completed");
+        assert_eq!(rows[0].progress, 0);
+
+        db.set_watched(&media, 1, true).unwrap();
+        db.set_watched(&media, 2, true).unwrap();
+        let rows = db.pending_anilist_sync().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].status, "completed");
+        assert_eq!(rows[0].progress, 2);
+
+        db.mark_all_watched(&media, 5, true).unwrap();
+        let rows = db.pending_anilist_sync().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].progress, 5);
+    }
+
+    #[test]
+    fn queue_failure_updates_attempts_and_a_new_change_clears_them() {
+        let db = Db::new(":memory:").unwrap();
+        let media = sample_media();
+        db.add_to_library(&media, "watching").unwrap();
+        db.set_library_status(media.id, "paused").unwrap();
+
+        db.fail_anilist_sync(media.id, "offline").unwrap();
+        db.fail_anilist_sync(media.id, "still offline").unwrap();
+        let mut rows = db.pending_anilist_sync().unwrap();
+        let row = rows.remove(0);
+        assert_eq!(row.attempts, 2);
+        assert_eq!(row.last_error.as_deref(), Some("still offline"));
+
+        db.set_watched(&media, 1, true).unwrap();
+        let mut rows = db.pending_anilist_sync().unwrap();
+        let row = rows.remove(0);
+        assert_eq!(row.attempts, 0);
+        assert_eq!(row.last_error, None);
+        assert_eq!(row.progress, 1);
+
+        db.remove_anilist_sync(media.id).unwrap();
+        assert_eq!(db.pending_anilist_sync_count().unwrap(), 0);
     }
 
     #[test]

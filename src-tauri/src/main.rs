@@ -52,6 +52,14 @@ fn main() {
             let database = db::Db::new(db_path.to_string_lossy().as_ref())?;
             app.manage(database);
 
+            let sync_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    commands::anilist_sync_tick(&sync_handle).await;
+                }
+            });
+
             let (proxy, server) = proxy::ProxyStore::bind();
             if let Some((listener, router)) = server {
                 let guard = proxy.clone();
@@ -107,6 +115,8 @@ fn main() {
             commands::anilist_auth_status,
             commands::anilist_auth_logout,
             commands::anilist_sync_pull,
+            commands::anilist_sync_push,
+            commands::anilist_sync_pending,
             commands::library_list,
             commands::library_add,
             commands::library_remove,

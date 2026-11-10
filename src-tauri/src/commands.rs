@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::anilist::{AniListAuthStatus, AniListClient, Media, ShelfKind, Viewer};
+use crate::anilist::{
+    decide_write, AniListAuthStatus, AniListClient, Media, ShelfKind, Viewer, WriteDecision,
+};
 use crate::db::{
     ContinueItem, Db, HistoryItem, InstalledSource, JsExtensionRow, LibraryItem,
     SourceContinueItem, SourceHistoryItem, SourceLibraryItem, SourceProgress,
@@ -46,6 +48,14 @@ pub struct BackupExport {
 pub struct AniListSyncResult {
     pub titles: usize,
     pub viewer_name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AniListPushResult {
+    pub pushed: usize,
+    pub conflicts: usize,
+    pub pending: usize,
 }
 
 const SETTINGS_MAX_BYTES: usize = 64 * 1024;
@@ -292,6 +302,121 @@ pub async fn anilist_sync_pull(
         titles,
         viewer_name: viewer.name,
     })
+}
+
+async fn push_pending_anilist(
+    client: &AniListClient,
+    db: &Db,
+) -> Result<AniListPushResult, AppError> {
+    let rows = db.pending_anilist_sync()?;
+    let mut pushed = 0;
+    let mut conflicts = 0;
+    for row in rows {
+        let server = match client.media_list_entry(row.anilist_id).await {
+            Ok(entry) => entry,
+            Err(err @ (AppError::Net(_) | AppError::RateLimited(_))) => {
+                db.fail_anilist_sync(row.anilist_id, &err.to_string())?;
+                continue;
+            }
+            Err(err) => return Err(err),
+        };
+        match decide_write(&row.status, row.progress, row.updated_at, server.as_ref()) {
+            WriteDecision::SkipServerNewer => {
+                if let Some(server) = server.as_ref() {
+                    tracing::warn!(
+                        media_id = row.anilist_id,
+                        local_updated_at = row.updated_at,
+                        server_updated_at = server.updated_at,
+                        "anilist: server entry is newer, keeping AniList and dropping the local write"
+                    );
+                }
+                db.remove_anilist_sync(row.anilist_id)?;
+                conflicts += 1;
+            }
+            WriteDecision::SkipMatching => {
+                db.remove_anilist_sync(row.anilist_id)?;
+            }
+            WriteDecision::Push => {
+                match client
+                    .save_media_list_entry(row.anilist_id, &row.status, row.progress)
+                    .await
+                {
+                    Ok(_) => {
+                        db.remove_anilist_sync(row.anilist_id)?;
+                        pushed += 1;
+                    }
+                    Err(err @ (AppError::Net(_) | AppError::RateLimited(_))) => {
+                        db.fail_anilist_sync(row.anilist_id, &err.to_string())?;
+                    }
+                    Err(err) => return Err(err),
+                }
+            }
+        }
+    }
+    let pending = db.pending_anilist_sync_count()?;
+    Ok(AniListPushResult {
+        pushed,
+        conflicts,
+        pending,
+    })
+}
+
+#[tauri::command]
+pub async fn anilist_sync_push(
+    app: AppHandle,
+    state: State<'_, AniListClient>,
+    db: State<'_, Db>,
+) -> Result<AniListPushResult, String> {
+    let token = load_anilist_token()?
+        .filter(|token| !token.trim().is_empty())
+        .ok_or_else(|| "Connect AniList first.".to_string())?;
+    state.set_token(&token);
+    let result = push_pending_anilist(state.inner(), db.inner())
+        .await
+        .map_err(ipc_error)?;
+    if result.conflicts > 0 {
+        let _ = app.emit("anilist-sync-conflict", &result);
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn anilist_sync_pending(db: State<'_, Db>) -> Result<usize, String> {
+    db.pending_anilist_sync_count().map_err(ipc_error)
+}
+
+pub async fn anilist_sync_tick(app: &AppHandle) {
+    let db = app.state::<Db>();
+    match db.pending_anilist_sync_count() {
+        Ok(0) => return,
+        Ok(_) => {}
+        Err(err) => {
+            tracing::warn!(error = %err, "anilist: sync queue could not be read");
+            return;
+        }
+    }
+    let token = match load_anilist_token() {
+        Ok(Some(token)) if !token.trim().is_empty() => token,
+        Ok(_) => {
+            app.state::<AniListClient>().clear_token();
+            return;
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "anilist: token could not be read");
+            return;
+        }
+    };
+    let client = app.state::<AniListClient>();
+    client.set_token(&token);
+    match push_pending_anilist(client.inner(), db.inner()).await {
+        Ok(result) if result.conflicts > 0 => {
+            let _ = app.emit("anilist-sync-conflict", &result);
+        }
+        Ok(_) => {}
+        Err(err) => {
+            tracing::warn!(error = %err, "anilist: background sync stopped, queue kept");
+        }
+    }
 }
 
 #[tauri::command]

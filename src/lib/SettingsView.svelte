@@ -13,6 +13,7 @@
     onAnilistAuthChanged,
     type AniListAuthStatus,
   } from "./anilistAuth";
+  import { anilistSyncPending, anilistSyncPush } from "./anilistSync";
   import { proxyFlagEnabled, setProxyFlag } from "./streamProxy";
   import { applySettings, collectSettings, parseSettings } from "./settingsBackup";
   import {
@@ -51,6 +52,8 @@
   let anilistBusy = $state(false);
   let anilistWaiting = $state(false);
   let anilistSyncing = $state(false);
+  let anilistPushing = $state(false);
+  let anilistPending = $state(0);
   let anilistError = $state("");
   let anilistNotice = $state("");
 
@@ -286,11 +289,50 @@
         "anilist_sync_pull",
       );
       anilistNotice = `Synced ${result.titles} titles from AniList.`;
+      await refreshAniListPending();
       onDataChanged?.();
     } catch (err) {
       anilistError = errorText(err);
     } finally {
       anilistSyncing = false;
+    }
+  }
+
+  async function refreshAniListPending() {
+    try {
+      anilistPending = await anilistSyncPending();
+    } catch {
+      // The count is informative. A failure here should not block the account UI.
+    }
+  }
+
+  async function pushAniListChanges() {
+    if (anilistPushing) return;
+    anilistError = "";
+    anilistNotice = "";
+    if (anilistAuth?.error) {
+      anilistAuth = { ...anilistAuth, error: null };
+    }
+    anilistPushing = true;
+    try {
+      const result = await anilistSyncPush();
+      anilistPending = result.pending;
+      if (result.conflicts > 0) {
+        anilistNotice =
+          result.conflicts === 1
+            ? `Sent ${result.pushed} changes. AniList had a newer change for 1 title, so the AniList value was kept.`
+            : `Sent ${result.pushed} changes. AniList had newer changes for ${result.conflicts} titles, so the AniList values were kept.`;
+      } else if (result.pushed > 0) {
+        anilistNotice = `Sent ${result.pushed} changes to AniList.`;
+      } else {
+        anilistNotice = "AniList is already up to date.";
+      }
+      onDataChanged?.();
+    } catch (err) {
+      anilistError = errorText(err);
+      await refreshAniListPending();
+    } finally {
+      anilistPushing = false;
     }
   }
 
@@ -390,6 +432,8 @@
     let disposed = false;
     let unlisten: (() => void) | null = null;
     let eventSeq = 0;
+
+    void refreshAniListPending();
 
     void (async () => {
       try {
@@ -730,11 +774,20 @@
                         <p class="text-sm font-semibold truncate">{anilistAuth.viewer.name}</p>
                         <p class="text-xs mt-0.5" style="color: var(--paper-400);">
                           AniList account connected
+                          <span class="chip text-[10px] px-2 py-0.5 ml-1.5">{anilistPending} pending</span>
                         </p>
                       </div>
                       <button
                         class="btn-ghost px-3 py-2 text-xs"
-                        disabled={anilistBusy || anilistSyncing}
+                        disabled={anilistPushing || anilistSyncing}
+                        onclick={pushAniListChanges}
+                      >
+                        <Icon name="arrowUpRight" size={14} />
+                        {anilistPushing ? "Sending" : "Sync now"}
+                      </button>
+                      <button
+                        class="btn-ghost px-3 py-2 text-xs"
+                        disabled={anilistBusy || anilistSyncing || anilistPushing}
                         onclick={syncAniList}
                       >
                         <Icon name="refresh" size={14} />
@@ -742,7 +795,7 @@
                       </button>
                       <button
                         class="btn-ghost px-3 py-2 text-xs"
-                        disabled={anilistBusy || anilistSyncing}
+                        disabled={anilistBusy || anilistSyncing || anilistPushing}
                         onclick={disconnectAniList}
                       >
                         <Icon name="xCircle" size={14} />
