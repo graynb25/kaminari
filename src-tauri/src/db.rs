@@ -153,6 +153,7 @@ pub struct SourceHistoryItem {
     pub show_id: String,
     pub title: String,
     pub cover: Option<String>,
+    pub episode_id: String,
     pub episode_number: i64,
     pub episode_title: Option<String>,
     pub watched: bool,
@@ -390,7 +391,18 @@ impl Db {
         let tx = conn.transaction()?;
         tx.execute("DELETE FROM history", [])?;
         tx.execute("DELETE FROM source_history", [])?;
+        tx.execute("DELETE FROM progress", [])?;
+        tx.execute("UPDATE source_progress SET position_sec = 0", [])?;
         tx.commit()?;
+        Ok(())
+    }
+
+    pub fn history_remove(&self, anilist_id: i64, episode: i64) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        conn.execute(
+            "DELETE FROM history WHERE anilist_id = ?1 AND episode = ?2",
+            params![anilist_id, episode],
+        )?;
         Ok(())
     }
 
@@ -904,7 +916,7 @@ impl Db {
         let mut statement = conn.prepare(
             "SELECT sh.extension_id, COALESCE(je.name, sh.extension_id),
                     sh.show_id, sl.title, sl.cover,
-                    sh.episode_number, sh.episode_title, sh.watched, sh.updated_at
+                    sh.episode_id, sh.episode_number, sh.episode_title, sh.watched, sh.updated_at
              FROM source_history sh
              JOIN source_library sl
                ON sl.extension_id = sh.extension_id AND sl.show_id = sh.show_id
@@ -919,13 +931,29 @@ impl Db {
                 show_id: row.get(2)?,
                 title: row.get(3)?,
                 cover: row.get(4)?,
-                episode_number: row.get(5)?,
-                episode_title: row.get(6)?,
-                watched: row.get::<_, i64>(7)? != 0,
-                updated_at: row.get(8)?,
+                episode_id: row.get(5)?,
+                episode_number: row.get(6)?,
+                episode_title: row.get(7)?,
+                watched: row.get::<_, i64>(8)? != 0,
+                updated_at: row.get(9)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn source_history_remove(
+        &self,
+        extension_id: &str,
+        show_id: &str,
+        episode_id: &str,
+    ) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        conn.execute(
+            "DELETE FROM source_history
+             WHERE extension_id = ?1 AND show_id = ?2 AND episode_id = ?3",
+            params![extension_id, show_id, episode_id],
+        )?;
+        Ok(())
     }
 
     pub fn list_sources(&self) -> AppResult<Vec<InstalledSource>> {
@@ -1480,6 +1508,7 @@ mod tests {
         assert_eq!(continue_items[0].position_sec, 120.0);
         let history = db.source_history(10).unwrap();
         assert_eq!(history.len(), 1);
+        assert_eq!(history[0].episode_id, "ep-1");
         assert!(!history[0].watched);
 
         db.source_progress_set(
@@ -1642,16 +1671,30 @@ mod tests {
         assert_eq!(library.len(), 1);
         assert_eq!(library[0].watched_count, 2);
         assert_eq!(db.watched_list(media.id).unwrap(), vec![1, 2]);
-        assert_eq!(db.continue_watching(10).unwrap()[0].episode, 2);
+        assert!(db.continue_watching(10).unwrap().is_empty());
         assert_eq!(db.pending_anilist_sync_count().unwrap(), 1);
 
         let progress = db
             .source_progress_get(&package.manifest.id, "show-1")
             .unwrap();
         assert_eq!(progress.len(), 2);
-        assert!(progress
-            .iter()
-            .any(|row| row.episode_id == "ep-2" && row.watched));
+        assert!(progress.iter().all(|row| row.position_sec == 0.0));
+        assert!(progress.iter().all(|row| row.duration_sec == 600.0));
+        assert!(
+            progress
+                .iter()
+                .find(|row| row.episode_id == "ep-2")
+                .unwrap()
+                .watched
+        );
+        assert!(
+            !progress
+                .iter()
+                .find(|row| row.episode_id == "ep-1")
+                .unwrap()
+                .watched
+        );
+        assert!(db.source_continue(10).unwrap().is_empty());
         let source_library = db.source_library_list().unwrap();
         assert_eq!(source_library.len(), 1);
         assert_eq!(source_library[0].watched_count, 1);
@@ -1662,6 +1705,77 @@ mod tests {
             apply_migrations(&conn).unwrap();
         }
         assert!(db.source_history(10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn single_history_entries_can_be_removed() {
+        let db = Db::new(":memory:").unwrap();
+        let media = sample_media();
+        db.add_to_library(&media, "watching").unwrap();
+        db.set_watched(&media, 1, true).unwrap();
+        db.set_watched(&media, 2, true).unwrap();
+
+        let package = crate::ext_host::sample_package().unwrap();
+        db.install_js_extension(&package.manifest, &package.code, "builtin")
+            .unwrap();
+        db.source_library_add(
+            &package.manifest.id,
+            "show-1",
+            "Popeye",
+            None,
+            Some(1933),
+            None,
+        )
+        .unwrap();
+        db.source_progress_set(
+            &package.manifest.id,
+            "show-1",
+            "ep-1",
+            1,
+            Some("Episode 1"),
+            120.0,
+            600.0,
+            false,
+        )
+        .unwrap();
+        db.source_progress_set(
+            &package.manifest.id,
+            "show-1",
+            "ep-2",
+            2,
+            Some("Episode 2"),
+            30.0,
+            600.0,
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(db.history_list(10).unwrap().len(), 2);
+        db.history_remove(media.id, 1).unwrap();
+        let history = db.history_list(10).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].episode, 2);
+        assert_eq!(db.watched_list(media.id).unwrap(), vec![1, 2]);
+        assert_eq!(db.continue_watching(10).unwrap().len(), 1);
+
+        let source_history = db.source_history(10).unwrap();
+        assert_eq!(source_history.len(), 2);
+        let target = source_history
+            .iter()
+            .find(|row| row.episode_id == "ep-1")
+            .unwrap();
+        db.source_history_remove(&target.extension_id, &target.show_id, &target.episode_id)
+            .unwrap();
+        let remaining = db.source_history(10).unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].episode_id, "ep-2");
+        assert_eq!(
+            db.source_progress_get(&package.manifest.id, "show-1")
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(db.source_continue(10).unwrap().len(), 1);
     }
 
     #[test]

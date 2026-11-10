@@ -97,6 +97,10 @@ export function historyClear(): Promise<void> {
   return invoke<void>("history_clear");
 }
 
+export function historyRemove(anilistId: number, episode: number): Promise<void> {
+  return invoke<void>("history_remove", { anilistId, episode });
+}
+
 export function registryFetch(url: string): Promise<LegacyExtension[]> {
   return invoke<LegacyExtension[]>("registry_fetch", { url });
 }
@@ -309,4 +313,12 @@ export function sourceContinue(limit = 20): Promise<SourceContinueItem[]> {
 
 export function sourceHistory(limit = 100): Promise<SourceHistoryItem[]> {
   return invoke<SourceHistoryItem[]>("source_history", { limit });
+}
+
+export function sourceHistoryRemove(
+  extensionId: string,
+  showId: string,
+  episodeId: string,
+): Promise<void> {
+  return invoke<void>("source_history_remove", { extensionId, showId, episodeId });
 }
