@@ -29,7 +29,7 @@ pub const ABSOLUTE_TTL: Duration = Duration::from_secs(4 * 60 * 60);
 pub const MAX_ENTRIES: usize = 64;
 pub const MAX_HEADERS: usize = 16;
 pub const MAX_HEADER_BYTES: usize = 8 * 1024;
-pub const MAX_CHILDREN: usize = 256;
+pub const MAX_CHILDREN: usize = 4096;
 pub const MAX_PLAYLIST_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_PLAYLIST_DEPTH: u8 = 4;
 pub const MAX_KEY_BYTES: usize = 64 * 1024;
@@ -41,7 +41,7 @@ pub const STREAM_CHUNK_BYTES: usize = 64 * 1024;
 pub const SWEEP_SECS: u64 = 60;
 
 const MAX_REDIRECTS: usize = 3;
-const MAX_PLAYLIST_LINES: usize = 2000;
+const MAX_PLAYLIST_LINES: usize = 20_000;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const FIRST_BYTE_TIMEOUT: Duration = Duration::from_secs(15);
 const PLAYLIST_TIMEOUT: Duration = Duration::from_secs(15);
@@ -4311,6 +4311,43 @@ live/seg{}.ts\n",
                 .unwrap(),
             "*"
         );
+    }
+
+    #[tokio::test]
+    async fn long_vod_playlist_keeps_its_first_segments() {
+        let store = ProxyStore::for_tests(39321);
+        let registered = store
+            .register_fixture_with_kind(
+                "app.kaminari.test",
+                "http://127.0.0.1:9/media.m3u8",
+                "hls",
+                None,
+            )
+            .await
+            .unwrap();
+
+        // A 23 minute episode at roughly five seconds per segment is about
+        // 283 children. The old 256 child cap evicted the first segments and
+        // hls.js stopped at the first missing child.
+        let specs = (0..283)
+            .map(|index| ChildSpec {
+                upstream_url: format!("http://127.0.0.1:9/seg/{index}.ts"),
+                content_type: None,
+                byte_range: None,
+                kind: ChildKind::Segment,
+                depth: 1,
+            })
+            .collect::<Vec<_>>();
+        let ids = store
+            .reconcile_children(&registered.opaque_id, &specs)
+            .unwrap();
+        assert_eq!(ids.len(), 283);
+        let state = store.inner.lock().unwrap();
+        let children = &state.entries.get(&registered.opaque_id).unwrap().children;
+        assert_eq!(children.len(), 283);
+        for id in &ids {
+            assert!(children.contains_key(id), "missing early child {id}");
+        }
     }
 
     #[tokio::test]
