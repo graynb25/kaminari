@@ -4,6 +4,11 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.26.8 - 2026-11-10
+
+- Installer: set the Kaminari icon on the NSIS setup and uninstaller executables instead of the default NSIS icon
+- Version: bump to 0.26.8
+
 ## 0.26.7 - 2026-11-10
 
 - Player: add a gear menu with stream quality options for the current episode. Switching keeps the current position
