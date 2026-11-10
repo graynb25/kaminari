@@ -495,6 +495,11 @@ pub fn history_clear(state: State<'_, Db>) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn history_remove(state: State<'_, Db>, anilist_id: i64, episode: i64) -> Result<(), String> {
+    state.history_remove(anilist_id, episode).map_err(ipc_error)
+}
+
+#[tauri::command]
 pub fn source_validate_id(id: String) -> bool {
     ext_host::validate_source_id(&id)
 }
@@ -907,6 +912,18 @@ pub fn source_history(
 ) -> Result<Vec<SourceHistoryItem>, String> {
     state
         .source_history(limit.unwrap_or(100))
+        .map_err(ipc_error)
+}
+
+#[tauri::command]
+pub fn source_history_remove(
+    state: State<'_, Db>,
+    extension_id: String,
+    show_id: String,
+    episode_id: String,
+) -> Result<(), String> {
+    state
+        .source_history_remove(&extension_id, &show_id, &episode_id)
         .map_err(ipc_error)
 }
 

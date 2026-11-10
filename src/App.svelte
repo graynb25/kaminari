@@ -35,12 +35,14 @@
     detail as fetchDetail,
     historyClear,
     historyList,
+    historyRemove,
     listLibrary,
     removeFromLibrary,
     setLibraryStatus,
     sourceLibraryList,
     sourceContinue,
     sourceHistory,
+    sourceHistoryRemove,
     shelf,
     watchedList,
     watchedMarkAll,
@@ -216,10 +218,45 @@
   async function clearHistory() {
     try {
       await historyClear();
-      await Promise.all([refreshHistory(), refreshSourceHistory()]);
-      notify("History cleared. Library, progress and AniList stay.", "success");
+      await Promise.all([
+        refreshHistory(),
+        refreshSourceHistory(),
+        refreshContinue(),
+        refreshSourceContinue(),
+        refreshSourceLibrary(),
+      ]);
+      notify("History and Continue Watching cleared. Library and watched marks stay.", "success");
     } catch (e) {
       notify(`History could not be cleared: ${errorText(e)}`, "error");
+    }
+  }
+
+  async function removeHistoryEntry(item: HistoryItem) {
+    try {
+      await historyRemove(item.media.id, item.episode);
+      historyItems = historyItems.filter(
+        (entry) => !(entry.media.id === item.media.id && entry.episode === item.episode),
+      );
+      notify(`Removed ${displayTitle(item.media)} episode ${item.episode} from history.`, "success");
+    } catch (e) {
+      notify(`History entry could not be removed: ${errorText(e)}`, "error");
+    }
+  }
+
+  async function removeSourceHistoryEntry(item: SourceHistoryItem) {
+    try {
+      await sourceHistoryRemove(item.extensionId, item.showId, item.episodeId);
+      sourceHistoryItems = sourceHistoryItems.filter(
+        (entry) =>
+          !(
+            entry.extensionId === item.extensionId &&
+            entry.showId === item.showId &&
+            entry.episodeId === item.episodeId
+          ),
+      );
+      notify(`Removed ${item.title} episode ${item.episodeNumber} from history.`, "success");
+    } catch (e) {
+      notify(`History entry could not be removed: ${errorText(e)}`, "error");
     }
   }
 
@@ -853,6 +890,8 @@
               onOpenSource={openSourceShow}
               onBrowse={() => goView("browse")}
               onClearHistory={clearHistory}
+              onDeleteHistory={removeHistoryEntry}
+              onDeleteSourceHistory={removeSourceHistoryEntry}
             />
           {:else if view === "sources"}
             <SourcesView boot={boot} notify={notify} onBrowse={openExtension} />

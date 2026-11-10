@@ -320,6 +320,7 @@ export type SourceHistoryItem = {
   showId: string;
   title: string;
   cover?: string | null;
+  episodeId: string;
   episodeNumber: number;
   episodeTitle?: string | null;
   watched: boolean;
