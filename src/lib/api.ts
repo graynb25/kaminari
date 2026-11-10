@@ -93,6 +93,10 @@ export function historyList(limit = 100): Promise<HistoryItem[]> {
   return invoke<HistoryItem[]>("history_list", { limit });
 }
 
+export function historyClear(): Promise<void> {
+  return invoke<void>("history_clear");
+}
+
 export function registryFetch(url: string): Promise<LegacyExtension[]> {
   return invoke<LegacyExtension[]>("registry_fetch", { url });
 }

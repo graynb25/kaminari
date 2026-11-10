@@ -385,6 +385,15 @@ impl Db {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    pub fn history_clear(&self) -> AppResult<()> {
+        let mut conn = self.conn.lock().map_err(|_| db_locked())?;
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM history", [])?;
+        tx.execute("DELETE FROM source_history", [])?;
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn watched_list(&self, anilist_id: i64) -> AppResult<Vec<i64>> {
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         read_watched(&conn, anilist_id)
@@ -675,6 +684,10 @@ impl Db {
             "DELETE FROM source_progress WHERE extension_id = ?1 AND show_id = ?2",
             params![extension_id, show_id],
         )?;
+        conn.execute(
+            "DELETE FROM source_history WHERE extension_id = ?1 AND show_id = ?2",
+            params![extension_id, show_id],
+        )?;
         Ok(())
     }
 
@@ -741,6 +754,25 @@ impl Db {
             ],
         )?;
         conn.execute(
+            "INSERT INTO source_history(
+                extension_id, show_id, episode_id, episode_number, episode_title,
+                watched, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, unixepoch())
+             ON CONFLICT(extension_id, show_id, episode_id) DO UPDATE SET
+                episode_number = excluded.episode_number,
+                episode_title = excluded.episode_title,
+                watched = excluded.watched,
+                updated_at = unixepoch()",
+            params![
+                extension_id,
+                show_id,
+                episode_id,
+                episode_number,
+                episode_title,
+                i64::from(watched),
+            ],
+        )?;
+        conn.execute(
             "UPDATE source_library SET updated_at = unixepoch()
              WHERE extension_id = ?1 AND show_id = ?2",
             params![extension_id, show_id],
@@ -774,6 +806,17 @@ impl Db {
                     watched = 1,
                     updated_at = unixepoch()",
             )?;
+            let mut history_statement = tx.prepare(
+                "INSERT INTO source_history(
+                    extension_id, show_id, episode_id, episode_number, episode_title,
+                    watched, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, 1, unixepoch())
+                 ON CONFLICT(extension_id, show_id, episode_id) DO UPDATE SET
+                    episode_number = excluded.episode_number,
+                    episode_title = excluded.episode_title,
+                    watched = 1,
+                    updated_at = unixepoch()",
+            )?;
             for episode in episodes {
                 let duration = episode.duration_sec.max(0.0);
                 statement.execute(params![
@@ -785,14 +828,26 @@ impl Db {
                     duration,
                     duration,
                 ])?;
+                history_statement.execute(params![
+                    extension_id,
+                    show_id,
+                    episode.episode_id,
+                    episode.episode_number,
+                    episode.episode_title.as_deref(),
+                ])?;
             }
         } else {
             let mut statement = tx.prepare(
                 "DELETE FROM source_progress
                  WHERE extension_id = ?1 AND show_id = ?2 AND episode_id = ?3",
             )?;
+            let mut history_statement = tx.prepare(
+                "DELETE FROM source_history
+                 WHERE extension_id = ?1 AND show_id = ?2 AND episode_id = ?3",
+            )?;
             for episode in episodes {
                 statement.execute(params![extension_id, show_id, episode.episode_id])?;
+                history_statement.execute(params![extension_id, show_id, episode.episode_id])?;
             }
         }
         tx.execute(
@@ -847,14 +902,14 @@ impl Db {
     pub fn source_history(&self, limit: usize) -> AppResult<Vec<SourceHistoryItem>> {
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         let mut statement = conn.prepare(
-            "SELECT sp.extension_id, COALESCE(je.name, sp.extension_id),
-                    sp.show_id, sl.title, sl.cover,
-                    sp.episode_number, sp.episode_title, sp.watched, sp.updated_at
-             FROM source_progress sp
+            "SELECT sh.extension_id, COALESCE(je.name, sh.extension_id),
+                    sh.show_id, sl.title, sl.cover,
+                    sh.episode_number, sh.episode_title, sh.watched, sh.updated_at
+             FROM source_history sh
              JOIN source_library sl
-               ON sl.extension_id = sp.extension_id AND sl.show_id = sp.show_id
-             LEFT JOIN js_extensions je ON je.id = sp.extension_id
-             ORDER BY sp.updated_at DESC
+               ON sl.extension_id = sh.extension_id AND sl.show_id = sh.show_id
+             LEFT JOIN js_extensions je ON je.id = sh.extension_id
+             ORDER BY sh.updated_at DESC
              LIMIT ?1",
         )?;
         let rows = statement.query_map([limit as i64], |row| {
@@ -1033,6 +1088,7 @@ fn apply_migrations(conn: &Connection) -> AppResult<()> {
     conn.execute_batch(include_str!("../migrations/0003_js_extensions.sql"))?;
     conn.execute_batch(include_str!("../migrations/0004_source_library.sql"))?;
     conn.execute_batch(include_str!("../migrations/0005_anilist_sync.sql"))?;
+    conn.execute_batch(include_str!("../migrations/0006_source_history.sql"))?;
     Ok(())
 }
 
@@ -1468,6 +1524,7 @@ mod tests {
             .source_progress_get(&package.manifest.id, "show-1")
             .unwrap()
             .is_empty());
+        assert!(db.source_history(10).unwrap().is_empty());
     }
 
     #[test]
@@ -1518,6 +1575,7 @@ mod tests {
         assert_eq!(progress[2].position_sec, 720.0);
         assert_eq!(db.source_library_list().unwrap()[0].watched_count, 3);
         assert!(db.source_continue(10).unwrap().is_empty());
+        assert_eq!(db.source_history(10).unwrap().len(), 3);
 
         db.source_progress_mark_all(&package.manifest.id, "show-1", &marks, false)
             .unwrap();
@@ -1526,6 +1584,144 @@ mod tests {
             .unwrap()
             .is_empty());
         assert_eq!(db.source_library_list().unwrap()[0].watched_count, 0);
+        assert!(db.source_history(10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn history_clear_removes_activity_and_keeps_progress() {
+        let db = Db::new(":memory:").unwrap();
+        let media = sample_media();
+        db.add_to_library(&media, "watching").unwrap();
+        db.set_watched(&media, 1, true).unwrap();
+        db.set_watched(&media, 2, true).unwrap();
+
+        let package = crate::ext_host::sample_package().unwrap();
+        db.install_js_extension(&package.manifest, &package.code, "builtin")
+            .unwrap();
+        db.source_library_add(
+            &package.manifest.id,
+            "show-1",
+            "Popeye",
+            None,
+            Some(1933),
+            None,
+        )
+        .unwrap();
+        db.source_progress_set(
+            &package.manifest.id,
+            "show-1",
+            "ep-1",
+            1,
+            Some("Episode 1"),
+            120.0,
+            600.0,
+            false,
+        )
+        .unwrap();
+        db.source_progress_set(
+            &package.manifest.id,
+            "show-1",
+            "ep-2",
+            2,
+            Some("Episode 2"),
+            600.0,
+            600.0,
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(db.history_list(10).unwrap().len(), 2);
+        assert_eq!(db.source_history(10).unwrap().len(), 2);
+
+        db.history_clear().unwrap();
+
+        assert!(db.history_list(10).unwrap().is_empty());
+        assert!(db.source_history(10).unwrap().is_empty());
+
+        let library = db.list_library().unwrap();
+        assert_eq!(library.len(), 1);
+        assert_eq!(library[0].watched_count, 2);
+        assert_eq!(db.watched_list(media.id).unwrap(), vec![1, 2]);
+        assert_eq!(db.continue_watching(10).unwrap()[0].episode, 2);
+        assert_eq!(db.pending_anilist_sync_count().unwrap(), 1);
+
+        let progress = db
+            .source_progress_get(&package.manifest.id, "show-1")
+            .unwrap();
+        assert_eq!(progress.len(), 2);
+        assert!(progress
+            .iter()
+            .any(|row| row.episode_id == "ep-2" && row.watched));
+        let source_library = db.source_library_list().unwrap();
+        assert_eq!(source_library.len(), 1);
+        assert_eq!(source_library[0].watched_count, 1);
+
+        // A later startup replays migrations; cleared activity must stay gone.
+        {
+            let conn = db.conn.lock().unwrap();
+            apply_migrations(&conn).unwrap();
+        }
+        assert!(db.source_history(10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn source_history_backfill_runs_once() {
+        let db = Db::new(":memory:").unwrap();
+        let package = crate::ext_host::sample_package().unwrap();
+        db.install_js_extension(&package.manifest, &package.code, "builtin")
+            .unwrap();
+        db.source_library_add(
+            &package.manifest.id,
+            "show-1",
+            "Popeye",
+            None,
+            Some(1933),
+            None,
+        )
+        .unwrap();
+
+        // Simulate a database created before 0006: progress exists but the
+        // activity list and its guard do not.
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "DELETE FROM app_meta WHERE key = 'source_history_backfilled'",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO source_progress(
+                    extension_id, show_id, episode_id, episode_number, episode_title,
+                    position_sec, duration_sec, watched, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, unixepoch())",
+                params![
+                    &package.manifest.id,
+                    "show-1",
+                    "ep-1",
+                    1,
+                    "Episode 1",
+                    90.0,
+                    600.0,
+                    0,
+                ],
+            )
+            .unwrap();
+            apply_migrations(&conn).unwrap();
+        }
+
+        let history = db.source_history(10).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].episode_number, 1);
+        assert!(!history[0].watched);
+
+        db.history_clear().unwrap();
+        assert!(db.source_history(10).unwrap().is_empty());
+
+        {
+            let conn = db.conn.lock().unwrap();
+            apply_migrations(&conn).unwrap();
+        }
+        assert!(db.source_history(10).unwrap().is_empty());
     }
 
     #[test]
