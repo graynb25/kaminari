@@ -16,6 +16,12 @@
       ? Math.min(100, (item.positionSec / item.durationSec) * 100)
       : 0,
   );
+  const action = $derived(item.watched ? "Rewatch" : "Resume");
+  const timing = $derived(
+    item.watched && item.durationSec <= 0
+      ? "Finished"
+      : `${formatTime(item.positionSec)} / ${formatTime(item.durationSec)}`,
+  );
 
   function formatTime(value: number): string {
     if (!Number.isFinite(value) || value <= 0) return "0:00";
@@ -27,7 +33,7 @@
 
 <button
   class="library-source-card group block w-full text-left"
-  aria-label="Resume {item.title}, episode {item.episodeNumber}"
+  aria-label="{action} {item.title}, episode {item.episodeNumber}"
   onclick={() => onOpen(item)}
 >
   <div class="library-source-art">
@@ -50,7 +56,7 @@
     <span
       class="absolute top-2.5 right-2.5 inline-flex items-center h-6 px-2 rounded-full text-[9px] font-semibold tracking-wider on-art is-muted"
     >
-      RESUME
+      {action.toUpperCase()}
     </span>
 
     <span
@@ -63,7 +69,7 @@
     <div class="absolute left-3 right-14 bottom-3">
       <p class="text-sm font-semibold leading-snug line-clamp-1">{item.title}</p>
       <p class="text-[10px] mt-0.5 truncate" style="color: var(--paper-300); font-family: var(--font-mono);">
-        {item.extensionName} · {formatTime(item.positionSec)} / {formatTime(item.durationSec)}
+        {item.extensionName} · {timing}
       </p>
     </div>
 

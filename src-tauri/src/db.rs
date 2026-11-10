@@ -142,6 +142,7 @@ pub struct SourceContinueItem {
     pub episode_title: Option<String>,
     pub position_sec: f64,
     pub duration_sec: f64,
+    pub watched: bool,
     pub updated_at: i64,
 }
 
@@ -392,7 +393,10 @@ impl Db {
         tx.execute("DELETE FROM history", [])?;
         tx.execute("DELETE FROM source_history", [])?;
         tx.execute("DELETE FROM progress", [])?;
-        tx.execute("UPDATE source_progress SET position_sec = 0", [])?;
+        tx.execute(
+            "UPDATE source_progress SET position_sec = 0, continue_visible = 0",
+            [],
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -481,7 +485,7 @@ impl Db {
              FROM progress p
              JOIN media m ON m.anilist_id = p.anilist_id
              JOIN library l ON l.anilist_id = p.anilist_id
-             WHERE l.status = 'watching'
+             WHERE l.status IN ('watching', 'completed')
              ORDER BY p.updated_at DESC
              LIMIT ?1",
         )?;
@@ -745,15 +749,16 @@ impl Db {
         conn.execute(
             "INSERT INTO source_progress(
                 extension_id, show_id, episode_id, episode_number, episode_title,
-                position_sec, duration_sec, watched, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, unixepoch())
+                position_sec, duration_sec, watched, updated_at, continue_visible
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, unixepoch(), 1)
              ON CONFLICT(extension_id, show_id, episode_id) DO UPDATE SET
                 episode_number = excluded.episode_number,
                 episode_title = excluded.episode_title,
                 position_sec = excluded.position_sec,
                 duration_sec = excluded.duration_sec,
                 watched = excluded.watched,
-                updated_at = unixepoch()",
+                updated_at = unixepoch(),
+                continue_visible = 1",
             params![
                 extension_id,
                 show_id,
@@ -808,15 +813,16 @@ impl Db {
             let mut statement = tx.prepare(
                 "INSERT INTO source_progress(
                     extension_id, show_id, episode_id, episode_number, episode_title,
-                    position_sec, duration_sec, watched, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, unixepoch())
+                    position_sec, duration_sec, watched, updated_at, continue_visible
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, unixepoch(), 1)
                  ON CONFLICT(extension_id, show_id, episode_id) DO UPDATE SET
                     episode_number = excluded.episode_number,
                     episode_title = excluded.episode_title,
                     position_sec = excluded.position_sec,
                     duration_sec = excluded.duration_sec,
                     watched = 1,
-                    updated_at = unixepoch()",
+                    updated_at = unixepoch(),
+                    continue_visible = 1",
             )?;
             let mut history_statement = tx.prepare(
                 "INSERT INTO source_history(
@@ -877,14 +883,15 @@ impl Db {
             "SELECT sp.extension_id, COALESCE(je.name, sp.extension_id),
                     sp.show_id, sl.title, sl.cover,
                     sp.episode_id, sp.episode_number, sp.episode_title,
-                    sp.position_sec, sp.duration_sec, sp.updated_at
+                    sp.position_sec, sp.duration_sec, sp.watched, sp.updated_at
              FROM (
                SELECT latest.*, ROW_NUMBER() OVER (
                  PARTITION BY latest.extension_id, latest.show_id
-                 ORDER BY latest.updated_at DESC, latest.episode_number DESC
+                 ORDER BY latest.watched ASC, latest.updated_at DESC, latest.episode_number DESC
                ) AS rank
                FROM source_progress latest
-               WHERE latest.watched = 0 AND latest.position_sec > 0
+               WHERE latest.continue_visible = 1
+                 AND (latest.position_sec > 0 OR latest.watched = 1)
              ) sp
              JOIN source_library sl
                ON sl.extension_id = sp.extension_id AND sl.show_id = sp.show_id
@@ -905,7 +912,8 @@ impl Db {
                 episode_title: row.get(7)?,
                 position_sec: row.get(8)?,
                 duration_sec: row.get(9)?,
-                updated_at: row.get(10)?,
+                watched: row.get::<_, i64>(10)? != 0,
+                updated_at: row.get(11)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -1117,7 +1125,33 @@ fn apply_migrations(conn: &Connection) -> AppResult<()> {
     conn.execute_batch(include_str!("../migrations/0004_source_library.sql"))?;
     conn.execute_batch(include_str!("../migrations/0005_anilist_sync.sql"))?;
     conn.execute_batch(include_str!("../migrations/0006_source_history.sql"))?;
+    if !has_column(conn, "source_progress", "continue_visible")? {
+        conn.execute(
+            "ALTER TABLE source_progress
+             ADD COLUMN continue_visible INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+        // Preserve the pre-upgrade Continue shelf: only rows that were actively
+        // in progress were visible before this column existed.
+        conn.execute(
+            "UPDATE source_progress SET continue_visible = 1
+             WHERE watched = 0 AND position_sec > 0",
+            [],
+        )?;
+    }
     Ok(())
+}
+
+fn has_column(conn: &Connection, table: &str, column: &str) -> AppResult<bool> {
+    let mut statement = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let mut rows = statement.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?;
+        if name == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn replace_file(temp: &std::path::Path, target: &std::path::Path) -> std::io::Result<()> {
@@ -1603,7 +1637,10 @@ mod tests {
         assert_eq!(progress[0].position_sec, 600.0);
         assert_eq!(progress[2].position_sec, 720.0);
         assert_eq!(db.source_library_list().unwrap()[0].watched_count, 3);
-        assert!(db.source_continue(10).unwrap().is_empty());
+        let continue_items = db.source_continue(10).unwrap();
+        assert_eq!(continue_items.len(), 1);
+        assert_eq!(continue_items[0].episode_number, 3);
+        assert!(continue_items[0].watched);
         assert_eq!(db.source_history(10).unwrap().len(), 3);
 
         db.source_progress_mark_all(&package.manifest.id, "show-1", &marks, false)
@@ -1614,6 +1651,16 @@ mod tests {
             .is_empty());
         assert_eq!(db.source_library_list().unwrap()[0].watched_count, 0);
         assert!(db.source_history(10).unwrap().is_empty());
+        assert!(db.source_continue(10).unwrap().is_empty());
+
+        // Re-marking after a clear must bring the show back to Continue as a
+        // rewatch row, even when the source did not provide durations.
+        db.source_progress_mark_all(&package.manifest.id, "show-1", &marks, true)
+            .unwrap();
+        let continue_items = db.source_continue(10).unwrap();
+        assert_eq!(continue_items.len(), 1);
+        assert!(continue_items[0].watched);
+        assert_eq!(continue_items[0].episode_number, 3);
     }
 
     #[test]
@@ -1865,6 +1912,7 @@ mod tests {
 
         db.set_library_status(15125, "completed").unwrap();
         assert_eq!(db.list_library().unwrap()[0].status, "completed");
+        assert_eq!(db.continue_watching(10).unwrap().len(), 1);
         assert!(db.set_library_status(15125, "bogus").is_err());
         db.set_library_status(15125, "watching").unwrap();
 
