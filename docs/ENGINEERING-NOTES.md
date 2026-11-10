@@ -128,6 +128,14 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-10 Dependency security pass
+
+Context. Dependabot was opening three kinds of jobs: the zip 9.5.0 pull request failed to compile, Vitest could not reach a fixed `@vitest/mocker`, and glib could not reach 0.20 from the current GTK stack.
+
+What we shipped. `zip` moved from 2.6.1 to 9.5.0. Its `ZipFile::name()` now returns a result, so `package_from_kext` maps that error and owns the name before reading the entry. Vite moved from 6.4.5 to 6.4.6 and Vitest from 2.1.9 to 5.1.0, which removes the separate vulnerable Vite 5.4.21 copy under Vitest. 118 Rust and 93 frontend tests, clippy, fmt, build and the style check pass on the new set. The `.kext` round-trip test still builds and reads a package.
+
+What remains. glib 0.18.5 is a Linux-only transitive GTK dependency; the Windows build does not compile it. The alert is dismissed as not used for this Windows app. deepmerge 4.3.1 has a low-severity prototype poisoning report and no patched release; it is a build-time Svelte plugin dependency, so the alert is dismissed as tolerable risk. The zip, Vite, Vitest, mocker and tinypool alerts close when the dependency graph refreshes.
+
 ## 2026-11-10 Source watched marks without playback
 
 Context. Source progress was only written by the player after roughly 90 percent of an episode, or when it ended. The AniList detail page already had Mark all, but that table is separate from source progress. A user who had already watched a show had to replay every episode for the source library and the player to count it.

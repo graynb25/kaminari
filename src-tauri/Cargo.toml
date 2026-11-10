@@ -1,6 +1,6 @@
 [package]
 name = "kaminari"
-version = "0.26.5"
+version = "0.26.6"
 description = "Desktop anime app for PC. Tauri 2 plus Rust plus Svelte."
 edition = "2021"
 
@@ -32,7 +32,7 @@ rquickjs = "0.8"
 scraper = "0.20"
 sha2 = "0.10"
 hex = "0.4"
-zip = "2"
+zip = "9"
 thiserror = "2"
 anyhow = "1"
 url = "2"

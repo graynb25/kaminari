@@ -56,7 +56,11 @@ pub fn package_from_kext(bytes: &[u8]) -> AppResult<ExtPackage> {
         let mut entry = archive
             .by_index(index)
             .map_err(|err| AppError::Extension(format!("invalid zip entry: {err}")))?;
-        match entry.name() {
+        let name = entry
+            .name()
+            .map_err(|err| AppError::Extension(format!("invalid zip entry name: {err}")))?
+            .into_owned();
+        match name.as_str() {
             "manifest.json" => {
                 if entry.size() > 64 * 1024 {
                     return Err(AppError::Extension(
