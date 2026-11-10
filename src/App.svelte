@@ -1,6 +1,7 @@
 ﻿<script lang="ts">
   import { onMount } from "svelte";
   import { dismissOnboarding, shouldShowOnboarding } from "./lib/onboarding";
+  import { incognitoEnabled, setIncognitoEnabled } from "./lib/incognito";
   import Callout from "./lib/Callout.svelte";
   import ContinueCard from "./lib/ContinueCard.svelte";
   import DetailPage from "./lib/DetailPage.svelte";
@@ -105,6 +106,7 @@
   let sourceHistoryItems = $state<SourceHistoryItem[]>([]);
   let sourceBrowser = $state<SourceBrowserState | null>(null);
   let onboardingOpen = $state(false);
+  let incognito = $state(false);
   let paletteOpen = $state(false);
   let shortcutsOpen = $state(false);
   let licensesOpen = $state(false);
@@ -377,6 +379,10 @@
 
   async function toggleWatched(episode: number) {
     if (!detail) return;
+    if (incognito) {
+      notify("Incognito mode is on. Turn it off in Settings to save progress.", "info");
+      return;
+    }
     const seen = watchedDetail.includes(episode);
     const previous = watchedDetail;
     // Optimistic first, then roll back if SQLite refuses the write.
@@ -398,6 +404,10 @@
 
   async function markAllWatched(seen: boolean) {
     if (!detail) return;
+    if (incognito) {
+      notify("Incognito mode is on. Turn it off in Settings to save progress.", "info");
+      return;
+    }
     const through = detail.episodes ?? 0;
     if (through <= 0) return;
     try {
@@ -451,6 +461,17 @@
     goView("browse");
   }
 
+  function toggleIncognito(enabled: boolean) {
+    incognito = enabled;
+    setIncognitoEnabled(enabled);
+    notify(
+      enabled
+        ? "Incognito mode on. Playback will not be saved."
+        : "Incognito mode off. Playback will be saved again.",
+      "info",
+    );
+  }
+
   function errorText(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
   }
@@ -468,6 +489,7 @@
     void (async () => {
       await loadBoot();
       onboardingOpen = shouldShowOnboarding();
+      incognito = incognitoEnabled();
       await refreshLibrary();
       await refreshContinue();
       await refreshHistory();
@@ -837,6 +859,8 @@
           {:else}
             <SettingsView
               boot={boot}
+              incognito={incognito}
+              onToggleIncognito={toggleIncognito}
               onOpenShortcuts={() => (shortcutsOpen = true)}
               onOpenLicenses={() => (licensesOpen = true)}
               onOpenOnboarding={() => (onboardingOpen = true)}
@@ -916,6 +940,7 @@
     initialEpisodeId={sourceBrowser.resumeEpisodeId}
     anilistMedia={sourceBrowser.anilistMedia}
     sourceLibrary={sourceLibraryItems}
+    incognito={incognito}
     onLibraryChanged={() =>
       void Promise.all([
         refreshSourceActivity(),

@@ -4,6 +4,7 @@ import {
   readQualityPreference,
   saveQualityPreference,
   streamHeight,
+  streamLabel,
   type QualityPreference,
 } from "./quality";
 
@@ -31,6 +32,12 @@ describe("quality preference", () => {
     expect(streamHeight(stream("1080p"))).toBe(1080);
     expect(streamHeight(stream("4K HDR"))).toBe(2160);
     expect(streamHeight(stream("HD-1 [Sub]"))).toBeNull();
+  });
+
+  it("labels player quality options", () => {
+    expect(streamLabel(stream("720p"))).toBe("720p · HLS");
+    expect(streamLabel(stream(""))).toBe("HLS");
+    expect(streamLabel({ quality: null, type: "mp4" })).toBe("MP4");
   });
 
   it("keeps source order for auto", () => {
