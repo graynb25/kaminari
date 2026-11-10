@@ -4,6 +4,11 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.26.9 - 2026-11-10
+
+- Continue Watching: merge AniList and source rows through a normalized title matcher so the same show is listed once; the source row wins for resume and rewatch
+- Version: bump to 0.26.9
+
 ## 0.26.8 - 2026-11-10
 
 - Installer: set the Kaminari icon on the NSIS setup and uninstaller executables instead of the default NSIS icon
