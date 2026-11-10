@@ -42,9 +42,9 @@
     pickStream,
     readQualityPreference,
     saveQualityPreference,
-    QUALITY_OPTIONS,
     type QualityPreference,
   } from "./quality";
+  import QualitySelect from "./QualitySelect.svelte";
   import { autoplayEnabled } from "./autoplay";
   import { anilistProgressThrough, sourceProgressMarks } from "./sourceProgress";
   import { isHlsStream, proxyFlagEnabled, shouldProxy } from "./streamProxy";
@@ -773,8 +773,8 @@
     if (picked) await playStream(picked, episode);
   }
 
-  function chooseQuality(value: string) {
-    qualityPreference = value as QualityPreference;
+  function chooseQuality(value: QualityPreference) {
+    qualityPreference = value;
     saveQualityPreference(qualityPreference);
   }
 
@@ -918,20 +918,15 @@
             <Icon name={inSourceLibrary ? "check" : "plus"} size={14} />
             {inSourceLibrary ? "In Library" : "Library"}
           </button>
-          <label class="ml-auto flex items-center gap-2 text-[11px]" style="color: var(--paper-450);">
-            Quality
-            <select
-              class="h-8 rounded-lg px-2 text-xs outline-none"
-              style="background: var(--input-bg); border: 1px solid var(--line); color: var(--text-1);"
+          <div class="ml-auto flex items-center gap-2 text-[11px]" style="color: var(--paper-450);">
+            <span>Quality</span>
+            <QualitySelect
               value={qualityPreference}
-              onchange={(event) => chooseQuality((event.currentTarget as HTMLSelectElement).value)}
-              aria-label="Preferred playback quality"
-            >
-              {#each QUALITY_OPTIONS as option}
-                <option value={option.value}>{option.label}</option>
-              {/each}
-            </select>
-          </label>
+              onChange={chooseQuality}
+              label="Preferred playback quality"
+              compact
+            />
+          </div>
         </div>
 
         <div class="relative overflow-hidden rounded-3xl" style="border: 1px solid var(--line-strong); box-shadow: var(--shadow-pop);">
