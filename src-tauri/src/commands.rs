@@ -251,10 +251,34 @@ async fn failed_callback_status(client: &AniListClient, message: String) -> AniL
 }
 
 pub async fn handle_anilist_deep_link(app: AppHandle, url: url::Url) {
-    let Ok(token) = crate::anilist::parse_auth_callback(&url) else {
+    if !crate::anilist::is_auth_callback(&url) {
+        return;
+    }
+    let Ok(callback) = crate::anilist::parse_auth_callback(&url) else {
+        app.state::<crate::anilist::AniListAuthState>().clear();
+        reject_anilist_callback(&app, "The AniList sign in response was invalid. Try again.").await;
         return;
     };
-    complete_anilist_auth(&app, token).await;
+    let checked = app
+        .state::<crate::anilist::AniListAuthState>()
+        .consume(&callback.state);
+    if let Err(err) = checked {
+        let message = match err {
+            crate::anilist::AuthStateError::Expired => "The AniList sign in expired. Try again.",
+            crate::anilist::AuthStateError::Missing | crate::anilist::AuthStateError::Mismatch => {
+                "The AniList sign in did not match this app. Try again."
+            }
+        };
+        reject_anilist_callback(&app, message).await;
+        return;
+    }
+    complete_anilist_auth(&app, callback.token).await;
+}
+
+async fn reject_anilist_callback(app: &AppHandle, message: &str) {
+    let client = app.state::<AniListClient>();
+    let status = failed_callback_status(client.inner(), message.to_string()).await;
+    let _ = app.emit("anilist-auth-changed", &status);
 }
 
 fn ipc_error(error: AppError) -> String {
@@ -319,11 +343,16 @@ pub async fn anilist_detail(state: State<'_, AniListClient>, id: i64) -> Result<
 pub fn anilist_auth_start(app: AppHandle) -> Result<String, String> {
     use tauri_plugin_opener::OpenerExt;
 
-    let url = crate::anilist::auth_url();
-    app.opener()
-        .open_url(url, None::<&str>)
-        .map_err(|err| format!("cannot open the AniList sign in page: {err}"))?;
-    Ok(url.to_string())
+    let state = app
+        .state::<crate::anilist::AniListAuthState>()
+        .begin()
+        .map_err(|err| format!("cannot start the AniList sign in: {err}"))?;
+    let url = crate::anilist::authorize_url(&state);
+    if let Err(err) = app.opener().open_url(url.as_str(), None::<&str>) {
+        app.state::<crate::anilist::AniListAuthState>().clear();
+        return Err(format!("cannot open the AniList sign in page: {err}"));
+    }
+    Ok(url)
 }
 
 #[tauri::command]
@@ -1014,6 +1043,8 @@ pub fn backup_export(state: State<'_, Db>, path: String) -> Result<BackupExport,
     Ok(BackupExport { path, bytes })
 }
 
+/// Restores a validated backup. The live database is copied to a timestamped
+/// safety file first, and restored extensions are left disabled until reviewed.
 #[tauri::command]
 pub fn backup_restore(state: State<'_, Db>, path: String) -> Result<(), String> {
     state.restore_from(&path).map_err(ipc_error)

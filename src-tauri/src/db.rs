@@ -1,9 +1,9 @@
 // SQLite helpers. One file, WAL, migrations checked in.
 
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rusqlite::backup::Backup;
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
@@ -14,9 +14,92 @@ use crate::error::{AppError, AppResult};
 use crate::ext_host::{ExtStorage, Manifest};
 use crate::registry::LegacyExtension;
 
+/// Hard ceiling for a restore input. A Kaminari library is a few megabytes;
+/// a compiled backup anywhere near this size is not something the app should
+/// spend memory or disk on.
+const MAX_BACKUP_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// Bumped whenever a migration changes the on-disk schema. A backup from a
+/// newer version is rejected instead of being silently run against older code.
+const SCHEMA_VERSION: i64 = 1;
+
+/// Tables and columns that every Kaminari backup must contain before it can
+/// replace the live library. Newer tables are validated separately when they
+/// are present.
+const REQUIRED_TABLES: &[(&str, &[&str])] = &[
+    (
+        "media",
+        &["anilist_id", "title_romaji", "cover", "updated_at"],
+    ),
+    (
+        "library",
+        &["anilist_id", "status", "added_at", "updated_at"],
+    ),
+    ("watched", &["anilist_id", "episode", "watched_at"]),
+    ("history", &["id", "anilist_id", "episode", "watched_at"]),
+    (
+        "source_library",
+        &["extension_id", "show_id", "title", "added_at", "updated_at"],
+    ),
+];
+
+/// Tables added by later migrations. Older backups may not have them, but if
+/// they do, the columns the app reads must be there.
+const OPTIONAL_TABLES: &[(&str, &[&str])] = &[
+    ("episodes", &["anilist_id", "number"]),
+    ("progress", &["anilist_id", "episode", "position_sec"]),
+    ("sources", &["id", "manifest"]),
+    ("http_cache", &["key", "body", "fetched_at"]),
+    (
+        "js_extensions",
+        &[
+            "id",
+            "name",
+            "version",
+            "api_version",
+            "manifest",
+            "code",
+            "enabled",
+            "trust",
+            "installed_at",
+        ],
+    ),
+    ("js_storage", &["extension_id", "key", "value"]),
+    (
+        "source_progress",
+        &[
+            "extension_id",
+            "show_id",
+            "episode_id",
+            "episode_number",
+            "position_sec",
+            "duration_sec",
+            "watched",
+            "updated_at",
+        ],
+    ),
+    (
+        "source_history",
+        &[
+            "extension_id",
+            "show_id",
+            "episode_id",
+            "episode_number",
+            "watched",
+            "updated_at",
+        ],
+    ),
+    (
+        "anilist_sync_queue",
+        &["anilist_id", "status", "progress", "updated_at"],
+    ),
+    ("app_meta", &["key", "value"]),
+];
+
 #[derive(Clone)]
 pub struct Db {
     conn: Arc<Mutex<Connection>>,
+    path: Arc<PathBuf>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -163,11 +246,13 @@ pub struct SourceHistoryItem {
 
 impl Db {
     pub fn new(path: &str) -> AppResult<Self> {
-        let conn = Connection::open(path)?;
+        let path = PathBuf::from(path);
+        let conn = Connection::open(&path)?;
         apply_pragmas(&conn)?;
         apply_migrations(&conn)?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
+            path: Arc::new(path),
         })
     }
 
@@ -1062,37 +1147,43 @@ impl Db {
 
     pub fn restore_from(&self, path: &str) -> AppResult<()> {
         let source_path = absolute_path(path)?;
-        let source = Connection::open_with_flags(&source_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .map_err(|err| AppError::Blocked(format!("cannot open backup: {err}")))?;
+        validate_backup_file(&source_path, MAX_BACKUP_BYTES)?;
+        validate_backup_database(&source_path)?;
 
-        const REQUIRED: [&str; 5] = ["media", "library", "watched", "history", "source_library"];
-        let mut missing = Vec::new();
-        for table in REQUIRED {
-            let found: bool = source
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
-                    params![table],
-                    |row| row.get(0),
-                )
-                .map_err(|err| AppError::Blocked(format!("not a Kaminari database: {err}")))?;
-            if !found {
-                missing.push(table);
-            }
-        }
-        if !missing.is_empty() {
-            return Err(AppError::Blocked(format!(
-                "not a Kaminari database: missing {}",
-                missing.join(", ")
-            )));
+        // Build and migrate the restored database in a scratch file first.
+        // The live database is touched only after that copy is complete and
+        // passes its own integrity check.
+        let (parent, name) = database_parent_and_name(&self.path);
+        let temp = parent.join(format!(".{name}.restore-{}.db", timestamp_nanos()));
+        remove_database_files(&temp);
+        if let Err(err) = prepare_restore_database(&source_path, &temp) {
+            remove_database_files(&temp);
+            return Err(err);
         }
 
+        let safety = safety_copy_path(&self.path);
         let mut conn = self.conn.lock().map_err(|_| db_locked())?;
-        {
-            let backup = Backup::new(&source, &mut conn)?;
-            backup.run_to_completion(100, Duration::from_millis(10), None)?;
+        if let Err(err) = write_safety_copy(&conn, &safety) {
+            remove_database_files(&temp);
+            return Err(err);
         }
-        apply_pragmas(&conn)?;
-        apply_migrations(&conn)?;
+
+        if let Err(err) = replace_live_database(&mut conn, &temp) {
+            let rollback = restore_safety_copy(&safety, &mut conn);
+            remove_database_files(&temp);
+            return match rollback {
+                Ok(()) => Err(AppError::Db(format!(
+                    "restore failed: {err}; the previous library was put back from the safety copy at {}",
+                    safety.display()
+                ))),
+                Err(rollback_err) => Err(AppError::Db(format!(
+                    "restore failed: {err}; putting the safety copy back also failed: {rollback_err}. A copy of the previous library is kept at {}",
+                    safety.display()
+                ))),
+            };
+        }
+
+        remove_database_files(&temp);
         Ok(())
     }
 }
@@ -1109,6 +1200,216 @@ fn absolute_path(path: &str) -> AppResult<PathBuf> {
         ));
     }
     Ok(target)
+}
+
+fn validate_backup_file(path: &Path, max_bytes: u64) -> AppResult<()> {
+    let metadata = std::fs::metadata(path)
+        .map_err(|err| AppError::Blocked(format!("cannot read backup: {err}")))?;
+    if !metadata.is_file() {
+        return Err(AppError::Blocked("backup path is not a file".to_string()));
+    }
+    if metadata.len() == 0 {
+        return Err(AppError::Blocked("backup is empty".to_string()));
+    }
+    if metadata.len() > max_bytes {
+        return Err(AppError::Blocked(format!(
+            "backup is too large ({} bytes; limit is {max_bytes} bytes)",
+            metadata.len()
+        )));
+    }
+    Ok(())
+}
+
+fn validate_backup_database(path: &Path) -> AppResult<()> {
+    let source = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|err| AppError::Blocked(format!("cannot open backup: {err}")))?;
+    check_integrity(&source).map_err(|err| {
+        AppError::Blocked(format!("backup failed the SQLite integrity check: {err}"))
+    })?;
+
+    let version: i64 = source
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(|err| AppError::Blocked(format!("cannot read backup schema version: {err}")))?;
+    if version > SCHEMA_VERSION {
+        return Err(AppError::Blocked(format!(
+            "backup was made by a newer Kaminari version (schema {version}; this build supports {SCHEMA_VERSION})"
+        )));
+    }
+
+    let mut problems = Vec::new();
+    for &(table, columns) in REQUIRED_TABLES {
+        validate_table(&source, table, columns, false, &mut problems)?;
+    }
+    for &(table, columns) in OPTIONAL_TABLES {
+        validate_table(&source, table, columns, true, &mut problems)?;
+    }
+    if !problems.is_empty() {
+        return Err(AppError::Blocked(format!(
+            "not a Kaminari database: {}",
+            problems.join(", ")
+        )));
+    }
+    Ok(())
+}
+
+fn validate_table(
+    conn: &Connection,
+    table: &str,
+    required_columns: &[&str],
+    optional: bool,
+    problems: &mut Vec<String>,
+) -> AppResult<()> {
+    let exists: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+            params![table],
+            |row| row.get(0),
+        )
+        .map_err(|err| AppError::Blocked(format!("cannot inspect backup schema: {err}")))?;
+    if !exists {
+        if !optional {
+            problems.push(format!("missing table {table}"));
+        }
+        return Ok(());
+    }
+
+    let present = table_columns(conn, table)?;
+    for column in required_columns {
+        if !present.contains(*column) {
+            problems.push(format!("table {table} is missing column {column}"));
+        }
+    }
+    Ok(())
+}
+
+fn table_columns(conn: &Connection, table: &str) -> AppResult<HashSet<String>> {
+    let mut statement = conn.prepare(&format!("PRAGMA table_info(\"{table}\")"))?;
+    let rows = statement.query_map([], |row| row.get::<_, String>(1))?;
+    let mut columns = HashSet::new();
+    for column in rows {
+        columns.insert(column?);
+    }
+    Ok(columns)
+}
+
+fn check_integrity(conn: &Connection) -> Result<(), String> {
+    let verdict: String = conn
+        .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+        .map_err(|err| err.to_string())?;
+    if verdict == "ok" {
+        Ok(())
+    } else {
+        Err(verdict)
+    }
+}
+
+fn prepare_restore_database(source_path: &Path, temp: &Path) -> AppResult<()> {
+    let source = Connection::open_with_flags(source_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|err| AppError::Blocked(format!("cannot open backup: {err}")))?;
+    let mut temp_conn = Connection::open(temp)
+        .map_err(|err| AppError::Db(format!("cannot create restored database: {err}")))?;
+    copy_database(&source, &mut temp_conn)?;
+    apply_pragmas(&temp_conn)?;
+    apply_migrations(&temp_conn)?;
+    // Disable packages in the prepared copy as well, so a crash between the
+    // live page copy and the final UPDATE cannot leave them enabled.
+    temp_conn.execute("UPDATE js_extensions SET enabled = 0", [])?;
+    // Leave the scratch database as a single file: a read-only reopen below
+    // must not depend on a WAL that was never checkpointed.
+    temp_conn
+        .pragma_update(None, "journal_mode", "DELETE")
+        .map_err(|err| AppError::Db(format!("cannot finalize restored database: {err}")))?;
+    check_integrity(&temp_conn).map_err(|err| {
+        AppError::Db(format!(
+            "restored database failed the SQLite integrity check: {err}"
+        ))
+    })?;
+    Ok(())
+}
+
+fn replace_live_database(conn: &mut Connection, temp: &Path) -> AppResult<()> {
+    let restored = Connection::open_with_flags(temp, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|err| AppError::Db(format!("cannot open the prepared backup: {err}")))?;
+    copy_database(&restored, conn)?;
+    apply_pragmas(conn)?;
+    apply_migrations(conn)?;
+    // A package from an untrusted backup was never reviewed by this
+    // installation. Keep the row so the user can inspect it, but never let its
+    // code run until it is explicitly enabled again.
+    conn.execute("UPDATE js_extensions SET enabled = 0", [])?;
+    check_integrity(conn).map_err(|err| {
+        AppError::Db(format!(
+            "restored library failed the SQLite integrity check: {err}"
+        ))
+    })
+}
+
+fn restore_safety_copy(safety: &Path, conn: &mut Connection) -> AppResult<()> {
+    let safety_conn = Connection::open_with_flags(safety, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|err| AppError::Db(format!("cannot reopen the safety copy: {err}")))?;
+    copy_database(&safety_conn, conn)?;
+    apply_pragmas(conn)?;
+    Ok(())
+}
+
+fn write_safety_copy(conn: &Connection, safety: &Path) -> AppResult<()> {
+    conn.execute("VACUUM INTO ?1", params![safety.to_string_lossy()])
+        .map_err(|err| {
+            AppError::Db(format!(
+                "cannot create a safety copy of the live library at {}: {err}",
+                safety.display()
+            ))
+        })?;
+    Ok(())
+}
+
+fn copy_database(source: &Connection, target: &mut Connection) -> AppResult<()> {
+    let backup = Backup::new(source, target)?;
+    backup.run_to_completion(100, Duration::from_millis(10), None)?;
+    Ok(())
+}
+
+fn database_parent_and_name(path: &Path) -> (PathBuf, String) {
+    if path.as_os_str() == ":memory:" {
+        return (
+            std::env::temp_dir(),
+            format!("kaminari-memory-{}", std::process::id()),
+        );
+    }
+    let parent = path
+        .parent()
+        .filter(|value| !value.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    let name = path
+        .file_name()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "kaminari.db".to_string());
+    (parent, name)
+}
+
+fn safety_copy_path(live: &Path) -> PathBuf {
+    let (parent, name) = database_parent_and_name(live);
+    parent.join(format!("{name}.safety-{}.db", timestamp_nanos()))
+}
+
+fn timestamp_nanos() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_nanos())
+        .unwrap_or_default()
+}
+
+fn remove_database_files(path: &Path) {
+    let _ = std::fs::remove_file(path);
+    let _ = std::fs::remove_file(sidecar_path(path, "-wal"));
+    let _ = std::fs::remove_file(sidecar_path(path, "-shm"));
+}
+
+fn sidecar_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut raw = path.as_os_str().to_os_string();
+    raw.push(suffix);
+    PathBuf::from(raw)
 }
 
 fn apply_pragmas(conn: &Connection) -> AppResult<()> {
@@ -1139,6 +1440,7 @@ fn apply_migrations(conn: &Connection) -> AppResult<()> {
             [],
         )?;
     }
+    conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     Ok(())
 }
 
@@ -2058,17 +2360,33 @@ mod tests {
         assert_eq!(local_row.status, "paused");
     }
 
-    #[test]
-    fn backup_and_restore_round_trip() {
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+    fn test_dir(label: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
             .map(|value| value.as_nanos())
             .unwrap_or_default();
-        let dir = std::env::temp_dir().join(format!(
-            "kaminari-backup-test-{}-{stamp}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("kaminari-{label}-{}-{stamp}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn safety_copies(dir: &Path) -> Vec<PathBuf> {
+        std::fs::read_dir(dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.contains(".safety-"))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn backup_and_restore_round_trip() {
+        let dir = test_dir("backup-round-trip");
         let live_path = dir.join("live.db");
         let backup_path = dir.join("backup.db");
         let other_path = dir.join("other.db");
@@ -2093,6 +2411,7 @@ mod tests {
             let items = db.list_library().unwrap();
             assert_eq!(items.len(), 1);
             assert_eq!(items[0].media.id, 15125);
+            assert_eq!(safety_copies(&dir).len(), 1);
 
             assert!(db.backup_to("relative.db").is_err());
             assert!(db.restore_from("relative.db").is_err());
@@ -2111,6 +2430,233 @@ mod tests {
             .unwrap_err();
         assert!(error.to_string().contains("not a Kaminari database"));
         drop(db);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restore_rejects_corrupt_backup_and_keeps_live_data() {
+        let dir = test_dir("backup-corrupt");
+        let live_raw = dir.join("live.db").to_string_lossy().into_owned();
+        let corrupt_path = dir.join("corrupt.db");
+        std::fs::write(&corrupt_path, b"this is not a sqlite database").unwrap();
+
+        let db = Db::new(&live_raw).unwrap();
+        db.add_to_library(&sample_media(), "watching").unwrap();
+
+        let error = db
+            .restore_from(corrupt_path.to_string_lossy().as_ref())
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("integrity check"),
+            "unexpected error: {error}"
+        );
+
+        let items = db.list_library().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].media.id, 15125);
+        assert!(safety_copies(&dir).is_empty());
+        drop(db);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restore_rejects_wrong_schema_and_keeps_live_data() {
+        let dir = test_dir("backup-wrong-schema");
+        let live_raw = dir.join("live.db").to_string_lossy().into_owned();
+        let wrong_path = dir.join("wrong.db");
+
+        {
+            let wrong = Connection::open(&wrong_path).unwrap();
+            wrong
+                .execute_batch(
+                    "CREATE TABLE media(anilist_id INTEGER PRIMARY KEY, title_romaji TEXT NOT NULL);
+                     CREATE TABLE library(anilist_id INTEGER PRIMARY KEY, status TEXT NOT NULL);
+                     CREATE TABLE watched(anilist_id INTEGER NOT NULL, episode INTEGER NOT NULL);
+                     CREATE TABLE history(id INTEGER PRIMARY KEY, anilist_id INTEGER NOT NULL);
+                     CREATE TABLE source_library(extension_id TEXT NOT NULL, show_id TEXT NOT NULL);",
+                )
+                .unwrap();
+        }
+
+        let db = Db::new(&live_raw).unwrap();
+        db.add_to_library(&sample_media(), "watching").unwrap();
+
+        let error = db
+            .restore_from(wrong_path.to_string_lossy().as_ref())
+            .unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.contains("not a Kaminari database"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            message.contains("missing column"),
+            "unexpected error: {error}"
+        );
+
+        let items = db.list_library().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].media.id, 15125);
+        assert!(safety_copies(&dir).is_empty());
+        drop(db);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restore_rejects_newer_schema_version() {
+        let dir = test_dir("backup-newer-schema");
+        let live_raw = dir.join("live.db").to_string_lossy().into_owned();
+        let future_path = dir.join("future.db");
+
+        {
+            let future = Connection::open(&future_path).unwrap();
+            apply_migrations(&future).unwrap();
+            future
+                .pragma_update(None, "user_version", SCHEMA_VERSION + 1)
+                .unwrap();
+        }
+
+        let db = Db::new(&live_raw).unwrap();
+        db.add_to_library(&sample_media(), "watching").unwrap();
+
+        let error = db
+            .restore_from(future_path.to_string_lossy().as_ref())
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("newer Kaminari version"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(db.list_library().unwrap().len(), 1);
+        assert!(safety_copies(&dir).is_empty());
+        drop(db);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restore_rejects_oversized_backup() {
+        let dir = test_dir("backup-size");
+        let path = dir.join("oversized.db");
+        std::fs::write(&path, b"0123456789").unwrap();
+
+        let error = validate_backup_file(&path, 4).unwrap_err();
+        assert!(
+            error.to_string().contains("too large"),
+            "unexpected error: {error}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restore_preserves_data_and_disables_extensions() {
+        let dir = test_dir("backup-preserve");
+        let live_raw = dir.join("live.db").to_string_lossy().into_owned();
+        let source_path = dir.join("source.db");
+        let source_raw = source_path.to_string_lossy().into_owned();
+        let backup_path = dir.join("backup.db");
+        let backup_raw = backup_path.to_string_lossy().into_owned();
+        let package = crate::ext_host::sample_package().unwrap();
+
+        {
+            let source = Db::new(&source_raw).unwrap();
+            source
+                .install_js_extension(&package.manifest, &package.code, "signed")
+                .unwrap();
+            source.add_to_library(&sample_media(), "watching").unwrap();
+            source.mark_all_watched(&sample_media(), 2, true).unwrap();
+            source
+                .source_library_add(
+                    &package.manifest.id,
+                    "show-1",
+                    "Popeye",
+                    None,
+                    Some(1933),
+                    Some("finished"),
+                )
+                .unwrap();
+            source
+                .source_progress_set(
+                    &package.manifest.id,
+                    "show-1",
+                    "ep-1",
+                    1,
+                    Some("Episode 1"),
+                    42.5,
+                    600.0,
+                    false,
+                )
+                .unwrap();
+            source.backup_to(&backup_raw).unwrap();
+        }
+
+        let db = Db::new(&live_raw).unwrap();
+        let mut live_only = sample_media();
+        live_only.id = 2;
+        live_only.title.romaji = Some("Live only".to_string());
+        db.add_to_library(&live_only, "planning").unwrap();
+        db.mark_all_watched(&live_only, 1, true).unwrap();
+
+        db.restore_from(&backup_raw).unwrap();
+
+        let items = db.list_library().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].media.id, 15125);
+        assert_eq!(db.watched_list(15125).unwrap(), vec![1, 2]);
+        let history = db.history_list(10).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].episode, 2);
+
+        let source_library = db.source_library_list().unwrap();
+        assert_eq!(source_library.len(), 1);
+        assert_eq!(source_library[0].show_id, "show-1");
+        assert_eq!(
+            db.source_progress_get(&package.manifest.id, "show-1")
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(db.source_history(10).unwrap().len(), 1);
+
+        let extensions = db.list_js_extensions().unwrap();
+        assert_eq!(extensions.len(), 1);
+        assert_eq!(extensions[0].id, package.manifest.id);
+        assert_eq!(extensions[0].trust, "signed");
+        assert!(!extensions[0].enabled);
+
+        let copies = safety_copies(&dir);
+        assert_eq!(copies.len(), 1);
+        let safety =
+            Connection::open_with_flags(&copies[0], OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        let live_only_rows: i64 = safety
+            .query_row(
+                "SELECT COUNT(*) FROM library WHERE anilist_id = 2",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(live_only_rows, 1);
+        let live_extensions: i64 = safety
+            .query_row("SELECT COUNT(*) FROM js_extensions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(live_extensions, 0);
+        drop(safety);
+        drop(db);
+
+        let leftovers = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_str()
+                    .is_some_and(|name| name.contains(".restore-"))
+            })
+            .count();
+        assert_eq!(leftovers, 0);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

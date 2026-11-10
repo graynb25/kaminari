@@ -46,6 +46,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(anilist::AniListClient::new())
+        .manage(anilist::AniListAuthState::new())
         .manage(player::PlayerState::new())
         .manage(mpv_embed::MpvEmbedState::default())
         .manage(download::DownloadState::default())
