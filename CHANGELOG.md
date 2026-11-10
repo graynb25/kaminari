@@ -4,6 +4,13 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.25.0 - 2026-11-10
+
+- Downloads: direct MP4/OGV and simple HLS streams save to a chosen folder with progress, cancel and a one-time content-rights confirmation
+- Downloads: master playlists pick the highest-bandwidth variant; encrypted HLS, separate audio and byte-range playlists are rejected with clear errors
+- Build: downloads run in Rust with `.part` files and collision-safe names
+- Version: bump to 0.25.0
+
 ## 0.24.0 - 2026-11-09
 
 - AniList: offline status and progress queue with retry and server-wins conflict handling

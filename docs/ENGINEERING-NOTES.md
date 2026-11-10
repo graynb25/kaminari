@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-10 Stream downloads
+
+Context. The source browser could play a stream but not keep it. P3 asks for downloads to a user folder where the user has the rights.
+
+What we shipped. A Rust download manager with a `download_start` command, `download_cancel`, and `downloads_list`, progress events, `.part` files and collision-safe names. Direct MP4 and OGV downloads, plus simple HLS media playlists. Master playlists pick the highest-bandwidth variant. Encrypted HLS, separate audio groups with a URI, and byte-range playlists fail with clear messages. The Source Browser has a Download button, a one-time content-rights confirmation, a folder picker saved in `localStorage`, and inline progress with cancel. Settings Data shows the downloads folder.
+
+What we measured. The sample `popeye__2_.mp4` downloaded 791,922 bytes and ffmpeg read it as a 7.10 second H.264/AAC MP4. Progress moved from running to done, and the file landed under the chosen folder. 13 Rust download tests cover name sanitizing, collision suffixes, master selection, media playlist parsing, relative URLs and rejection paths. 110 Rust and 54 frontend tests pass. The Download button and downloads folder row render.
+
+What we did not do. No live HLS or encrypted HLS download. HLS files may need external mpv. Downloads are in-memory for the session, with no resume, queue persistence or library integration. The 0.25.0 installer was not built.
+
 ## 2026-11-09 AniList write queue
 
 Context. Read sync and account connect were done, but local status and progress changes had no path back to AniList.
