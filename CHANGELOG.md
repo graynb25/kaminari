@@ -4,6 +4,14 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.26.1 - 2026-11-10
+
+- Playback: keep up to 4096 HLS child URLs per stream and allow 20000 playlist lines, so long VOD episodes no longer evict their first segments and stall at the first missing child
+- Playback: add a regression test for a 283 segment, 23 minute episode
+- Browse: Watch on an AniList title now searches installed sources, shows the closest matches, and opens the chosen result in the source browser
+- Updates: a missing public release feed is shown as a neutral local-build state instead of a red failure
+- Version: bump to 0.26.1
+
 ## 0.26.0 - 2026-11-10
 
 - Extensions: install a raw Mangayomi JavaScript anime source from a URL, inspect its metadata and SHA-256, then confirm a third party trust prompt
