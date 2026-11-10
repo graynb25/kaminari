@@ -73,6 +73,12 @@ export function streamHeight(stream: Pick<JsStream, "quality">): number | null {
   return null;
 }
 
+export function streamLabel(stream: Pick<JsStream, "quality" | "type">): string {
+  const quality = stream.quality?.trim();
+  const kind = stream.type?.trim().toUpperCase() || "STREAM";
+  return quality ? `${quality} · ${kind}` : kind;
+}
+
 function variantKey(quality: string | null | undefined): string {
   return String(quality ?? "")
     .replace(/^\s*\d{3,4}\s*[x×]\s*\d{3,4}\s*[-\u2013\u2014:|]?\s*/i, "")

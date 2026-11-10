@@ -66,6 +66,7 @@
     initialEpisodeId = null,
     anilistMedia = null,
     sourceLibrary = [],
+    incognito = false,
     onLibraryChanged,
     onClose,
     notify,
@@ -75,6 +76,7 @@
     initialEpisodeId?: string | null;
     anilistMedia?: Media | null;
     sourceLibrary?: SourceLibraryItem[];
+    incognito?: boolean;
     onLibraryChanged?: () => void;
     onClose: () => void;
     notify: (text: string, tone?: "info" | "success" | "error") => void;
@@ -123,6 +125,9 @@
       : false,
   );
   const watchedSourceCount = $derived(progress.filter((row) => row.watched).length);
+  const activeQualityOptions = $derived(
+    activePlayback ? (streams[activePlayback.episode.id] ?? [activePlayback.stream]) : [],
+  );
 
   onMount(() => {
     previousFocus = document.activeElement as HTMLElement | null;
@@ -334,6 +339,10 @@
 
   async function setSourceEpisodeWatched(episode: JsEpisode, watched: boolean) {
     if (!selected || markBusy) return;
+    if (incognito) {
+      notify("Incognito mode is on. Turn it off in Settings to save progress.", "info");
+      return;
+    }
     markBusy = true;
     try {
       if (watched) await ensureSourceLibrary();
@@ -383,6 +392,10 @@
 
   async function setAllSourceWatched(watched: boolean) {
     if (!selected || episodes.length === 0 || markBusy) return;
+    if (incognito) {
+      notify("Incognito mode is on. Turn it off in Settings to save progress.", "info");
+      return;
+    }
     markBusy = true;
     try {
       if (watched) await ensureSourceLibrary();
@@ -426,6 +439,7 @@
 
   async function saveProgress(position: number, duration: number, watched: boolean) {
     if (!selected || !activePlayback) return;
+    if (incognito) return;
     const episode = activePlayback.episode;
     try {
       await sourceProgressSet({
@@ -649,7 +663,7 @@
     }
   }
 
-  async function playStream(stream: JsStream, episode: JsEpisode) {
+  async function playStream(stream: JsStream, episode: JsEpisode, startSecOverride?: number) {
     let prepared = stream;
     if (shouldProxy(stream) && proxyFlagEnabled()) {
       try {
@@ -720,10 +734,17 @@
       stream: prepared,
       episode,
       nextEpisode: nextEpisodeFor(episode),
-      startSec: resumeFor(episode.id),
+      startSec: startSecOverride ?? resumeFor(episode.id),
       backend,
     };
     playbackEpisodeId = episode.id;
+  }
+
+  async function switchQuality(stream: JsStream, position: number) {
+    if (!activePlayback || stream.url === activePlayback.stream.url) return;
+    const episode = activePlayback.episode;
+    await closePlayer();
+    await playStream(stream, episode, position);
   }
 
   function nextEpisodeFor(episode: JsEpisode): JsEpisode | null {
@@ -974,23 +995,36 @@
             <span class="shelf-count">{episodes.length}</span>
           </div>
           <div class="ml-auto flex flex-wrap items-center gap-1.5">
+            {#if incognito}
+              <span
+                class="chip text-[10px] px-2 py-0.5"
+                title="Playback and watched changes are not saved while Incognito is on"
+              >
+                <Icon name="eyeOff" size={10} />
+                Incognito
+              </span>
+            {/if}
             <span class="text-[10px] mr-1" style="color: var(--paper-450); font-family: var(--font-mono);">
               {watchedSourceCount} watched
             </span>
             <button
               class="btn-ghost px-2.5 py-1.5 text-[11px]"
-              disabled={markBusy || episodes.length === 0 || watchedSourceCount === episodes.length}
+              disabled={incognito || markBusy || episodes.length === 0 || watchedSourceCount === episodes.length}
               onclick={() => void setAllSourceWatched(true)}
-              title="Mark every source episode watched without playing it. Queues AniList progress when linked."
+              title={incognito
+                ? "Incognito mode is on. Turn it off in Settings to save progress."
+                : "Mark every source episode watched without playing it. Queues AniList progress when linked."}
             >
               <Icon name="check" size={12} />
               Mark all watched
             </button>
             <button
               class="btn-ghost px-2.5 py-1.5 text-[11px]"
-              disabled={markBusy || watchedSourceCount === 0}
+              disabled={incognito || markBusy || watchedSourceCount === 0}
               onclick={() => void setAllSourceWatched(false)}
-              title="Clear source progress locally. AniList progress is unchanged."
+              title={incognito
+                ? "Incognito mode is on. Turn it off in Settings to save progress."
+                : "Clear source progress locally. AniList progress is unchanged."}
             >
               Clear
             </button>
@@ -1063,15 +1097,17 @@
                   <div class="flex items-center gap-1.5 shrink-0">
                     <button
                       class="btn-ghost w-8 h-8 grid place-items-center shrink-0"
-                      disabled={markBusy || resolving === episode.id}
+                      disabled={incognito || markBusy || resolving === episode.id}
                       onclick={() => void setSourceEpisodeWatched(episode, !(saved?.watched ?? false))}
                       aria-pressed={saved?.watched ?? false}
                       aria-label={saved?.watched
                         ? `Mark episode ${episode.number} unwatched`
                         : `Mark episode ${episode.number} watched`}
-                      title={saved?.watched
-                        ? `Mark episode ${episode.number} unwatched (local source progress)`
-                        : `Mark episode ${episode.number} watched without playing`}
+                      title={incognito
+                        ? "Incognito mode is on. Turn it off in Settings to save progress."
+                        : saved?.watched
+                          ? `Mark episode ${episode.number} unwatched (local source progress)`
+                          : `Mark episode ${episode.number} watched without playing`}
                       style={saved?.watched ? "color: var(--volt-300);" : "color: var(--paper-450);"}
                     >
                       <Icon name={saved?.watched ? "checkCircle" : "check"} size={14} />
@@ -1289,6 +1325,9 @@
       onOpenExternal={() =>
         void openExternal(activePlayback!.stream, activePlayback!.episode)}
       onFallback={fallbackToWebView}
+      qualityOptions={activeQualityOptions}
+      onQualityChange={(stream, position) => void switchQuality(stream, position)}
+      {incognito}
       {notify}
     />
   {:else}
@@ -1310,6 +1349,9 @@
         : null}
       autoplay={autoplayNext}
       onNext={() => void playNext()}
+      qualityOptions={activeQualityOptions}
+      onQualityChange={(stream, position) => void switchQuality(stream, position)}
+      {incognito}
       {notify}
     />
   {/if}

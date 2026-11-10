@@ -48,12 +48,16 @@
 
   let {
     boot,
+    incognito = false,
+    onToggleIncognito,
     onOpenShortcuts,
     onOpenLicenses,
     onOpenOnboarding,
     onDataChanged,
   }: {
     boot: Boot | null;
+    incognito?: boolean;
+    onToggleIncognito?: (enabled: boolean) => void;
     onOpenShortcuts?: () => void;
     onOpenLicenses: () => void;
     onOpenOnboarding?: () => void;
@@ -934,6 +938,29 @@
                 >
                   <span class="status-dot {autoplayOn ? '' : 'is-offline'}" style="width: 4px; height: 4px;" aria-hidden="true"></span>
                   {autoplayOn ? "On" : "Off"}
+                </button>
+              </div>
+              <div
+                class="flex flex-wrap items-center justify-between gap-3 py-2.5"
+                style="border-top: 1px solid var(--line);"
+              >
+                <div class="min-w-0">
+                  <p class="text-sm" style="color: var(--paper-50);">Incognito mode</p>
+                  <p class="text-xs mt-0.5" style="color: var(--paper-400);">
+                    Playback is not written to history, progress, Continue Watching or AniList.
+                    Library changes still work.
+                  </p>
+                </div>
+                <button
+                  class="chip text-[10px] px-2 py-1 shrink-0"
+                  aria-label="Incognito mode"
+                  aria-pressed={incognito}
+                  disabled={!onToggleIncognito}
+                  onclick={() => onToggleIncognito?.(!incognito)}
+                  title="Incognito mode"
+                >
+                  <span class="status-dot {incognito ? '' : 'is-offline'}" style="width: 4px; height: 4px;" aria-hidden="true"></span>
+                  {incognito ? "On" : "Off"}
                 </button>
               </div>
               <div

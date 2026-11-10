@@ -14,6 +14,7 @@
     mpvEmbedStatus,
   } from "./api";
   import { playbackUrl } from "./streamProxy";
+  import PlayerQualityMenu from "./PlayerQualityMenu.svelte";
   import type { JsStream } from "./types";
 
   let {
@@ -26,6 +27,9 @@
     notify,
     onProgress,
     onFallback,
+    qualityOptions = [],
+    onQualityChange,
+    incognito = false,
   }: {
     stream: JsStream;
     title: string;
@@ -36,7 +40,16 @@
     notify: (text: string, tone?: "info" | "success" | "error") => void;
     onProgress?: (position: number, duration: number, watched: boolean) => void;
     onFallback?: (message: string) => void;
+    qualityOptions?: JsStream[];
+    onQualityChange?: (stream: JsStream, position: number) => void;
+    incognito?: boolean;
   } = $props();
+
+  function chooseQuality(option: JsStream) {
+    qualityMenuOpen = false;
+    if (option.url === stream.url) return;
+    onQualityChange?.(option, currentTime);
+  }
 
   type MpvEvent = {
     event?: string;
@@ -58,6 +71,7 @@
   let fullscreen = $state(false);
   let ended = $state(false);
   let diagnostics = $state(false);
+  let qualityMenuOpen = $state(false);
   let firstFrameMs = $state<number | null>(null);
   let hwdec = $state("unknown");
   let videoCodec = $state("unknown");
@@ -96,6 +110,10 @@
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        if (qualityMenuOpen) {
+          qualityMenuOpen = false;
+          return;
+        }
         closePlayer();
         return;
       }
@@ -567,6 +585,12 @@
     </div>
     <div class="ml-auto flex items-center gap-2">
       <span class="chip text-[10px] px-2 py-0.5 hidden sm:inline-flex">libmpv</span>
+      {#if incognito}
+        <span class="chip text-[10px] px-2 py-0.5" title="Playback is not saved while Incognito is on">
+          <Icon name="eyeOff" size={10} />
+          Incognito
+        </span>
+      {/if}
       {#if hasHeaders}
         <span class="chip text-[10px] px-2 py-0.5 hidden sm:inline-flex">
           <Icon name="shield" size={10} />
@@ -719,6 +743,28 @@
           />
         </div>
         <div class="ml-auto flex items-center gap-1">
+          {#if qualityOptions.length > 1 && onQualityChange}
+            <div class="relative">
+              <button
+                class="player-control {qualityMenuOpen ? 'is-on' : ''}"
+                onclick={() => (qualityMenuOpen = !qualityMenuOpen)}
+                aria-label="Stream quality"
+                aria-expanded={qualityMenuOpen}
+                title="Stream quality"
+                data-quality-toggle
+              >
+                <Icon name="settings" size={17} />
+              </button>
+              {#if qualityMenuOpen}
+                <PlayerQualityMenu
+                  options={qualityOptions}
+                  activeUrl={stream.url}
+                  onSelect={chooseQuality}
+                  onClose={() => (qualityMenuOpen = false)}
+                />
+              {/if}
+            </div>
+          {/if}
           <select
             class="player-select"
             value={String(speed)}

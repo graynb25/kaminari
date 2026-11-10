@@ -2133,6 +2133,16 @@ button:disabled {
   color: var(--paper-50);
 }
 
+select option {
+  background-color: var(--void-900);
+  color: var(--paper-50);
+}
+
+select option:checked {
+  background-color: var(--volt-500);
+  color: var(--void-950);
+}
+
 /* Page furniture */
 .start-callout {
   position: relative;
