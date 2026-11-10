@@ -4,6 +4,16 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.27.0 - 2026-11-10
+
+- Security: extension searches, details, episodes, preferences and stream resolve run off the Tauri main thread, with a per-source concurrency limit. A slow source no longer freezes the window
+- Security: `html.select` caps nodes, text, HTML, attributes and total output, with UTF-8 safe truncation and deadline checks
+- Security: external mpv accepts only absolute http or https URLs without credentials. Option-like and malformed playback or subtitle URLs are rejected before mpv starts
+- Security: AniList sign in uses a one-time state value with a ten minute expiry and an exact callback match
+- Security: backup restore validates the file with `integrity_check` and schema checks, makes a timestamped safety copy, restores through a scratch database and disables restored extensions until you review and re-enable them
+- Security: the updater requires the signed version in the Minisign trusted comment. The release docs cover offline key custody and asset verification
+- Version: bump to 0.27.0
+
 ## 0.26.9 - 2026-11-10
 
 - Continue Watching: merge AniList and source rows through a normalized title matcher so the same show is listed once; the source row wins for resume and rewatch

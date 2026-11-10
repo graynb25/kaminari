@@ -1,6 +1,6 @@
 ﻿# Releasing updates
 
-Status: the repository is public and the signed release feed is live. `v0.26.2` was the first public signed release. `v0.26.3` fixed the Windows update flow, `v0.26.4` hid the Aniyomi registry and added the first-run checklist, `v0.26.5` added source watched marks, `v0.26.6` updated zip, Vite and Vitest, `v0.26.7` added the player quality menu, Incognito, history polish and Coming Soon, `v0.26.8` fixed the installer icon, and `v0.26.9` deduplicated Continue Watching. This note records the build and publishing steps.
+Status: the repository is public and the signed release feed is live. `v0.26.2` was the first public signed release. `v0.26.3` fixed the Windows update flow, `v0.26.4` hid the Aniyomi registry and added the first-run checklist, `v0.26.5` added source watched marks, `v0.26.6` updated zip, Vite and Vitest, `v0.26.7` added the player quality menu, Incognito, history polish and Coming Soon, `v0.26.8` fixed the installer icon, `v0.26.9` deduplicated Continue Watching, and `v0.27.0` contains the production review Phase 0 hardening. This note records the build and publishing steps.
 
 ## Keys
 
