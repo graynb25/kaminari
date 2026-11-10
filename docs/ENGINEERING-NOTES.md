@@ -128,6 +128,12 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-10 Sources cleanup and first-run checklist
+
+Context. The Sources page still led with an Aniyomi registry reader. Its packages are Android APKs and QuickJS cannot run them, so the panel offered a dead end. A new install also had no in-app explanation of what to do first.
+
+What we shipped. The registry panel, its URL state, list, filters and stat cards are gone from `SourcesView.svelte`. The backend metadata commands remain for a possible future runtime. The four stat cards now show native extensions, Mangayomi sources, allowed hosts and runtime memory. A first-run Getting started modal explains adding a source, finding a title and watching; it is dismissible, stores `kaminari.onboardingDone`, and reopens from Settings, About. Verified in a debug build: the card appears on a fresh profile, Add a source sets the key, the registry text is absent, and the About button reopens the card. 117 Rust and 88 frontend tests pass.
+
 ## 2026-11-10 Windows updater restart race
 
 Context. The public feed went live, so the signed updater could be tested for real. A host install of 0.26.1 found 0.26.2, downloaded it, and showed Restart to apply.
@@ -162,7 +168,7 @@ Context. Watching one episode ended at a dead screen, AniList detail pages showe
 
 What we shipped. Autoplay next episode with a five second countdown, a Play next button and a Settings toggle. More like this reads AniList recommendations in the detail query and renders up to 12 clickable cards. The compatibility layer exposes `getSourcePreferences()` through a source settings dialog, stores values as `pref.<key>` and parses `"true"` and `"false"` as booleans. The episode row now shows the source thumbnail only; it no longer substitutes the series cover. The dialog supports switches and single choice lists, and explains that other types are not editable yet.
 
-What we measured. AniKoto's Episode thumbnails switch saved `anikoto_pref_ep_thumbnails=true` and the next Naruto detail loaded 220 TVDB episode images with zero empty tiles. Autoplay reached the end card, showed a 3 second countdown, and started episode 2 at 12 seconds with no error. The Naruto detail returned 12 recommendation cards; clicking My Hero Academia opened its detail. 117 Rust and 85 frontend tests pass.
+What we measured. AniKoto's Episode thumbnails switch saved `anikoto_pref_ep_thumbnails=true` and the next Naruto detail loaded 220 TVDB episode images with zero empty tiles. Autoplay reached the end card, showed a 3 second countdown, and started episode 2 at 12 seconds with no error. The Naruto detail returned 12 recommendation cards; clicking My Hero Academia opened its detail. 117 Rust and 88 frontend tests pass.
 
 ## 2026-11-10 AniList progress from source playback
 

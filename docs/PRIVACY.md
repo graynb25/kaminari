@@ -33,7 +33,7 @@ Kaminari makes network requests directly from your device. We do not proxy or re
 
 - **AniList:** `https://graphql.anilist.co` for search, metadata, cover images and banners. AniList receives your IP address, user agent, query and request time under its own privacy policy.
 - **Artwork hosts:** cover and banner images are fetched from the hosts AniList or your extensions return.
-- **Registry URLs:** when you load a registry, the app fetches the URL you choose. That host receives your request.
+- **Registry URLs:** Kaminari does not expose a registry browser. The legacy registry command remains in the backend for a possible future APK runtime; if it is called, the app fetches the URL you choose and that host receives your request.
 - **Extension hosts:** extensions you install can call `net.fetch` against hosts listed in their manifest. Those hosts receive your request and any data the extension sends.
 - **Stream hosts:** when you play a video, the player fetches the stream and segments from the host the extension resolved. That host receives your request and may set cookies.
 - **External mpv:** if you choose Open in mpv, mpv is a separate program with its own behavior and data handling.

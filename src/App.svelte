@@ -1,11 +1,13 @@
 ﻿<script lang="ts">
   import { onMount } from "svelte";
+  import { dismissOnboarding, shouldShowOnboarding } from "./lib/onboarding";
   import Callout from "./lib/Callout.svelte";
   import ContinueCard from "./lib/ContinueCard.svelte";
   import DetailPage from "./lib/DetailPage.svelte";
   import EmptyState from "./lib/EmptyState.svelte";
   import FatalState from "./lib/FatalState.svelte";
   import AppFooter from "./lib/AppFooter.svelte";
+  import GettingStarted from "./lib/GettingStarted.svelte";
   import HeroCarousel from "./lib/HeroCarousel.svelte";
   import HistoryView from "./lib/HistoryView.svelte";
   import Icon from "./lib/Icon.svelte";
@@ -101,6 +103,7 @@
   let sourceContinueItems = $state<SourceContinueItem[]>([]);
   let sourceHistoryItems = $state<SourceHistoryItem[]>([]);
   let sourceBrowser = $state<SourceBrowserState | null>(null);
+  let onboardingOpen = $state(false);
   let paletteOpen = $state(false);
   let shortcutsOpen = $state(false);
   let licensesOpen = $state(false);
@@ -422,6 +425,21 @@
     detailError = null;
   }
 
+  function closeOnboarding() {
+    onboardingOpen = false;
+    dismissOnboarding();
+  }
+
+  function onboardingSources() {
+    closeOnboarding();
+    goView("sources");
+  }
+
+  function onboardingBrowse() {
+    closeOnboarding();
+    goView("browse");
+  }
+
   function errorText(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
   }
@@ -438,6 +456,7 @@
     mainEl?.focus();
     void (async () => {
       await loadBoot();
+      onboardingOpen = shouldShowOnboarding();
       await refreshLibrary();
       await refreshContinue();
       await refreshHistory();
@@ -808,6 +827,7 @@
               boot={boot}
               onOpenShortcuts={() => (shortcutsOpen = true)}
               onOpenLicenses={() => (licensesOpen = true)}
+              onOpenOnboarding={() => (onboardingOpen = true)}
               onDataChanged={() => {
                 void refreshLibrary();
               }}
@@ -846,6 +866,14 @@
   onNav={goView}
   onOpenShortcuts={() => (shortcutsOpen = true)}
 />
+
+{#if onboardingOpen}
+  <GettingStarted
+    onClose={closeOnboarding}
+    onSources={onboardingSources}
+    onBrowse={onboardingBrowse}
+  />
+{/if}
 
 <ShortcutsDialog open={shortcutsOpen} onClose={() => (shortcutsOpen = false)} />
 
