@@ -156,6 +156,7 @@ pub enum ShelfKind {
     Airing,
     Top,
     Popular,
+    Upcoming,
 }
 
 impl ShelfKind {
@@ -164,6 +165,7 @@ impl ShelfKind {
             "airing" => Self::Airing,
             "top" => Self::Top,
             "popular" => Self::Popular,
+            "upcoming" => Self::Upcoming,
             _ => Self::Trending,
         }
     }
@@ -174,12 +176,14 @@ impl ShelfKind {
             Self::Airing => "POPULARITY_DESC",
             Self::Top => "SCORE_DESC",
             Self::Popular => "POPULARITY_DESC",
+            Self::Upcoming => "POPULARITY_DESC",
         }
     }
 
     fn status(self) -> Option<&'static str> {
         match self {
             Self::Airing => Some("RELEASING"),
+            Self::Upcoming => Some("NOT_YET_RELEASED"),
             _ => None,
         }
     }
@@ -754,9 +758,12 @@ mod tests {
         assert_eq!(ShelfKind::from_key("airing"), ShelfKind::Airing);
         assert_eq!(ShelfKind::from_key("top"), ShelfKind::Top);
         assert_eq!(ShelfKind::from_key("popular"), ShelfKind::Popular);
+        assert_eq!(ShelfKind::from_key("upcoming"), ShelfKind::Upcoming);
         assert_eq!(ShelfKind::from_key("nonsense"), ShelfKind::Trending);
         assert_eq!(ShelfKind::Airing.status(), Some("RELEASING"));
+        assert_eq!(ShelfKind::Upcoming.status(), Some("NOT_YET_RELEASED"));
         assert_eq!(ShelfKind::Top.sort(), "SCORE_DESC");
+        assert_eq!(ShelfKind::Upcoming.sort(), "POPULARITY_DESC");
     }
 
     #[test]

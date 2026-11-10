@@ -26,6 +26,7 @@
   const art = $derived(coverOf(item));
   const isAiring = $derived(item.status === "RELEASING");
   const isCompleted = $derived(item.status === "FINISHED");
+  const isUpcoming = $derived(item.status === "NOT_YET_RELEASED");
   const percent = $derived(
     progress && progress.total > 0
       ? Math.min(100, Math.max(0, (progress.watched / progress.total) * 100))
@@ -75,6 +76,8 @@
       <span class="poster-scrim" aria-hidden="true"></span>
       {#if badge}
         <span class="poster-badge on-art">{badge}</span>
+      {:else if isUpcoming}
+        <span class="poster-badge on-art is-upcoming">UPCOMING</span>
       {:else if isAiring}
         <span class="poster-badge on-art is-airing">
           <span class="status-dot" style="width: 4px; height: 4px;" aria-hidden="true"></span>
@@ -105,15 +108,17 @@
     </button>
 
     <div class="poster-quick">
-      <button
-        class="quick-play"
-        onclick={() => onPlay(item)}
-        onkeydown={onKey}
-        aria-label="Play {title}"
-      >
-        <Icon name="play" size={11} />
-        Play
-      </button>
+      {#if !isUpcoming}
+        <button
+          class="quick-play"
+          onclick={() => onPlay(item)}
+          onkeydown={onKey}
+          aria-label="Play {title}"
+        >
+          <Icon name="play" size={11} />
+          Play
+        </button>
+      {/if}
       <button
         class="quick-save"
         onclick={() => onToggleLibrary(item)}
@@ -121,7 +126,7 @@
         aria-label={inLibrary ? `Remove ${title} from library` : `Add ${title} to library`}
       >
         <Icon name={inLibrary ? "check" : "plus"} size={11} />
-        {inLibrary ? "Saved" : "Save"}
+        {inLibrary ? "Saved" : isUpcoming ? "Plan" : "Save"}
       </button>
     </div>
   </div>
