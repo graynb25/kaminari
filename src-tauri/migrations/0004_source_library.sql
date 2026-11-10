@@ -20,5 +20,6 @@ CREATE TABLE IF NOT EXISTS source_progress(
   duration_sec REAL NOT NULL DEFAULT 0,
   watched INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL,
+  continue_visible INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY(extension_id, show_id, episode_id)
 );

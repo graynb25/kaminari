@@ -311,6 +311,7 @@ export type SourceContinueItem = {
   episodeTitle?: string | null;
   positionSec: number;
   durationSec: number;
+  watched: boolean;
   updatedAt: number;
 };
 

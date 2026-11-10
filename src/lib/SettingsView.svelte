@@ -144,6 +144,7 @@
     { id: "settings-appearance", title: "Appearance", hint: "Theme and preview" },
     { id: "settings-app", title: "App", hint: "Version, stack, player" },
     { id: "settings-playback", title: "Playback", hint: "Proxy for protected streams" },
+    { id: "settings-privacy", title: "Privacy", hint: "Incognito and local tracking" },
     { id: "settings-data", title: "Data", hint: "Endpoints and local library" },
     { id: "settings-updates-diagnostics", title: "Updates and diagnostics", hint: "Version, budgets, export" },
     { id: "settings-licenses", title: "Licenses", hint: "Packages and their licenses" },
@@ -685,6 +686,12 @@
       rows: [],
     },
     {
+      id: "settings-privacy",
+      title: "Privacy",
+      icon: "eyeOff",
+      rows: [],
+    },
+    {
       id: "settings-data",
       title: "Data",
       icon: "database",
@@ -945,29 +952,6 @@
                 style="border-top: 1px solid var(--line);"
               >
                 <div class="min-w-0">
-                  <p class="text-sm" style="color: var(--paper-50);">Incognito mode</p>
-                  <p class="text-xs mt-0.5" style="color: var(--paper-400);">
-                    Playback is not written to history, progress, Continue Watching or AniList.
-                    Library changes still work.
-                  </p>
-                </div>
-                <button
-                  class="chip text-[10px] px-2 py-1 shrink-0"
-                  aria-label="Incognito mode"
-                  aria-pressed={incognito}
-                  disabled={!onToggleIncognito}
-                  onclick={() => onToggleIncognito?.(!incognito)}
-                  title="Incognito mode"
-                >
-                  <span class="status-dot {incognito ? '' : 'is-offline'}" style="width: 4px; height: 4px;" aria-hidden="true"></span>
-                  {incognito ? "On" : "Off"}
-                </button>
-              </div>
-              <div
-                class="flex flex-wrap items-center justify-between gap-3 py-2.5"
-                style="border-top: 1px solid var(--line);"
-              >
-                <div class="min-w-0">
                   <p class="text-sm" style="color: var(--paper-50);">Preferred playback quality</p>
                   <p class="text-xs mt-0.5" style="color: var(--paper-400);">
                     Picks the closest stream when a source offers several. Auto keeps source order.
@@ -1005,6 +989,38 @@
                   </dd>
                 </div>
               </dl>
+            {:else if section.title === "Privacy"}
+              <div class="flex flex-wrap items-center justify-between gap-3 py-2.5">
+                <div class="min-w-0">
+                  <p class="text-sm" style="color: var(--paper-50);">Incognito mode</p>
+                  <p class="text-xs mt-0.5" style="color: var(--paper-400);">
+                    Playback is not written to history, progress, Continue Watching or AniList.
+                    Library changes still work.
+                  </p>
+                </div>
+                <button
+                  class="chip text-[10px] px-2 py-1 shrink-0"
+                  aria-label="Incognito mode"
+                  aria-pressed={incognito}
+                  disabled={!onToggleIncognito}
+                  onclick={() => onToggleIncognito?.(!incognito)}
+                  title="Incognito mode"
+                >
+                  <span class="status-dot {incognito ? '' : 'is-offline'}" style="width: 4px; height: 4px;" aria-hidden="true"></span>
+                  {incognito ? "On" : "Off"}
+                </button>
+              </div>
+              <p class="text-xs mt-2 leading-relaxed" style="color: var(--paper-450);">
+                Incognito is local to this device. Turn it off here when you want playback to count
+                again. The player shows an Incognito badge while it is active.
+              </p>
+              <div class="mt-4 pt-3" style="border-top: 1px solid var(--line);">
+                <p class="text-sm" style="color: var(--paper-50);">History and Continue Watching</p>
+                <p class="text-xs mt-0.5" style="color: var(--paper-400);">
+                  Clear the activity list from the History page. That also empties Continue Watching
+                  but keeps your library and watched marks.
+                </p>
+              </div>
             {:else}
               {#if section.id === "settings-updates-diagnostics"}
                 <div class="update-block">
