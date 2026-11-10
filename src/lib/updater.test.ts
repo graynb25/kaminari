@@ -8,6 +8,7 @@ import {
   missingReleaseFeed,
   releaseNotesExcerpt,
   trackDownload,
+  updateInstallMessage,
 } from "./updater";
 
 function started(contentLength?: number): DownloadEvent {
@@ -21,6 +22,18 @@ function progress(chunkLength: number): DownloadEvent {
 function finished(): DownloadEvent {
   return { event: "Finished" };
 }
+
+describe("updateInstallMessage", () => {
+  it("tells Windows users the installer will restart the app", () => {
+    const text = updateInstallMessage("0.26.3", true);
+    expect(text).toContain("installing");
+    expect(text).toContain("close and reopen");
+  });
+
+  it("asks other platforms to restart", () => {
+    expect(updateInstallMessage("0.26.3", false)).toContain("Restart to apply");
+  });
+});
 
 describe("missingReleaseFeed", () => {
   it("recognizes the absent release manifest", () => {

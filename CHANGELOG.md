@@ -4,6 +4,15 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.26.3 - 2026-11-10
+
+- Updates: fix the Windows update flow. The app now closes, lets the NSIS installer replace the old exe, and restarts itself; the old build showed a Restart button while the installer was still writing
+- Docs: add `docs/INSTALL.md` for the installer, portable zip, first run, adding a source without a bundled source list, and troubleshooting
+- About: describe Kaminari as a Windows anime player, not an Aniyomi client
+- CI: keep the Tauri resource glob valid in a clean checkout with a tracked `src-tauri/lib/README.md`, and remove the tag-triggered release workflow that could not ship the local libmpv payload or sign with the local key
+- Security: the repository is public; branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled
+- Version: bump to 0.26.3
+
 ## 0.26.2 - 2026-11-10
 
 - Playback: autoplay next episode with a five second countdown, a Play next button, and a Settings toggle

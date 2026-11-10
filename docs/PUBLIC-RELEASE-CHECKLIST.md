@@ -1,6 +1,6 @@
 # Public release checklist
 
-Status: the repository is private. This checklist separates what can be done now from what only becomes possible after the repository and releases are public.
+Status: the repository is public as of 2026-11-10. `v0.26.2` is the first public signed release. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled.
 
 ## Before public
 
@@ -11,22 +11,22 @@ Status: the repository is private. This checklist separates what can be done now
 - [x] Remove the tag-triggered release workflow. It cannot sign or ship the local libmpv payload. Releases are built and uploaded from the maintainer machine.
 - [ ] Have counsel review `docs/LEGAL-REVIEW-DRAFT.md` and the Terms.
 - [ ] Run a dependency and license audit after the final release build.
-- [ ] Confirm no source list, media, APK or user database is tracked.
-- [ ] Confirm the CI secret scan passes on the exact release commit.
-- [ ] Prepare a short takedown and security response process.
+- [x] Confirm no source list, media, APK or user database is tracked.
+- [x] Confirm the CI secret scan passes on the exact release commit.
+- [x] Prepare a short takedown and security response process.
 
 ## Immediately after public
 
-Branch protection and repository security settings are only available once the repository is public. Do these in the first minutes after the switch:
+The repository is public. Current state:
 
-1. Enable branch protection on `main`: require pull requests, require the CI check, disallow force pushes and deletions.
-2. Require signed commits and signed tags if the account supports it.
-3. Enable GitHub secret scanning, push protection and Dependabot alerts.
-4. Enable private vulnerability reporting.
-5. Require two-factor authentication for the maintainer account.
-6. Confirm the release workflow only publishes from a protected tag and a reviewed commit.
-7. Confirm the GitHub release contains the signed installer, `.sig`, `latest.json` and the portable zip.
-8. Test the update check from the previous signed build on a clean VM.
+1. [x] Branch protection on `main`: pull requests required, `check` and `secrets` required, linear history, no force pushes, no deletions, admins included.
+2. [ ] Signed commits and tags. Not enabled; the maintainer commits are not currently signed.
+3. [x] Secret scanning and push protection are enabled. [x] Dependabot alerts and security updates are enabled. Non-provider patterns and validity checks are not available on the current plan.
+4. [x] Private vulnerability reporting is enabled.
+5. [ ] Confirm two-factor authentication on the maintainer account. This cannot be checked from the repository API.
+6. [x] The tag-triggered release workflow was removed. Releases are built locally with the libmpv payload and signing key.
+7. [x] `v0.26.2` has the signed installer, `.sig`, `latest.json` and portable zip. Add `SHA256SUMS.txt` to the next release.
+8. [ ] Test the in-app update from the previous signed build. The first attempt found a Windows restart race; `0.26.3` fixes it, and the fixed flow still needs a post-release check.
 
 ## Release assets
 

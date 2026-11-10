@@ -29,6 +29,12 @@ export function initialDownloadProgress(): DownloadProgress {
   return { received: 0, total: null, finished: false };
 }
 
+export function updateInstallMessage(version: string, windows: boolean): string {
+  return windows
+    ? `Kaminari ${version} is installing. The app will close and reopen when the installer finishes.`
+    : `Kaminari ${version} is downloaded. Restart to apply it.`;
+}
+
 export function missingReleaseFeed(error: unknown): boolean {
   const text = (error instanceof Error ? error.message : String(error)).toLowerCase();
   return (
