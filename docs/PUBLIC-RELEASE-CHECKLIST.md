@@ -1,6 +1,6 @@
 # Public release checklist
 
-Status: the repository is public as of 2026-11-10. `v0.26.4` is the current signed release. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled.
+Status: the repository is public as of 2026-11-10. `v0.26.5` is the current signed release. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled.
 
 ## Before public
 
@@ -26,7 +26,7 @@ The repository is public. Current state:
 5. [ ] Confirm two-factor authentication on the maintainer account. This cannot be checked from the repository API.
 6. [x] The tag-triggered release workflow was removed. Releases are built locally with the libmpv payload and signing key.
 7. [x] `v0.26.2` and `v0.26.3` have the signed installer, `.sig`, `latest.json` and portable zip. `v0.26.3` also has `SHA256SUMS.txt`.
-8. [x] Test the in-app update from the previous signed build. 0.26.3 found 0.26.4, downloaded it, closed, let the installer replace the files, reopened 0.26.4 and reported up to date. The library hash survived. Host only; the clean VM pass is still open.
+8. [x] Test the in-app update from the previous signed build. 0.26.4 found 0.26.5, downloaded it, closed, let the installer replace the files, reopened 0.26.5 and reported up to date. The library hash survived. Host only; the clean VM pass is still open.
 
 ## Release assets
 
