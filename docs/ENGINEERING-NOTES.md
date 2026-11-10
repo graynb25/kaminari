@@ -134,6 +134,8 @@ Context. A show linked to AniList and played through a source produced two Conti
 
 What we shipped. `mergeContinueRows` normalizes source and AniList titles, drops the AniList row when a source row matches, and sorts the remaining rows by update time. The source row wins because it is the one that can resume or rewatch the actual stream. Tests cover punctuation, accents, alternate AniList titles and ordering. This is a render-time stopgap; the durable AniList-to-source link is a Phase 1 item in the production review.
 
+Release check. 0.26.9 was published as a signed release. A host install of 0.26.8 found 0.26.9, downloaded it, closed itself, and the installer reopened 0.26.9. The release build showed two Continue Watching cards, one Naruto and one Mob Psycho 100, where the previous build showed four. The feed reported `You are up to date.` The library SHA-256 stayed `66B2266E81DD218B801760F5828081EBBBEEB4F4108A2A36A42DCFCD0742C01A`, and uninstall kept the database. Host only; the clean VM pass remains open.
+
 ## 2026-11-10 Installer icon
 
 Context. The app executable had the Kaminari icon, but the NSIS setup executable showed the default NSIS icon in Explorer and download lists.
