@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-09 AniList read sync
+
+Context. OAuth connect landed, but the local library had no path to pull the viewer's AniList list.
+
+What we shipped. A `MediaListCollection(userId, type: ANIME)` query, an `anilist_sync_pull` command, a single SQLite transaction that upserts media and library rows, and status mapping for CURRENT, REPEATING, PLANNING, COMPLETED, PAUSED and DROPPED. Progress is clamped to the known episode count. Watched rows 1..progress use `INSERT OR IGNORE` and write no history rows. Local-only rows and local watched rows above server progress stay. Settings has a Sync from AniList button and refreshes the library through `onDataChanged`.
+
+What we measured. The connected `graynb25` account has no anime entries, so the live pull returned 0 titles; that is the correct empty-list result. The local-only Tempal row stayed, history stayed at 2, and a second sync returned 0 again with identical counts. Unit tests cover two entries, status mapping, clamped progress, no history, idempotent re-sync and local-only survival. 87 Rust and 54 frontend tests pass. The 0.23.0 installer is 37,880,187 bytes (36.13 MiB); the installed build kept the connected viewer and returned 0 again.
+
+What we did not do. No live non-empty pull because the account has no anime entries. The write queue and conflict handling are next.
+
 ## 2026-11-09 AniList OAuth connect
 
 Context. P3 started with AniList read access. The app had public metadata only and no account state.

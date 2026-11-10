@@ -4,6 +4,12 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.23.0 - 2026-11-09
+
+- AniList: pull the viewer's anime list into the local library with mapped statuses and watched progress
+- AniList: idempotent merge keeps local-only rows, keeps longer local progress and never creates fake history
+- Version: bump to 0.23.0
+
 ## 0.22.0 - 2026-11-09
 
 - AniList: connect through the implicit grant, deep link callback, Viewer validation and OS keychain storage
