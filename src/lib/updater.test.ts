@@ -5,6 +5,7 @@ import {
   downloadPercent,
   formatReleaseDate,
   initialDownloadProgress,
+  missingReleaseFeed,
   releaseNotesExcerpt,
   trackDownload,
 } from "./updater";
@@ -20,6 +21,16 @@ function progress(chunkLength: number): DownloadEvent {
 function finished(): DownloadEvent {
   return { event: "Finished" };
 }
+
+describe("missingReleaseFeed", () => {
+  it("recognizes the absent release manifest", () => {
+    expect(
+      missingReleaseFeed(new Error("Could not fetch a valid release JSON from the remote")),
+    ).toBe(true);
+    expect(missingReleaseFeed("HTTP 404 not found")).toBe(true);
+    expect(missingReleaseFeed(new Error("network is unreachable"))).toBe(false);
+  });
+});
 
 describe("formatReleaseDate", () => {
   it("formats an RFC 3339 date in UTC", () => {

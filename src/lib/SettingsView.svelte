@@ -37,6 +37,7 @@
     downloadPercent,
     formatReleaseDate,
     initialDownloadProgress,
+    missingReleaseFeed,
     releaseNotesExcerpt,
     trackDownload,
     type DownloadProgress,
@@ -231,10 +232,14 @@
       updateMessage = `Kaminari ${found.version} is available.`;
     } catch (err) {
       if (updaterDisposed) return;
+      const absentFeed = missingReleaseFeed(err);
       updatePhase = "error";
-      updateMessage = options.quiet
-        ? "Could not reach the release feed. This is expected until a signed release is published. The rest of Kaminari works normally."
-        : `Update check failed. ${failureText(err)} The release feed stays empty until a signed release is published.`;
+      updateSoftError = Boolean(options.quiet) || absentFeed;
+      updateMessage = absentFeed
+        ? "No public release feed is published for this build. Updates stay local until a signed release exists."
+        : options.quiet
+          ? "Could not reach the release feed. This is expected until a signed release is published. The rest of Kaminari works normally."
+          : `Update check failed. ${failureText(err)}`;
     }
   }
 

@@ -1,6 +1,6 @@
-# Releasing updates
+﻿# Releasing updates
 
-Status: the 0.26.0 signed installer exists locally. The update feed is not live because the repository is private. This note records the exact steps so the feed can be published later without rediscovering them.
+Status: the 0.26.1 signed installer exists locally. The update feed is not live because the repository is private. This note records the exact steps so the feed can be published later without rediscovering them.
 
 ## Keys
 
@@ -41,13 +41,13 @@ That URL only works when the repository is public and a release marked latest co
 
 ```json
 {
-  "version": "0.26.0",
+  "version": "0.26.1",
   "notes": "Mangayomi sources, preferred playback quality and auto update.",
   "pub_date": "2026-11-10T13:42:47Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "<entire contents of Kaminari_0.26.0_x64-setup.exe.sig>",
-      "url": "https://github.com/graynb25/kaminari/releases/download/v0.26.0/Kaminari_0.26.0_x64-setup.exe"
+      "signature": "<entire contents of Kaminari_0.26.1_x64-setup.exe.sig>",
+      "url": "https://github.com/graynb25/kaminari/releases/download/v0.26.1/Kaminari_0.26.1_x64-setup.exe"
     }
   }
 }
@@ -61,7 +61,7 @@ A local copy is written to `src-tauri/target/release/bundle/nsis/latest.json` af
 
 1. Keep the repository private until the legal review is done.
 2. When ready, make the repository public or move the release assets and manifest to a public host.
-3. Create a release tagged `v0.26.0` (or the matching version).
+3. Create a release tagged `v0.26.1` (or the matching version).
 4. Upload the installer, the `.sig` and `latest.json`. Mark the release latest.
 5. Confirm `releases/latest/download/latest.json` returns the manifest.
 6. Install an older signed build on a clean VM, open Settings, check for updates, download, install and restart.
@@ -69,8 +69,8 @@ A local copy is written to `src-tauri/target/release/bundle/nsis/latest.json` af
 
 ## Current limitation
 
-The 0.26.0 release binary reports:
+The 0.26.1 release binary reports:
 
-`Update check failed. Could not fetch a valid release JSON from the remote.`
+`No public release feed is published for this build. Updates stay local until a signed release exists.`
 
-This is expected while the repository is private and no signed public release exists. The failure is caught and shown; the app stays open.
+This is expected while the repository is private and no signed public release exists. The state is shown as a warning, not a crash, and the app stays open.

@@ -29,6 +29,16 @@ export function initialDownloadProgress(): DownloadProgress {
   return { received: 0, total: null, finished: false };
 }
 
+export function missingReleaseFeed(error: unknown): boolean {
+  const text = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return (
+    text.includes("valid release json") ||
+    text.includes("could not fetch") ||
+    text.includes("404") ||
+    text.includes("not found")
+  );
+}
+
 export function formatReleaseDate(value?: string): string {
   if (!value) return "";
   const date = new Date(value);
