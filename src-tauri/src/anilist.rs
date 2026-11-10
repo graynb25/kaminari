@@ -842,8 +842,9 @@ mod tests {
 
     #[test]
     fn parses_valid_auth_callback() {
-        let url = Url::parse("kaminari://auth/callback#access_token=abc123.def456").unwrap();
-        assert_eq!(parse_auth_callback(&url).as_deref(), Ok("abc123.def456"));
+        // Example token, not a credential.
+        let url = Url::parse("kaminari://auth/callback#access_token=test-token").unwrap();
+        assert_eq!(parse_auth_callback(&url).as_deref(), Ok("test-token"));
     }
 
     #[test]

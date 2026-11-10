@@ -1,0 +1,15 @@
+# Gitleaks configuration.
+# The only historical findings were fake example tokens in a test and a proxy
+# documentation sample. Both current files use obvious placeholders. The two
+# commits below are allowlisted so the full-history scan stays focused on real
+# credentials. Do not add new commits here without reviewing the finding.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Verified fake example tokens from an auth test and a proxy doc"
+commits = [
+  "504a3c1a39cb64ea0fadc7933b23782a006360cc",
+  "f8de9352338fc480e9d5877ff3b973f5d3184cbb",
+]

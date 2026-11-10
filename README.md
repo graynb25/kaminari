@@ -97,6 +97,14 @@ Settings, and the footer, open a generated list of every Rust crate, npm package
 - `VERSION`: the single version source
 - `public/licenses.json`: generated license list used by Settings
 
+## Security and takedown
+
+Report a vulnerability privately through [GitHub Security Advisories](https://github.com/graynb25/kaminari/security/advisories/new). Do not put exploit details in a public issue.
+
+For a takedown or legal request, open a [takedown issue](https://github.com/graynb25/kaminari/issues/new?template=takedown.yml). Include the exact URL or path and a way to contact you. Do not post identity documents, passwords, or private keys. The issue tracker is public when the repository is public; security advisories stay private.
+
+The full git history is scanned with Gitleaks on every push and pull request. See [SECURITY.md](SECURITY.md).
+
 ## Legal
 
 Kaminari ships no content, no source list, and no APKs. It is a general-purpose player and extension host. You are responsible for the extensions you install and the content you access. Read the [Terms of Service](docs/TERMS.md) and the [Privacy Policy](docs/PRIVACY.md).

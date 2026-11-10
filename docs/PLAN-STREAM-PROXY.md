@@ -145,7 +145,7 @@ JSON crossing to Svelte:
 
 ```json
 {
-  "proxyUrl": "http://127.0.0.1:39321/s/a3f9c1d4e5b64f8a9c0d1e2f3a4b5c6/manifest.m3u8?token=9f2e1d0c8b7a6a5b4c3d2e1f0a9b8c7d",
+  "proxyUrl": "http://127.0.0.1:39321/s/a3f9c1d4e5b64f8a9c0d1e2f3a4b5c6/manifest.m3u8?token=example-token",
   "opaqueId": "a3f9c1d4e5b6...",
   "expiresInSec": 7200,
   "kind": "hls"

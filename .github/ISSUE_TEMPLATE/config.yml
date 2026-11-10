@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/graynb25/kaminari/security/advisories/new
+    about: Report a vulnerability privately. Do not open a public issue with exploit details.
+  - name: Takedown or legal request
+    url: https://github.com/graynb25/kaminari/issues/new?template=takedown.yml
+    about: Report a specific repository file, release asset, or link that should be removed.
