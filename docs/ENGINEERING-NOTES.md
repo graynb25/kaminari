@@ -138,6 +138,8 @@ What we measured. The combined tree passes 148 Rust tests and 101 frontend tests
 
 What remains. The legal documents still need the real contact, jurisdiction and counsel review. NSFW source hiding and the clean Windows VM install, update and rollback pass are still open. Windows Authenticode signing and the Phase 1 findings remain.
 
+Release check. 0.27.0 was published as a signed release. A host install of 0.26.9 found 0.27.0, downloaded it, closed itself, and the installer reopened 0.27.0. The release build accepted the signed-version feed and reported `You are up to date.` An AniKoto search returned Naruto after the extension host moved to blocking workers. The library SHA-256 stayed `66B2266E81DD218B801760F5828081EBBBEEB4F4108A2A36A42DCFCD0742C01A`, and uninstall kept the database. Host only; the clean VM pass remains open.
+
 ## 2026-11-10 Continue Watching dedupe
 
 Context. A show linked to AniList and played through a source produced two Continue Watching cards, one from the AniList progress row and one from the source progress row.
