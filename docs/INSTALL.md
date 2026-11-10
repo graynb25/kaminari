@@ -59,10 +59,14 @@ Some sources expose settings. Open the source card menu and choose Settings. Com
 ## Watching
 
 - Watch on an AniList title searches your installed sources and opens the closest match.
+- Browse has a Coming Soon shelf under Trending. Plan saves an unreleased title to your library as Planning, so it is ready when it airs.
 - Already watched some or all of a show elsewhere? Open it in a source and use the check button on an episode, or Mark all watched. Both record progress without playing. Mark all also queues AniList progress when the show came from Watch, and Clear resets local source progress only.
+- The gear button in the player opens stream quality for the current episode. Switching keeps the current position. Preferred quality is also in Settings.
+- Incognito mode is in Settings, Privacy. While on, playback does not write history, progress, Continue Watching or AniList updates. The player and source page show a badge.
 - Preferred quality is in Settings and on the show page.
 - Autoplay next episode is in Settings. It shows a five second countdown and a Play next button.
 - Remote subtitles are proxied with the stream headers. Inline subtitles become WebView tracks.
+- History has a time range filter, per-row delete and Clear history. Clearing history also clears Continue Watching. Library entries and watched marks stay.
 - Downloads keep a file from a stream when you have the right to keep it. Choose a downloads folder in Settings.
 
 ## Updates

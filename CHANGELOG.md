@@ -4,6 +4,16 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.26.7 - 2026-11-10
+
+- Player: add a gear menu with stream quality options for the current episode. Switching keeps the current position
+- Settings and the source browser: replace the native quality dropdowns with an in-app quality menu so every option stays readable in dark and light themes
+- Incognito: add a dedicated Settings, Privacy section. Playback skips source progress, history, Continue Watching and AniList updates while on; the player and source page show a badge. Manual watched marks are blocked
+- History: compact toolbar with a time range filter (last hour, today, today and yesterday, all time), per-row delete and an in-app clear confirmation. Clearing history also empties Continue Watching
+- Continue Watching: completed AniList shows and watched source shows return after re-marking, with a Rewatch label for source rows
+- Browse: add a Coming Soon shelf under Trending for unreleased titles. Upcoming cards show UPCOMING and Plan, which saves them to the library as Planning
+- Version: bump to 0.26.7
+
 ## 0.26.6 - 2026-11-10
 
 - Security: update the zip crate to 9.5.0 and handle its fallible entry names. This clears the critical zip parser and extraction advisories for `.kext` package loading
