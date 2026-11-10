@@ -59,6 +59,7 @@ Some sources expose settings. Open the source card menu and choose Settings. Com
 ## Watching
 
 - Watch on an AniList title searches your installed sources and opens the closest match.
+- Already watched some or all of a show elsewhere? Open it in a source and use the check button on an episode, or Mark all watched. Both record progress without playing. Mark all also queues AniList progress when the show came from Watch, and Clear resets local source progress only.
 - Preferred quality is in Settings and on the show page.
 - Autoplay next episode is in Settings. It shows a five second countdown and a Play next button.
 - Remote subtitles are proxied with the stream headers. Inline subtitles become WebView tracks.

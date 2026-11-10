@@ -26,6 +26,7 @@ import type {
   SourceLibraryItem,
   SourcePreferences,
   SourceProgress,
+  SourceProgressMark,
   SourceContinueItem,
   SourceHistoryItem,
 } from "./types";
@@ -287,6 +288,15 @@ export function sourceProgressSet(input: {
   watched: boolean;
 }): Promise<void> {
   return invoke<void>("source_progress_set", input);
+}
+
+export function sourceProgressMarkAll(input: {
+  extensionId: string;
+  showId: string;
+  episodes: SourceProgressMark[];
+  watched: boolean;
+}): Promise<void> {
+  return invoke<void>("source_progress_mark_all", input);
 }
 
 export function sourceContinue(limit = 20): Promise<SourceContinueItem[]> {

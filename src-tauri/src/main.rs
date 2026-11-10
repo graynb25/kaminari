@@ -167,6 +167,7 @@ fn main() {
             commands::source_library_remove,
             commands::source_progress_get,
             commands::source_progress_set,
+            commands::source_progress_mark_all,
             commands::source_continue,
             commands::source_history,
             commands::backup_export,

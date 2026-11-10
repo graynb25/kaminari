@@ -4,6 +4,13 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.26.5 - 2026-11-10
+
+- Source episodes: add Mark all watched and a watched toggle on every episode, so existing progress can be entered without replaying a full episode. Mark all also queues AniList progress when the source show came from Watch; Clear resets local source progress only
+- Source library: progress changes from the source browser refresh the AniList shelves immediately
+- Docs: cover the new controls and record the 40 episode host check
+- Version: bump to 0.26.5
+
 ## 0.26.4 - 2026-11-10
 
 - Sources: remove the Aniyomi registry panel until an APK runtime exists. The page now shows native extensions and Mangayomi sources only, with stat cards for native extensions, Mangayomi sources, allowed hosts and runtime memory

@@ -293,6 +293,13 @@ export type SourceProgress = {
   updatedAt: number;
 };
 
+export type SourceProgressMark = {
+  episodeId: string;
+  episodeNumber: number;
+  episodeTitle?: string | null;
+  durationSec: number;
+};
+
 export type SourceContinueItem = {
   extensionId: string;
   extensionName: string;

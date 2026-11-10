@@ -120,6 +120,15 @@ pub struct SourceProgress {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceProgressMark {
+    pub episode_id: String,
+    pub episode_number: i64,
+    pub episode_title: Option<String>,
+    pub duration_sec: f64,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceContinueItem {
@@ -736,6 +745,62 @@ impl Db {
              WHERE extension_id = ?1 AND show_id = ?2",
             params![extension_id, show_id],
         )?;
+        Ok(())
+    }
+
+    pub fn source_progress_mark_all(
+        &self,
+        extension_id: &str,
+        show_id: &str,
+        episodes: &[SourceProgressMark],
+        watched: bool,
+    ) -> AppResult<()> {
+        if episodes.is_empty() {
+            return Ok(());
+        }
+        let mut conn = self.conn.lock().map_err(|_| db_locked())?;
+        let tx = conn.transaction()?;
+        if watched {
+            let mut statement = tx.prepare(
+                "INSERT INTO source_progress(
+                    extension_id, show_id, episode_id, episode_number, episode_title,
+                    position_sec, duration_sec, watched, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, unixepoch())
+                 ON CONFLICT(extension_id, show_id, episode_id) DO UPDATE SET
+                    episode_number = excluded.episode_number,
+                    episode_title = excluded.episode_title,
+                    position_sec = excluded.position_sec,
+                    duration_sec = excluded.duration_sec,
+                    watched = 1,
+                    updated_at = unixepoch()",
+            )?;
+            for episode in episodes {
+                let duration = episode.duration_sec.max(0.0);
+                statement.execute(params![
+                    extension_id,
+                    show_id,
+                    episode.episode_id,
+                    episode.episode_number,
+                    episode.episode_title.as_deref(),
+                    duration,
+                    duration,
+                ])?;
+            }
+        } else {
+            let mut statement = tx.prepare(
+                "DELETE FROM source_progress
+                 WHERE extension_id = ?1 AND show_id = ?2 AND episode_id = ?3",
+            )?;
+            for episode in episodes {
+                statement.execute(params![extension_id, show_id, episode.episode_id])?;
+            }
+        }
+        tx.execute(
+            "UPDATE source_library SET updated_at = unixepoch()
+             WHERE extension_id = ?1 AND show_id = ?2",
+            params![extension_id, show_id],
+        )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -1403,6 +1468,64 @@ mod tests {
             .source_progress_get(&package.manifest.id, "show-1")
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn source_progress_mark_all_updates_library_and_continue() {
+        let db = Db::new(":memory:").unwrap();
+        let package = crate::ext_host::sample_package().unwrap();
+        db.install_js_extension(&package.manifest, &package.code, "builtin")
+            .unwrap();
+        db.source_library_add(
+            &package.manifest.id,
+            "show-1",
+            "Popeye",
+            None,
+            Some(1933),
+            None,
+        )
+        .unwrap();
+
+        let marks = vec![
+            SourceProgressMark {
+                episode_id: "ep-1".to_string(),
+                episode_number: 1,
+                episode_title: Some("Episode 1".to_string()),
+                duration_sec: 600.0,
+            },
+            SourceProgressMark {
+                episode_id: "ep-2".to_string(),
+                episode_number: 2,
+                episode_title: None,
+                duration_sec: 0.0,
+            },
+            SourceProgressMark {
+                episode_id: "ep-3".to_string(),
+                episode_number: 3,
+                episode_title: Some("Episode 3".to_string()),
+                duration_sec: 720.0,
+            },
+        ];
+
+        db.source_progress_mark_all(&package.manifest.id, "show-1", &marks, true)
+            .unwrap();
+        let progress = db
+            .source_progress_get(&package.manifest.id, "show-1")
+            .unwrap();
+        assert_eq!(progress.len(), 3);
+        assert!(progress.iter().all(|row| row.watched));
+        assert_eq!(progress[0].position_sec, 600.0);
+        assert_eq!(progress[2].position_sec, 720.0);
+        assert_eq!(db.source_library_list().unwrap()[0].watched_count, 3);
+        assert!(db.source_continue(10).unwrap().is_empty());
+
+        db.source_progress_mark_all(&package.manifest.id, "show-1", &marks, false)
+            .unwrap();
+        assert!(db
+            .source_progress_get(&package.manifest.id, "show-1")
+            .unwrap()
+            .is_empty());
+        assert_eq!(db.source_library_list().unwrap()[0].watched_count, 0);
     }
 
     #[test]
