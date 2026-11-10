@@ -32,6 +32,7 @@
     bootSnapshot,
     continueWatching,
     detail as fetchDetail,
+    historyClear,
     historyList,
     listLibrary,
     removeFromLibrary,
@@ -207,6 +208,16 @@
       sourceHistoryItems = await sourceHistory(100);
     } catch {
       sourceHistoryItems = [];
+    }
+  }
+
+  async function clearHistory() {
+    try {
+      await historyClear();
+      await Promise.all([refreshHistory(), refreshSourceHistory()]);
+      notify("History cleared. Library, progress and AniList stay.", "success");
+    } catch (e) {
+      notify(`History could not be cleared: ${errorText(e)}`, "error");
     }
   }
 
@@ -819,6 +830,7 @@
               onOpen={(item) => void openDetail(item)}
               onOpenSource={openSourceShow}
               onBrowse={() => goView("browse")}
+              onClearHistory={clearHistory}
             />
           {:else if view === "sources"}
             <SourcesView boot={boot} notify={notify} onBrowse={openExtension} />

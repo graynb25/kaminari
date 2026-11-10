@@ -4,6 +4,7 @@
   import Icon from "./Icon.svelte";
   import PageHeader from "./PageHeader.svelte";
   import Skeleton from "./Skeleton.svelte";
+  import { confirm } from "@tauri-apps/plugin-dialog";
   import { coverOf, displayTitle, timeAgo } from "./format";
   import type { HistoryItem, Media, SourceHistoryItem } from "./types";
 
@@ -20,6 +21,7 @@
     onOpen,
     onOpenSource,
     onBrowse,
+    onClearHistory,
   }: {
     items: HistoryItem[];
     sourceItems?: SourceHistoryItem[];
@@ -29,7 +31,26 @@
     onOpen: (item: Media) => void;
     onOpenSource: (item: SourceHistoryItem) => void;
     onBrowse: () => void;
+    onClearHistory?: () => Promise<void> | void;
   } = $props();
+
+  let clearing = $state(false);
+
+  async function clearHistory() {
+    if (clearing || !onClearHistory) return;
+    clearing = true;
+    try {
+      const approved = await confirm(
+        "Clear the activity list? Watched events and source activity are removed. Your library, watched marks, resume positions and AniList list stay.",
+        { title: "Clear history", kind: "warning" },
+      );
+      if (approved) await onClearHistory();
+    } catch {
+      // The parent callback reports failures; a dismissed dialog is not one.
+    } finally {
+      clearing = false;
+    }
+  }
 
   function dayKey(unixSeconds: number): string {
     const date = new Date(unixSeconds * 1000);
@@ -91,19 +112,30 @@
     subtitle="AniList watched events and source progress, newest first, stored on this machine."
   >
     {#if merged.length > 0}
-      <div class="grid grid-cols-3 gap-3">
-        <div class="stat-card">
-          <p class="stat-label">Events</p>
-          <p class="stat-value">{merged.length}</p>
+      <div class="flex flex-wrap items-center justify-end gap-3">
+        <div class="grid grid-cols-3 gap-3">
+          <div class="stat-card">
+            <p class="stat-label">Events</p>
+            <p class="stat-value">{merged.length}</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">Titles</p>
+            <p class="stat-value">{uniqueTitles}</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">Latest</p>
+            <p class="stat-value text-base" style="font-size: 15px;">{latest}</p>
+          </div>
         </div>
-        <div class="stat-card">
-          <p class="stat-label">Titles</p>
-          <p class="stat-value">{uniqueTitles}</p>
-        </div>
-        <div class="stat-card">
-          <p class="stat-label">Latest</p>
-          <p class="stat-value text-base" style="font-size: 15px;">{latest}</p>
-        </div>
+        <button
+          class="btn-ghost px-3 py-2 text-xs"
+          style="color: var(--danger); border-color: var(--danger-line);"
+          onclick={() => void clearHistory()}
+          disabled={clearing || !onClearHistory}
+          aria-busy={clearing}
+        >
+          {clearing ? "Clearing…" : "Clear history"}
+        </button>
       </div>
     {/if}
   </PageHeader>

@@ -490,6 +490,11 @@ pub fn history_list(
 }
 
 #[tauri::command]
+pub fn history_clear(state: State<'_, Db>) -> Result<(), String> {
+    state.history_clear().map_err(ipc_error)
+}
+
+#[tauri::command]
 pub fn source_validate_id(id: String) -> bool {
     ext_host::validate_source_id(&id)
 }

@@ -130,6 +130,7 @@ fn main() {
             commands::watched_mark_all,
             commands::continue_watching,
             commands::history_list,
+            commands::history_clear,
             commands::source_validate_id,
             commands::registry_fetch,
             commands::source_list,
