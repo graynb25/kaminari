@@ -12,6 +12,13 @@ Every visible change gets a line here. Keep lines short and specific.
 - Security: settings, backup and package paths use one-use dialog-scoped tokens, canonical paths and reparse-point checks
 - Security: registry, Mangayomi and download fetches share a safe resolver with HTTPS enforcement, private-address rejection, redirect checks, DNS pinning and streaming caps
 - Security: upgrade rusqlite to 0.41.1 and bundled SQLite to 3.54.1, clearing RUSTSEC-2026-0459
+- Security: extension updates require an explicit review when the name, version, code or host list changes. Trust is computed in Rust, not supplied by a package or backup
+- Security: proxy requests reuse shared entries, index children for constant-time reuse, reject over-budget playlists and cap rendered playlists at 4 MiB
+- Security: host allowlists enforce path boundaries, ports, encoded separator rejection and wildcard subdomains
+- Security: source removal deletes its library, progress and history rows. Episode counts, source metadata and duration values are capped
+- Sync: one guard serializes AniList push and pull, queue batches are bounded, failures use exponential backoff and negative local actions no longer create unexpected AniList writes
+- Portable: sign in can register the kaminari callback only after an explicit user action, with a visible reason when registration is unavailable
+- CI: actions are pinned to commit SHAs, gitleaks is checksum verified, permissions are read-only and the workflow runs frontend tests and dependency audits
 - Compatibility: schema version 2 adds the source AniList link. Backups from this build are rejected by older builds
 - Version: bump to 0.28.0
 

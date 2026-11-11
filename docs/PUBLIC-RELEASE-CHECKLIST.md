@@ -1,6 +1,6 @@
 # Public release checklist
 
-Status: the repository is public as of 2026-11-10. `v0.27.0` is the current signed release. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled.
+Status: the repository is public as of 2026-11-10. `v0.27.0` is the current published signed release. A local 0.28.0 hardening batch is prepared and not yet published. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled.
 
 ## Before public
 
@@ -42,9 +42,19 @@ The repository is public. Current state:
 - [x] M-01: dialog-scoped one-use path tokens for settings, backups and package installs.
 - [x] M-03, M-04, M-14: shared safe fetch for registry, Mangayomi and downloads.
 - [x] M-19: bundle SQLite 3.54.1 through rusqlite 0.41.1.
+- [x] M-05: proxy shared entries, constant-time child reuse and output caps.
+- [x] M-06: extension update review and Rust-computed trust.
+- [x] M-08: source row cleanup and orphan hiding.
+- [x] M-09: episode and progress clamps.
+- [x] M-10: serialized AniList sync with bounded batches and backoff.
+- [x] M-11: negative watch actions no longer create unexpected AniList writes.
+- [x] M-13: pinned CI actions, gitleaks checksum, read-only permissions, frontend tests and audits.
+- [x] M-15: host allowlist path, port and wildcard rules.
+- [x] M-16: source metadata, duration and row caps.
+- [x] L-02: portable AniList callback registration with explicit consent.
 - [ ] Clean Windows VM install, update and rollback pass.
 - [ ] Windows Authenticode code signing.
-- [ ] Remaining Phase 1 items: M-05, M-06, M-08, M-09, M-10, M-11, M-13, M-15, M-16, L-02, L-09 and CI hardening.
+- [ ] L-01, L-03 to L-08 low findings and final legal review.
 
 ## Release assets
 
