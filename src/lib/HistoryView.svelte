@@ -5,6 +5,7 @@
   import Modal from "./Modal.svelte";
   import PageHeader from "./PageHeader.svelte";
   import Skeleton from "./Skeleton.svelte";
+  import { nextFocusIndex } from "./a11y";
   import { coverOf, displayTitle, timeAgo } from "./format";
   import type { HistoryItem, Media, SourceHistoryItem } from "./types";
 
@@ -52,6 +53,8 @@
   let clearing = $state(false);
   let deletingKey = $state<string | null>(null);
   let rangeWrap = $state<HTMLDivElement | null>(null);
+  let rangeTrigger = $state<HTMLButtonElement | null>(null);
+  let rangeItems = $state<Array<HTMLButtonElement | null>>([]);
 
   function rowKey(row: HistoryRow): string {
     return row.kind === "anilist"
@@ -150,6 +153,39 @@
   function selectRange(key: RangeKey) {
     range = key;
     rangeOpen = false;
+    requestAnimationFrame(() => rangeTrigger?.focus());
+  }
+
+  function closeRange(restoreFocus = false) {
+    rangeOpen = false;
+    if (restoreFocus) requestAnimationFrame(() => rangeTrigger?.focus());
+  }
+
+  function onRangeFocusOut(event: FocusEvent) {
+    if (!rangeOpen) return;
+    const next = event.relatedTarget;
+    if (next instanceof Node && rangeWrap?.contains(next)) return;
+    rangeOpen = false;
+  }
+
+  function onRangeKeys(event: KeyboardEvent) {
+    const items = rangeItems.filter((item): item is HTMLButtonElement => item !== null);
+    if (items.length === 0) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeRange(true);
+      return;
+    }
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    let next: number | null = null;
+    if (event.key === "ArrowDown") next = nextFocusIndex(current, items.length, 1);
+    else if (event.key === "ArrowUp") next = nextFocusIndex(current, items.length, -1);
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = items.length - 1;
+    if (next === null) return;
+    event.preventDefault();
+    items[next]?.focus();
   }
 
   function openClear() {
@@ -190,16 +226,24 @@
 
   $effect(() => {
     if (!rangeOpen) return;
+    const frame = requestAnimationFrame(() => {
+      const index = ranges.findIndex((entry) => entry.key === range);
+      (rangeItems[index] ?? rangeItems[0])?.focus();
+    });
     const onPointer = (event: PointerEvent) => {
       const target = event.target as Node | null;
       if (rangeWrap && target && !rangeWrap.contains(target)) rangeOpen = false;
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") rangeOpen = false;
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      closeRange(true);
     };
     window.addEventListener("pointerdown", onPointer);
     window.addEventListener("keydown", onKey);
     return () => {
+      cancelAnimationFrame(frame);
       window.removeEventListener("pointerdown", onPointer);
       window.removeEventListener("keydown", onKey);
     };
@@ -215,12 +259,21 @@
     {#if merged.length > 0}
       <div class="history-toolbar">
         <p class="history-summary">{summary}</p>
-        <div class="range-wrap" bind:this={rangeWrap}>
+        <div class="range-wrap" bind:this={rangeWrap} onfocusout={onRangeFocusOut}>
           <button
+            bind:this={rangeTrigger}
             class="btn-ghost toolbar-btn"
+            id="history-range-trigger"
             onclick={() => (rangeOpen = !rangeOpen)}
+            onkeydown={(event) => {
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                rangeOpen = true;
+              }
+            }}
             aria-haspopup="menu"
             aria-expanded={rangeOpen}
+            aria-controls={rangeOpen ? "history-range-menu" : undefined}
             aria-label="Time range, {rangeLabel}"
           >
             <Icon name="clock" size={13} />
@@ -228,13 +281,22 @@
             <Icon name="chevronRight" size={11} class="rotate-90" />
           </button>
           {#if rangeOpen}
-            <div class="range-menu" role="menu" aria-label="Time range">
-              {#each ranges as entry}
+            <div
+              class="range-menu"
+              id="history-range-menu"
+              role="menu"
+              aria-label="Time range"
+              tabindex={-1}
+              onkeydown={onRangeKeys}
+            >
+              {#each ranges as entry, index}
                 <button
+                  bind:this={rangeItems[index]}
                   class="range-item"
                   class:is-active={range === entry.key}
                   role="menuitemradio"
                   aria-checked={range === entry.key}
+                  tabindex={range === entry.key ? 0 : -1}
                   onclick={() => selectRange(entry.key)}
                 >
                   <span>{entry.label}</span>
@@ -262,9 +324,10 @@
   </PageHeader>
 
   {#if loading && merged.length === 0}
+    <p class="sr-only" role="status" aria-live="polite">Loading history</p>
     <Skeleton kind="list" />
   {:else if error && merged.length === 0}
-    <div class="surface p-5 max-w-xl">
+    <div class="surface p-5 max-w-xl" role="alert">
       <div class="flex items-start gap-3">
         <span class="w-9 h-9 grid place-items-center rounded-lg shrink-0" style="background: var(--danger-wash); color: var(--danger);">
           <Icon name="alert" size={17} />
@@ -314,7 +377,7 @@
                   <button
                     class="history-open"
                     onclick={() => onOpen(row.item.media)}
-                    aria-label="Open {displayTitle(row.item.media)}, episode {row.item.episode}"
+                    aria-label="Open {displayTitle(row.item.media)}, episode {row.item.episode}, watched"
                   >
                     <div class="w-10 h-14 shrink-0 rounded-lg overflow-hidden" style="background: var(--void-700); border: 1px solid var(--line);">
                       <Artwork src={coverOf(row.item.media)} alt="" loading="lazy" />
@@ -351,7 +414,7 @@
                   <button
                     class="history-open"
                     onclick={() => onOpenSource(row.item)}
-                    aria-label="Open {row.item.title}, episode {row.item.episodeNumber}"
+                    aria-label="Open {row.item.title}, episode {row.item.episodeNumber}, {row.item.watched ? 'watched' : 'in progress'}"
                   >
                     <div class="w-10 h-14 shrink-0 rounded-lg overflow-hidden" style="background: var(--void-700); border: 1px solid var(--line);">
                       <Artwork src={row.item.cover} alt="" loading="lazy" />
@@ -407,6 +470,7 @@
   size="sm"
   overlayName="history-clear"
   label="Clear history"
+  labelledBy="history-clear-title"
   onClose={closeClear}
   headerClass="px-5 py-4"
   bodyClass="px-5 py-5"
@@ -421,7 +485,7 @@
         <Icon name="trash" size={17} />
       </span>
       <div class="min-w-0 flex-1">
-        <h2 class="text-base font-semibold">Clear history</h2>
+        <h2 id="history-clear-title" class="text-base font-semibold">Clear history</h2>
         <p class="text-[11px]" style="color: var(--text-4);">This cannot be undone.</p>
       </div>
       <button class="btn-ghost px-2.5 py-1.5 text-xs" onclick={closeClear} disabled={clearing} aria-label="Close">

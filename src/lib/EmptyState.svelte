@@ -13,6 +13,7 @@
     onSecondary,
     compact = false,
     mark = false,
+    role,
   }: {
     icon: string;
     title: string;
@@ -24,6 +25,7 @@
     onSecondary?: () => void;
     compact?: boolean;
     mark?: boolean;
+    role?: "status" | "alert";
   } = $props();
 
   const iconMap: Record<string, string> = {
@@ -42,7 +44,7 @@
   const iconName = $derived(iconMap[icon] ?? "sparkles");
 </script>
 
-<div class="empty-state {compact ? 'is-compact' : ''}">
+<div class="empty-state {compact ? 'is-compact' : ''}" role={role}>
   <div class="relative text-center max-w-md">
     {#if mark}
       <div class="flex justify-center mb-4">

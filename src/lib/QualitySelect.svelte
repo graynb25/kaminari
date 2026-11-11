@@ -17,6 +17,8 @@
   let open = $state(false);
   let placement = $state<"below" | "above">("below");
   let root = $state<HTMLDivElement | null>(null);
+  let trigger = $state<HTMLButtonElement | null>(null);
+  let popover = $state<HTMLDivElement | null>(null);
 
   const current = $derived(
     QUALITY_OPTIONS.find((option) => option.value === value) ?? QUALITY_OPTIONS[0],
@@ -25,6 +27,12 @@
   function choose(next: QualityPreference) {
     open = false;
     onChange(next);
+    requestAnimationFrame(() => trigger?.focus());
+  }
+
+  function closeAndRestore() {
+    open = false;
+    requestAnimationFrame(() => trigger?.focus());
   }
 
   function toggle() {
@@ -35,6 +43,44 @@
     open = !open;
   }
 
+  function onTriggerKeys(event: KeyboardEvent) {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    open = true;
+  }
+
+  function onPopoverKeys(event: KeyboardEvent) {
+    const items = Array.from(
+      popover?.querySelectorAll<HTMLButtonElement>(".quality-choice") ?? [],
+    );
+    if (items.length === 0) return;
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    let next: number | null = null;
+    if (event.key === "ArrowDown") next = (currentIndex + 1 + items.length) % items.length;
+    else if (event.key === "ArrowUp") next = (currentIndex - 1 + items.length) % items.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = items.length - 1;
+    if (next === null) return;
+    event.preventDefault();
+    items[next]?.focus();
+  }
+
+  function onFocusOut(event: FocusEvent) {
+    if (!open) return;
+    const next = event.relatedTarget;
+    if (next instanceof Node && root?.contains(next)) return;
+    open = false;
+  }
+
+  $effect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => {
+      const selected = popover?.querySelector<HTMLButtonElement>('[aria-selected="true"]');
+      (selected ?? popover?.querySelector<HTMLButtonElement>(".quality-choice"))?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  });
+
   $effect(() => {
     const onPointer = (event: PointerEvent) => {
       if (root && !root.contains(event.target as Node)) open = false;
@@ -43,7 +89,7 @@
       if (event.key === "Escape" && open) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        open = false;
+        closeAndRestore();
       }
     };
     document.addEventListener("pointerdown", onPointer);
@@ -55,14 +101,22 @@
   });
 </script>
 
-<div bind:this={root} class="quality-select" class:is-compact={compact}>
+<div
+  bind:this={root}
+  class="quality-select"
+  class:is-compact={compact}
+  onfocusout={onFocusOut}
+>
   <button
+    bind:this={trigger}
     type="button"
     class="quality-trigger"
-    aria-label={label}
+    aria-label="{label}: {current.label}"
     aria-haspopup="listbox"
     aria-expanded={open}
+    aria-controls={open ? "quality-listbox" : undefined}
     onclick={toggle}
+    onkeydown={onTriggerKeys}
     title={label}
   >
     <span class="quality-value">{current.label}</span>
@@ -72,7 +126,16 @@
   </button>
 
   {#if open}
-    <div class="quality-popover" class:is-above={placement === "above"} role="listbox" aria-label={label}>
+    <div
+      bind:this={popover}
+      class="quality-popover"
+      class:is-above={placement === "above"}
+      id="quality-listbox"
+      role="listbox"
+      aria-label={label}
+      tabindex={-1}
+      onkeydown={onPopoverKeys}
+    >
       {#each QUALITY_OPTIONS as option (option.value)}
         {@const active = option.value === value}
         <button
@@ -81,6 +144,7 @@
           class:is-active={active}
           role="option"
           aria-selected={active}
+          tabindex={-1}
           onclick={() => choose(option.value)}
         >
           <span>{option.label}</span>

@@ -79,6 +79,7 @@
   zIndex={60}
   overlayName="shortcuts"
   label="Keyboard shortcuts"
+  labelledBy="shortcuts-dialog-title"
   onClose={onClose}
   headerClass="flex items-center gap-3 px-5 py-4"
   bodyClass="p-5"
@@ -89,7 +90,7 @@
       <Icon name="keyboard" size={18} />
     </span>
     <div class="min-w-0 flex-1">
-      <h2 class="text-lg font-semibold" style="font-family: var(--font-display);">Keyboard shortcuts</h2>
+      <h2 id="shortcuts-dialog-title" class="text-lg font-semibold" style="font-family: var(--font-display);">Keyboard shortcuts</h2>
       <p class="text-[11px]" style="color: var(--text-4);">Everything reachable without a mouse.</p>
     </div>
     <button class="btn-ghost px-3 py-1.5 text-xs" onclick={onClose} data-autofocus>
@@ -108,13 +109,15 @@
         <dl class={group.title === "Player" ? "grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5" : "space-y-1.5"}>
           {#each group.rows as [key, what]}
             <div class="flex items-center gap-3 text-sm">
-              <kbd
-                class="px-2 py-1 rounded-md text-[11px] shrink-0 min-w-[54px] text-center"
-                style="background: var(--tint-1); border: 1px solid var(--line-strong); color: var(--text-1); font-family: var(--font-mono);"
-              >
-                {key}
-              </kbd>
-              <dt style="color: var(--text-2);">{what}</dt>
+              <dt class="shrink-0">
+                <kbd
+                  class="px-2 py-1 rounded-md text-[11px] block min-w-[54px] text-center"
+                  style="background: var(--tint-1); border: 1px solid var(--line-strong); color: var(--text-1); font-family: var(--font-mono);"
+                >
+                  {key}
+                </kbd>
+              </dt>
+              <dd class="min-w-0" style="color: var(--text-2);">{what}</dd>
             </div>
           {/each}
         </dl>

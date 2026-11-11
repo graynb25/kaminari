@@ -123,6 +123,15 @@
   let mainEl = $state<HTMLElement | null>(null);
   let online = $state(typeof navigator !== "undefined" ? navigator.onLine : true);
   let detailRequest = 0;
+  const viewNames: Record<View, string> = {
+    browse: "Browse",
+    library: "Library",
+    history: "History",
+    sources: "Sources",
+    settings: "Settings",
+  };
+  let announcedLocation = "browse";
+  let routeAnnouncement = $state("");
 
   const trendingRail = $derived(rails.trending);
 
@@ -584,6 +593,15 @@
     if (mainEl) mainEl.scrollTop = 0;
   });
 
+  // Announce route and detail changes for keyboard and screen reader users
+  // without moving focus away from the control they just used.
+  $effect(() => {
+    const location = detail ? `detail-${detail.id}` : view;
+    if (location === announcedLocation) return;
+    announcedLocation = location;
+    routeAnnouncement = detail ? `Details: ${displayTitle(detail)}` : `${viewNames[view]} view`;
+  });
+
   // Online and offline banner.
   $effect(() => {
     const show = () => {
@@ -637,6 +655,7 @@
   <div class="app-grain" aria-hidden="true"></div>
 
   <a href="#content" class="skip-link">Skip to content</a>
+  <p class="sr-only" role="status" aria-live="polite">{routeAnnouncement}</p>
   <TitleBar title={title} online={online} onOpenPalette={openPalette} />
 
   <div class="relative z-10 flex flex-1 min-h-0">
@@ -1065,5 +1084,10 @@
 
   #content:focus {
     outline: none;
+  }
+
+  #content:focus-visible {
+    outline: 2px solid var(--volt-400);
+    outline-offset: -2px;
   }
 </style>

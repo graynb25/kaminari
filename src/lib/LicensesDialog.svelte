@@ -106,6 +106,7 @@
   maxHeight="88vh"
   overlayName="licenses"
   label="Licenses"
+  labelledBy="licenses-dialog-title"
   onClose={onClose}
   bodyClass="px-4 py-4 md:px-5"
   headerClass="px-5 py-4"
@@ -119,7 +120,7 @@
         <Icon name="package" size={17} />
       </span>
       <div class="min-w-0 flex-1">
-        <h2 class="text-base font-semibold">Licenses</h2>
+        <h2 id="licenses-dialog-title" class="text-base font-semibold">Licenses</h2>
         <p class="text-[11px]" style="color: var(--text-4);">
           Every package in this build and the license it declares.
         </p>
@@ -163,19 +164,20 @@
   {/snippet}
 
   {#if loading && !data}
-        <div class="space-y-2" aria-label="Loading licenses">
-          {#each Array(6) as _}
-            <div class="surface p-3 flex items-center gap-3">
-              <div class="shimmer w-9 h-9 rounded-lg shrink-0"></div>
-              <div class="flex-1 space-y-2">
-                <div class="shimmer h-3 w-1/3 rounded"></div>
-                <div class="shimmer h-2 w-1/2 rounded"></div>
-              </div>
-            </div>
-          {/each}
+    <p class="sr-only" role="status" aria-live="polite">Loading licenses</p>
+    <div class="space-y-2" aria-hidden="true">
+      {#each Array(6) as _}
+        <div class="surface p-3 flex items-center gap-3">
+          <div class="shimmer w-9 h-9 rounded-lg shrink-0"></div>
+          <div class="flex-1 space-y-2">
+            <div class="shimmer h-3 w-1/3 rounded"></div>
+            <div class="shimmer h-2 w-1/2 rounded"></div>
+          </div>
         </div>
-      {:else if error && !data}
-        <div class="surface p-5 max-w-xl">
+      {/each}
+    </div>
+  {:else if error && !data}
+    <div class="surface p-5 max-w-xl" role="alert">
           <div class="flex items-start gap-3">
             <span class="w-9 h-9 grid place-items-center rounded-lg shrink-0" style="background: var(--danger-wash); color: var(--danger);">
               <Icon name="alert" size={17} />
@@ -244,7 +246,7 @@
                       {/if}
                       <div class="license-actions">
                         {#if text}
-                          <button class="license-link" onclick={() => toggle(pkg.key)} aria-expanded={openKey === pkg.key} aria-label="{openKey === pkg.key ? 'Hide' : 'Read'} the {pkg.license} license for {pkg.name}">
+                          <button class="license-link" onclick={() => toggle(pkg.key)} aria-expanded={openKey === pkg.key} aria-controls={openKey === pkg.key ? `license-text-${pkg.key}` : undefined} aria-label="{openKey === pkg.key ? 'Hide' : 'Read'} the {pkg.license} license for {pkg.name}">
                             {openKey === pkg.key ? "Hide license" : "Read license"}
                           </button>
                         {:else}
@@ -255,6 +257,7 @@
                         <!-- Scrollable license text needs a tab stop for keyboard users. -->
                         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                         <div
+                          id="license-text-{pkg.key}"
                           class="license-text-wrap"
                           tabindex="0"
                           role="region"

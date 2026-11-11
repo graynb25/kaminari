@@ -93,7 +93,7 @@
   --paper-300: #b8b7cc;
   --paper-400: #9694b2;
   --paper-450: #8b89a6;
-  --paper-500: #7a7893;
+  --paper-500: #82809a;
   --line: rgb(255 255 255 / 0.08);
   --line-strong: rgb(255 255 255 / 0.14);
   --line-volt: rgb(139 138 255 / 0.38);
@@ -246,7 +246,7 @@
   --surface-3: #f1f2f9;
   --success: #0a7c56;
   --warning: #b45309;
-  --danger: #e11d48;
+  --danger: #d91443;
   --info: #5553e8;
   --accent-wash-faint: rgb(var(--accent-bright-rgb) / 0.06);
   --accent-wash: rgb(var(--accent-bright-rgb) / 0.12);
@@ -2677,8 +2677,10 @@ body[data-player-open="true"] .app-shell {
   *::before,
   *::after {
     animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
   .hero-slide.active .kenburns {

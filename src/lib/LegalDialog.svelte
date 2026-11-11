@@ -128,6 +128,7 @@
   maxHeight="86vh"
   overlayName="legal"
   label="Legal documents"
+  labelledBy="legal-dialog-title"
   onClose={onClose}
   bind:body={contentEl}
   bodyClass="px-5 py-5 md:px-7"
@@ -141,7 +142,7 @@
       <Icon name="shield" size={17} />
     </span>
     <div class="min-w-0 flex-1">
-      <h2 class="text-base font-semibold">Legal</h2>
+      <h2 id="legal-dialog-title" class="text-base font-semibold">Legal</h2>
       <p class="text-[11px]" style="color: var(--text-4);">
         Kaminari ships no content and no sources.
       </p>

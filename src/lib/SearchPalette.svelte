@@ -118,6 +118,9 @@
   });
 
   const flatRows = $derived(groups.flatMap((group) => group.rows));
+  const activeDescendant = $derived(
+    flatRows.length > 0 ? `palette-row-${active}` : undefined,
+  );
 
   function saveRecent(value: string) {
     if (incognito || incognitoEnabled()) {
@@ -259,12 +262,14 @@
   zIndex={60}
   overlayName="palette"
   label="Search Kaminari"
+  labelledBy="search-palette-title"
   onClose={onClose}
   bind:panel={dialog}
   bodyClass="p-2"
   footerClass="flex flex-wrap gap-4 px-4 py-2.5 text-[10px]"
 >
   {#snippet header()}
+    <h2 id="search-palette-title" class="sr-only">Search Kaminari</h2>
     <div class="palette-input-row flex items-center gap-3 px-4 h-14">
       <Icon name="search" size={18} class="shrink-0" />
       <input
@@ -274,6 +279,11 @@
         class="palette-input flex-1 h-full bg-transparent text-[15px] outline-none"
         style="color: var(--paper-50);"
         aria-label="Search AniList, library, sources and actions"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={flatRows.length > 0}
+        aria-controls={flatRows.length > 0 ? "palette-results" : undefined}
+        aria-activedescendant={activeDescendant}
         autocomplete="off"
         spellcheck={false}
         data-autofocus
@@ -286,7 +296,11 @@
   {/snippet}
 
   <p class="sr-only" aria-live="polite">
-    {searching ? "Searching AniList" : `${flatRows.length} results`}
+    {searching
+      ? "Searching AniList"
+      : term.length < 2
+        ? `${flatRows.length} quick actions`
+        : `${flatRows.length} results`}
   </p>
 
   {#if rateLimited}
@@ -304,7 +318,7 @@
       <div class="flex items-center gap-2 px-3 pt-2 pb-1">
         <p class="text-[10px] font-semibold uppercase tracking-[0.18em]" style="color: var(--paper-500);">Recent</p>
         <span class="flex-1"></span>
-        <button class="text-[10px]" style="color: var(--paper-500);" onclick={clearRecent}>Clear</button>
+        <button class="text-[10px]" style="color: var(--paper-500);" onclick={clearRecent} aria-label="Clear recent searches">Clear</button>
       </div>
       <div class="flex flex-wrap gap-1.5 px-3 pb-2">
         {#each recent as value}
@@ -341,22 +355,31 @@
     </div>
   {/if}
 
-  {#each groups as group (group.label)}
-    <div class="mb-1">
-      <div class="flex items-center gap-2 px-3 pt-2 pb-1">
-        <p class="text-[10px] font-semibold uppercase tracking-[0.18em]" style="color: var(--paper-500);">{group.label}</p>
-        <span class="text-[10px]" style="color: var(--paper-500); font-family: var(--font-mono);">{group.rows.length}</span>
-      </div>
+  <div
+    id="palette-results"
+    role="listbox"
+    aria-label="Search results"
+    aria-hidden={flatRows.length === 0 ? "true" : undefined}
+  >
+    {#each groups as group (group.label)}
+      <div class="mb-1" role="group" aria-label={group.label}>
+        <div class="flex items-center gap-2 px-3 pt-2 pb-1" aria-hidden="true">
+          <p class="text-[10px] font-semibold uppercase tracking-[0.18em]" style="color: var(--paper-500);">{group.label}</p>
+          <span class="text-[10px]" style="color: var(--paper-500); font-family: var(--font-mono);">{group.rows.length}</span>
+        </div>
       {#each group.rows as row (row.kind + (row.kind === "action" ? row.id : row.kind === "source" ? row.item.showId : row.item.id))}
         {@const index = flatRows.indexOf(row)}
         {@const isActive = index === active}
         {#if row.kind === "action"}
           <button
+            id={`palette-row-${index}`}
             class="palette-row {isActive ? 'is-active' : ''}"
             data-palette-index={index}
+            role="option"
+            aria-selected={isActive}
+            tabindex={-1}
             onmouseenter={() => (active = index)}
             onclick={() => choose(row)}
-            aria-current={isActive ? "true" : undefined}
           >
             <span class="palette-row-icon">
               <Icon name={row.icon} size={15} />
@@ -366,11 +389,14 @@
           </button>
         {:else if row.kind === "source"}
           <button
+            id={`palette-row-${index}`}
             class="palette-row {isActive ? 'is-active' : ''}"
             data-palette-index={index}
+            role="option"
+            aria-selected={isActive}
+            tabindex={-1}
             onmouseenter={() => (active = index)}
             onclick={() => choose(row)}
-            aria-current={isActive ? "true" : undefined}
             aria-label="Open {row.item.title} from {row.item.extensionName}"
           >
             <span class="palette-cover">
@@ -394,11 +420,14 @@
         {:else}
           {@const art = coverOf(row.item)}
           <button
+            id={`palette-row-${index}`}
             class="palette-row {isActive ? 'is-active' : ''}"
             data-palette-index={index}
+            role="option"
+            aria-selected={isActive}
+            tabindex={-1}
             onmouseenter={() => (active = index)}
             onclick={() => choose(row)}
-            aria-current={isActive ? "true" : undefined}
             aria-label="Open {displayTitle(row.item)}"
           >
             <span class="palette-cover" style="background: {row.item.coverImage?.color ?? 'var(--void-700)'};">
@@ -429,8 +458,9 @@
           </button>
         {/if}
       {/each}
-    </div>
-  {/each}
+      </div>
+    {/each}
+  </div>
 
   {#if searching && flatRows.length === 0}
     <div class="space-y-1.5 px-2 py-2" aria-hidden="true">
@@ -460,12 +490,13 @@
   }
 
   .palette-input-row:focus-within {
-    box-shadow: inset 0 -1px 0 var(--volt-400);
+    background: var(--tint-1);
+    box-shadow: inset 0 0 0 2px var(--volt-400);
   }
 
   .palette-input,
   .palette-input:focus-visible {
-    outline: none !important;
+    outline: none;
   }
 
   .palette-row {
