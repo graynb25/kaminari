@@ -808,6 +808,7 @@ impl Db {
              JOIN media m ON m.anilist_id = p.anilist_id
              JOIN library l ON l.anilist_id = p.anilist_id
              WHERE l.status IN ('watching', 'completed')
+               AND p.position_sec > 0
              ORDER BY p.updated_at DESC
              LIMIT ?1",
         )?;
@@ -1032,8 +1033,19 @@ impl Db {
         anilist_id: Option<i64>,
     ) -> AppResult<()> {
         validate_source_library_input(extension_id, show_id, title, cover, status)?;
-        let conn = self.conn.lock().map_err(|_| db_locked())?;
-        conn.execute(
+        let mut conn = self.conn.lock().map_err(|_| db_locked())?;
+        let tx = conn.transaction()?;
+        // One source show per AniList id per extension. Linking a second show
+        // to the same AniList entry clears the old link instead of letting two
+        // seasons queue progress to the same AniList title.
+        if let Some(anilist_id) = anilist_id {
+            tx.execute(
+                "UPDATE source_library SET anilist_id = NULL
+                 WHERE extension_id = ?1 AND anilist_id = ?2 AND show_id <> ?3",
+                params![extension_id, anilist_id, show_id],
+            )?;
+        }
+        tx.execute(
             "INSERT INTO source_library(
                 extension_id, show_id, title, cover, year, status, anilist_id,
                 added_at, updated_at
@@ -1055,6 +1067,7 @@ impl Db {
                 anilist_id
             ],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -1358,7 +1371,8 @@ impl Db {
                ) AS rank
                FROM source_progress latest
                WHERE latest.continue_visible = 1
-                 AND (latest.position_sec > 0 OR latest.watched = 1)
+                 AND latest.position_sec > 0
+                 AND latest.watched = 0
              ) sp
              JOIN source_library sl
                ON sl.extension_id = sp.extension_id AND sl.show_id = sp.show_id
@@ -2062,6 +2076,7 @@ fn apply_migrations(conn: &Connection) -> AppResult<()> {
         [],
     )?;
     backfill_continue_visible(conn)?;
+    dedupe_source_anilist_links(conn)?;
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     Ok(())
 }
@@ -2099,6 +2114,23 @@ fn backfill_continue_visible(conn: &Connection) -> AppResult<()> {
         params![BACKFILL_KEY],
     )?;
     transaction.commit()?;
+    Ok(())
+}
+
+/// Older builds could link two source shows to the same AniList entry, which
+/// let one season queue progress to another. Keep the newest row's link per
+/// extension and AniList id; clear the rest. The source rows stay.
+fn dedupe_source_anilist_links(conn: &Connection) -> AppResult<()> {
+    conn.execute(
+        "UPDATE source_library SET anilist_id = NULL
+         WHERE anilist_id IS NOT NULL
+           AND rowid NOT IN (
+             SELECT MAX(rowid) FROM source_library
+             WHERE anilist_id IS NOT NULL
+             GROUP BY extension_id, anilist_id
+           )",
+        [],
+    )?;
     Ok(())
 }
 
@@ -3354,6 +3386,116 @@ mod tests {
     }
 
     #[test]
+    fn source_library_keeps_one_anilist_link_per_extension() {
+        let db = Db::new(":memory:").unwrap();
+        db.source_library_add(
+            "ext.one",
+            "season-1",
+            "Season 1",
+            None,
+            None,
+            None,
+            Some(176314),
+        )
+        .unwrap();
+        db.source_library_add(
+            "ext.one",
+            "season-2",
+            "Season 2",
+            None,
+            None,
+            None,
+            Some(176314),
+        )
+        .unwrap();
+
+        let season_1: Option<i64> = {
+            let conn = db.conn.lock().unwrap();
+            conn.query_row(
+                "SELECT anilist_id FROM source_library
+                 WHERE extension_id = 'ext.one' AND show_id = 'season-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        let season_2: Option<i64> = {
+            let conn = db.conn.lock().unwrap();
+            conn.query_row(
+                "SELECT anilist_id FROM source_library
+                 WHERE extension_id = 'ext.one' AND show_id = 'season-2'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(season_1, None);
+        assert_eq!(season_2, Some(176314));
+
+        // A different extension may link its own copy of the same show.
+        db.source_library_add(
+            "ext.two",
+            "season-1",
+            "Season 1",
+            None,
+            None,
+            None,
+            Some(176314),
+        )
+        .unwrap();
+        let season_1_other: Option<i64> = {
+            let conn = db.conn.lock().unwrap();
+            conn.query_row(
+                "SELECT anilist_id FROM source_library
+                 WHERE extension_id = 'ext.two' AND show_id = 'season-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(season_1_other, Some(176314));
+    }
+
+    #[test]
+    fn legacy_duplicate_anilist_links_are_deduped_on_open() {
+        let conn = Connection::open_in_memory().unwrap();
+        apply_migrations(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO source_library(
+                extension_id, show_id, title, anilist_id, added_at, updated_at
+             ) VALUES ('ext.one', 'season-1', 'Season 1', 176314, 1, 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO source_library(
+                extension_id, show_id, title, anilist_id, added_at, updated_at
+             ) VALUES ('ext.one', 'season-2', 'Season 2', 176314, 2, 2)",
+            [],
+        )
+        .unwrap();
+
+        apply_migrations(&conn).unwrap();
+
+        let season_1: Option<i64> = conn
+            .query_row(
+                "SELECT anilist_id FROM source_library WHERE show_id = 'season-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let season_2: Option<i64> = conn
+            .query_row(
+                "SELECT anilist_id FROM source_library WHERE show_id = 'season-2'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(season_1, None);
+        assert_eq!(season_2, Some(176314));
+    }
+
+    #[test]
     fn removing_extension_deletes_source_rows_and_hides_orphans() {
         let db = Db::new(":memory:").unwrap();
         let package = crate::ext_host::sample_package().unwrap();
@@ -3643,10 +3785,9 @@ mod tests {
         assert_eq!(progress[0].position_sec, 600.0);
         assert_eq!(progress[2].position_sec, 720.0);
         assert_eq!(db.source_library_list().unwrap()[0].watched_count, 3);
-        let continue_items = db.source_continue(10).unwrap();
-        assert_eq!(continue_items.len(), 1);
-        assert_eq!(continue_items[0].episode_number, 3);
-        assert!(continue_items[0].watched);
+        // Manual watch-all is not playback progress, so it stays out of
+        // Continue Watching.
+        assert!(db.source_continue(10).unwrap().is_empty());
         assert_eq!(db.source_history(10).unwrap().len(), 3);
 
         db.source_progress_mark_all(&package.manifest.id, "show-1", &marks, false)
@@ -3659,14 +3800,10 @@ mod tests {
         assert!(db.source_history(10).unwrap().is_empty());
         assert!(db.source_continue(10).unwrap().is_empty());
 
-        // Re-marking after a clear must bring the show back to Continue as a
-        // rewatch row, even when the source did not provide durations.
+        // Re-marking watched still does not create a Continue row.
         db.source_progress_mark_all(&package.manifest.id, "show-1", &marks, true)
             .unwrap();
-        let continue_items = db.source_continue(10).unwrap();
-        assert_eq!(continue_items.len(), 1);
-        assert!(continue_items[0].watched);
-        assert_eq!(continue_items[0].episode_number, 3);
+        assert!(db.source_continue(10).unwrap().is_empty());
     }
 
     #[test]
@@ -3922,7 +4059,7 @@ mod tests {
         let library = db.list_library().unwrap();
         assert_eq!(library.len(), 1);
         assert_eq!(library[0].watched_count, 2);
-        assert_eq!(db.continue_watching(10).unwrap().len(), 1);
+        assert!(db.continue_watching(10).unwrap().is_empty());
 
         let source_history = db.source_history(10).unwrap();
         assert_eq!(source_history.len(), 1);
@@ -4007,7 +4144,7 @@ mod tests {
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].episode, 2);
         assert_eq!(db.watched_list(media.id).unwrap(), vec![1, 2]);
-        assert_eq!(db.continue_watching(10).unwrap().len(), 1);
+        assert!(db.continue_watching(10).unwrap().is_empty());
 
         let source_history = db.source_history(10).unwrap();
         assert_eq!(source_history.len(), 2);
@@ -4213,16 +4350,12 @@ mod tests {
         let watched = db.set_watched(&media, 3, true).unwrap();
         assert_eq!(watched, vec![3]);
         assert_eq!(db.list_library().unwrap()[0].watched_count, 1);
-
-        let continue_items = db.continue_watching(10).unwrap();
-        assert_eq!(continue_items.len(), 1);
-        assert_eq!(continue_items[0].episode, 3);
-        assert_eq!(continue_items[0].watched_count, 1);
-        assert_eq!(continue_items[0].total_episodes, 28);
+        // A manual mark is not playback progress.
+        assert!(db.continue_watching(10).unwrap().is_empty());
 
         let all = db.mark_all_watched(&media, 5, true).unwrap();
         assert_eq!(all, vec![1, 2, 3, 4, 5]);
-        assert_eq!(db.continue_watching(10).unwrap()[0].episode, 5);
+        assert!(db.continue_watching(10).unwrap().is_empty());
 
         let history = db.history_list(10).unwrap();
         assert_eq!(history.len(), 2);
@@ -4231,15 +4364,49 @@ mod tests {
 
         db.set_library_status(15125, "completed").unwrap();
         assert_eq!(db.list_library().unwrap()[0].status, "completed");
-        assert_eq!(db.continue_watching(10).unwrap().len(), 1);
+        assert!(db.continue_watching(10).unwrap().is_empty());
         assert!(db.set_library_status(15125, "bogus").is_err());
         db.set_library_status(15125, "watching").unwrap();
 
         db.set_watched(&media, 5, false).unwrap();
-        assert_eq!(db.continue_watching(10).unwrap()[0].episode, 4);
+        assert!(db.continue_watching(10).unwrap().is_empty());
 
         let cleared = db.mark_all_watched(&media, 28, false).unwrap();
         assert!(cleared.is_empty());
+        assert!(db.continue_watching(10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn continue_watching_requires_playback_position() {
+        let db = Db::new(":memory:").unwrap();
+        let media = sample_media();
+        db.add_to_library(&media, "watching").unwrap();
+        db.set_watched(&media, 3, true).unwrap();
+        assert!(db.continue_watching(10).unwrap().is_empty());
+
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE progress SET position_sec = 30, duration_sec = 600
+                 WHERE anilist_id = ?1",
+                params![media.id],
+            )
+            .unwrap();
+        }
+        let items = db.continue_watching(10).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].episode, 3);
+        assert_eq!(items[0].position_sec, 30);
+
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE progress SET position_sec = 0, duration_sec = 0
+                 WHERE anilist_id = ?1",
+                params![media.id],
+            )
+            .unwrap();
+        }
         assert!(db.continue_watching(10).unwrap().is_empty());
     }
 

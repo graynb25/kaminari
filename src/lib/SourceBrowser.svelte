@@ -131,7 +131,6 @@
   let progressSave: Promise<void> = Promise.resolve();
   let linkedMedia = $state<Media | null>(null);
   let currentAniListId = $state<number | null>(null);
-  const linkedKeys = new Set<string>();
   const anilistMarked = new Set<string>();
 
   const inSourceLibrary = $derived(
@@ -282,9 +281,9 @@
     } catch (e) {
       showError = e instanceof Error ? e.message : String(e);
     }
-    if (anilistMedia) {
-      await persistAniListLink();
-    }
+    // Opening a result must not add it to the source library. The durable
+    // AniList link is written only when playback starts or an episode is
+    // marked watched, so browsing a match stays a read-only action.
     try {
       episodes = await jsExtensionEpisodes(extension.id, item.id);
     } catch (e) {
@@ -397,28 +396,6 @@
     if (linkedMedia?.id !== durableId) {
       linkedMedia = null;
       void loadAniListMedia(durableId);
-    }
-  }
-
-  async function persistAniListLink() {
-    if (!selected || !anilistMedia) return;
-    const key = `${extension.id}|${selected.id}`;
-    if (linkedKeys.has(key)) return;
-    linkedKeys.add(key);
-    try {
-      await sourceLibraryAdd({
-        extensionId: extension.id,
-        showId: selected.id,
-        title: selected.title,
-        cover: selected.cover ?? null,
-        year: selected.year ?? null,
-        status: selected.status ?? null,
-        anilistId: anilistMedia.id,
-      });
-      onLibraryChanged?.();
-    } catch (error) {
-      linkedKeys.delete(key);
-      notify(`Could not link this show to AniList: ${errorText(error)}`, "error");
     }
   }
 
@@ -821,6 +798,17 @@
         const message = e instanceof Error ? e.message : String(e);
         notify(`libmpv is unavailable: ${message}. Using the WebView player.`, "info");
       }
+    }
+    // Save the show when playback starts, not when the result is opened.
+    // This is also the point where an AniList match becomes a durable link.
+    try {
+      await ensureSourceLibrary();
+      onLibraryChanged?.();
+    } catch (error) {
+      notify(
+        `Could not save this show to the source library: ${errorText(error)}`,
+        "error",
+      );
     }
     activePlayback = {
       stream: prepared,
