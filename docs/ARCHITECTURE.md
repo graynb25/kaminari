@@ -107,11 +107,21 @@ CREATE TABLE http_cache(key TEXT PRIMARY KEY, body BLOB NOT NULL, fetched_at INT
 
 Complete past 90 percent marks complete and advances. Backup uses `VACUUM INTO`. If the database cannot be opened at startup, a native recovery dialog offers Retry, Open data folder and Quarantine; quarantine moves `kaminari.db` and its `-wal`/`-shm` sidecars into a `kaminari.db.quarantine-<ts>` folder and starts a fresh database. Nothing is deleted quietly. Source ids that can exceed 2 to the 53 stay TEXT on every boundary. See registry notes in `docs/EXTENSION-API.md` and the measured sample in `docs/ENGINEERING-NOTES.md`.
 
+### Data at rest
+
+The database is not encrypted as a whole. Library, watched marks, playback progress, history, source library, source progress and source history are plaintext SQLite rows. They rely on the Windows account and Windows disk encryption (BitLocker or Device Encryption). Full SQLite encryption with SQLCipher was rejected: it would replace the bundled SQLite 3.54.1 build that carries the RUSTSEC-2026-0459 / CVE-2026-119375 fix (M-19), so the data-at-rest change would regress a known security fix. It would also complicate backups, portable use and the migration path for no measurable gain over disk encryption.
+
+Extension storage is the exception. `js_storage.value` is protected with Windows DPAPI in the current-user scope before it reaches SQLite and stored as `dpapi:v1:<base64>`. `ExtStorage::get` decrypts, `ExtStorage::set` encrypts, and the extension API stays plaintext. Storage key names and timestamps remain plaintext. The database opens with a best-effort pass that encrypts legacy plaintext rows; a read also migrates a plaintext row in place. A malformed or foreign ciphertext is logged and treated as missing, never returned as ciphertext and never re-encrypted. The 1 MB extension quota is still measured in plaintext bytes. DPAPI binds values to the Windows user and machine, so a backup restored under a different account can contain unreadable extension values; the rest of the backup stays readable. A build without DPAPI support reads `dpapi:v1:` as an ordinary value, so downgrading can make extension storage appear missing. Schema version 3 marks the format, so 0.28.0 and older reject a 0.28.1 backup. The format is one-way until a migration exists.
+
+Settings > Privacy > Data at rest explains the split and offers **Clear all local data**. It writes a marker, closes the live database, deletes `kaminari.db` plus `-wal`/`-shm`, removes Kaminari's `kaminari.db.safety-*` and `kaminari.db.quarantine-*` copies, removes a local `settings.json` if present, clears the WebView profile, and asks for a restart. The process keeps a fresh in-memory database until then. If Windows still holds a file open, the marker makes the next start finish the deletion before opening a new database. Downloads, exported backups and the AniList token in Windows Credential Manager are not touched.
+
+Windows Authenticode code signing remains deferred by the owner. The installer is unsigned and may trigger SmartScreen; the updater's Minisign signature is separate and does not sign the executable.
+
 ## Extension host
 
 One rquickjs Runtime per extension. Fresh Context per call. Timeout 5 seconds wall, 10 seconds for resolve. Memory cap 64MB. Stack 1MB. Calls run on `spawn_blocking` since the runtime is not Send.
 
-Bridge globals, frozen: `net.fetch` through Rust reqwest with host allowlist, 10s timeout, 5MB body cap. `html.query` through a Rust CSS select helper, no JS DOM. `crypto.sha256`, plus hmac and random. `storage.get` and `set` namespaced per extension, 1MB each, SQLite backed. `logger` pipes to `ext_log` events. Denied: fs, child process, env, raw sockets, remote eval, non allowlisted hosts. Denied calls throw `HOST_DENIED` and log.
+Bridge globals, frozen: `net.fetch` through Rust reqwest with host allowlist, 10s timeout, 5MB body cap. `html.query` through a Rust CSS select helper, no JS DOM. `crypto.sha256`, plus hmac and random. `storage.get` and `set` namespaced per extension, 1MB each, SQLite backed. `storage` values are DPAPI-encrypted at rest in the current-user scope; the bridge still passes plaintext. Denied: fs, child process, env, raw sockets, remote eval, non allowlisted hosts. Denied calls throw `HOST_DENIED` and log.
 
 Failure maps to codes: timeout kills context and toasts `Source X timed out`, OOM disables and suggests update, throw sanitizes and links diagnostics, bad signature refuses install. Cold runtime under 50ms. Warm call overhead under 5ms.
 

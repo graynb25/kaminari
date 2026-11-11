@@ -2342,10 +2342,11 @@ dependencies = [
 
 [[package]]
 name = "kaminari"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "anyhow",
  "axum",
+ "base64 0.22.1",
  "futures-util",
  "getrandom 0.3.4",
  "hex",
@@ -2373,6 +2374,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "windows",
  "zip",
 ]
 

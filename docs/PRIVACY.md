@@ -18,14 +18,22 @@ If you contact us by email or through the project repository, we receive what yo
 
 Kaminari stores the following locally:
 
-- **SQLite database:** library entries, watched episodes, playback progress, history, source library entries, installed extension metadata and extension storage.
+- **SQLite database:** library entries, watched episodes, playback progress, history, source library entries, installed extension metadata and extension storage. Extension storage values are encrypted before they are written; the rest of the database is plaintext.
 - **WebView local storage:** your theme choice, the Incognito flag and recent searches. While Incognito is on, new searches stay in memory for the open window and are not written to local storage.
 - **WebView cache:** images and media fragments cached by the embedded browser.
 - **WebView cookies:** cookies set by sites you access through the app or its extensions, if any.
 
 On Windows, the main database and app data live under `%APPDATA%\app.kaminari.desktop`. The embedded WebView data lives under `%LOCALAPPDATA%\app.kaminari.desktop`. On macOS and Linux, the equivalent app data and WebView folders are used.
 
-Local data is not encrypted by Kaminari. It is protected by your operating system account and device security. Use full-disk encryption if you need it.
+### 3.1 Data at rest
+
+Kaminari does not encrypt the whole SQLite database. Library entries, watched marks, playback progress, history, source library rows, source progress, source history and installed extension code remain plaintext at rest. They are protected by your Windows account and by Windows disk encryption such as BitLocker or Device Encryption. Use full-disk encryption if you need the database protected against someone who can read the disk or copy the files.
+
+Extension storage values (the `js_storage.value` column used by `storage.get` and `storage.set`) are encrypted with Windows Data Protection API (DPAPI) in the current-user scope before they are written. The extension API still sees plaintext: reads decrypt and writes encrypt. Existing plaintext rows are migrated when the database opens or when an extension first reads the value. Values that cannot be decrypted are treated as missing instead of being returned as ciphertext or crashing the app. Storage key names, timestamps and the rest of the row remain plaintext.
+
+DPAPI binds encrypted extension values to the Windows user and device. A backup keeps those values encrypted, so a backup restored under a different Windows account or on a different device may have extension values that cannot be read. Everything else in a backup is plaintext. A Kaminari build without DPAPI support reads the stored prefix as an ordinary value, so downgrading can make extension storage appear missing. Keep a backup before downgrading.
+
+Full-disk encryption remains the protection for the database, the WebView profile and anything else Kaminari stores. Extension storage encryption is an additional layer for the values most likely to contain tokens or source credentials, not a replacement for disk encryption.
 
 ## 4. Network requests
 
@@ -63,7 +71,9 @@ We do not sell or rent personal data. We do not share data with advertisers. The
 
 ## 7. Retention and deletion
 
-Local data stays on your device until you delete it. To remove it on Windows:
+Local data stays on your device until you delete it. On Windows, Settings > Privacy > Data at rest has a **Clear all local data** action. It deletes the SQLite database and its WAL/SHM files, Kaminari's safety and quarantine copies, a local settings file if one exists, the WebView cache, cookies and local storage, and then asks you to restart. Downloaded videos, exported backups, and the AniList token in Windows Credential Manager are not deleted. If a file is still open, Kaminari finishes removing it on the next start.
+
+You can also remove the data manually:
 
 1. Close Kaminari.
 2. Delete `%APPDATA%\app.kaminari.desktop` to remove the database and app data.

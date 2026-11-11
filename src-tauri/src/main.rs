@@ -19,6 +19,7 @@ mod proxy;
 mod registry;
 mod safe_http;
 mod startup;
+mod storage_crypto;
 mod tray;
 
 use tauri::Manager;
@@ -220,6 +221,7 @@ fn main() {
             commands::settings_import_pick,
             commands::settings_read,
             commands::clear_webview_data,
+            commands::clear_local_data,
             commands::app_restart,
             download::download_start,
             download::download_cancel,

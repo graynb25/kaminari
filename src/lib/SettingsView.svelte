@@ -5,9 +5,16 @@
   import { check, type Update } from "@tauri-apps/plugin-updater";
   import BrandMark from "./BrandMark.svelte";
   import Icon from "./Icon.svelte";
+  import Modal from "./Modal.svelte";
   import PageHeader from "./PageHeader.svelte";
   import ProgressBar from "./ProgressBar.svelte";
-  import { clearWebviewData, playerStatus, proxyStatus } from "./api";
+  import {
+    clearLocalData,
+    clearWebviewData,
+    playerStatus,
+    proxyStatus,
+    type ClearLocalDataResult,
+  } from "./api";
   import {
     anilistAuthLogout,
     anilistAuthStart,
@@ -87,6 +94,11 @@
   let webviewBusy = $state(false);
   let webviewStatus = $state("");
   let webviewStatusTone = $state<"success" | "error">("success");
+  let clearDataOpen = $state(false);
+  let clearDataBusy = $state(false);
+  let clearDataStatus = $state("");
+  let clearDataTone = $state<"success" | "error">("success");
+  let clearDataRestart = $state(false);
   let anilistAuth = $state<AniListAuthStatus | null>(null);
   let anilistOAuth = $state<AniListOAuthStatus | null>(null);
   let anilistBusy = $state(false);
@@ -316,6 +328,44 @@
       webviewStatus = errorText(err);
     } finally {
       webviewBusy = false;
+    }
+  }
+
+  function openClearLocalData() {
+    clearDataStatus = "";
+    clearDataTone = "success";
+    clearDataRestart = false;
+    clearDataOpen = true;
+  }
+
+  function closeClearLocalData() {
+    if (!clearDataBusy) clearDataOpen = false;
+  }
+
+  async function clearAllLocalData() {
+    if (clearDataBusy) return;
+    clearDataBusy = true;
+    clearDataStatus = "";
+    clearDataTone = "success";
+    clearDataRestart = false;
+    try {
+      const result: ClearLocalDataResult = await clearLocalData();
+      clearDataOpen = false;
+      if (result.warnings.length > 0) {
+        clearDataTone = "error";
+        clearDataStatus = `Local data cleared with warnings. ${result.warnings.join(" ")}`;
+      } else {
+        clearDataStatus =
+          "Local data cleared. Restart Kaminari to start with an empty library and a fresh WebView profile.";
+      }
+      clearDataRestart = true;
+      onDataChanged?.();
+    } catch (err) {
+      clearDataOpen = false;
+      clearDataTone = "error";
+      clearDataStatus = errorText(err);
+    } finally {
+      clearDataBusy = false;
     }
   }
 
@@ -1122,6 +1172,46 @@
                   but keeps your library and watched marks.
                 </p>
               </div>
+              <div class="mt-4 pt-4" style="border-top: 1px solid var(--line);">
+                <p class="text-sm" style="color: var(--paper-50);">Data at rest</p>
+                <p class="text-xs mt-0.5 leading-relaxed" style="color: var(--paper-400);">
+                  Library, watched marks, playback progress, history and source rows live in SQLite
+                  without app-level encryption. They rely on Windows disk encryption such as BitLocker
+                  or Device Encryption and your Windows account. Extension storage values are encrypted
+                  with Windows DPAPI for your Windows account before they are written; reads decrypt
+                  them transparently. Older Kaminari builds without DPAPI support cannot read those
+                  values, so a downgrade may leave source storage missing.
+                </p>
+                <div class="flex flex-wrap items-center gap-2 mt-3">
+                  <button
+                    class="btn-ghost danger-action px-3 py-2 text-xs"
+                    disabled={clearDataBusy}
+                    onclick={openClearLocalData}
+                  >
+                    <Icon name="trash" size={14} />
+                    {clearDataBusy ? "Clearing" : "Clear all local data"}
+                  </button>
+                  <p class="text-[11px]" style="color: var(--paper-450);">
+                    Deletes the database, its safety copies, local settings and WebView profile.
+                    Downloads, exported backups and the AniList token stay.
+                  </p>
+                </div>
+                {#if clearDataStatus}
+                  <p
+                    role="status"
+                    class="text-xs mt-2 leading-relaxed"
+                    style="color: {clearDataTone === 'error' ? 'var(--danger, #f87171)' : 'var(--paper-400)'};"
+                  >
+                    {clearDataStatus}
+                    {#if clearDataRestart}
+                      <button class="btn-ghost px-2.5 py-1 text-[11px] ml-2" onclick={restartNow}>
+                        <Icon name="refresh" size={12} />
+                        Restart now
+                      </button>
+                    {/if}
+                  </p>
+                {/if}
+              </div>
             {:else}
               {#if section.id === "settings-updates-diagnostics"}
                 <div class="update-block">
@@ -1448,6 +1538,74 @@
     </div>
   </div>
 </div>
+
+<Modal
+  open={clearDataOpen}
+  size="sm"
+  overlayName="clear-local-data"
+  label="Clear all local data"
+  onClose={closeClearLocalData}
+  headerClass="px-5 py-4"
+  bodyClass="px-5 py-5"
+  footerClass="px-5 py-3 flex items-center gap-2"
+>
+  {#snippet header()}
+    <div class="flex items-center gap-3">
+      <span
+        class="w-9 h-9 grid place-items-center rounded-xl shrink-0"
+        style="background: var(--danger-wash); border: 1px solid var(--danger-line); color: var(--danger);"
+      >
+        <Icon name="trash" size={17} />
+      </span>
+      <div class="min-w-0 flex-1">
+        <h2 class="text-base font-semibold">Clear all local data</h2>
+        <p class="text-[11px]" style="color: var(--text-4);">This cannot be undone.</p>
+      </div>
+      <button
+        class="btn-ghost px-2.5 py-1.5 text-xs"
+        onclick={closeClearLocalData}
+        disabled={clearDataBusy}
+        aria-label="Close"
+      >
+        <Icon name="close" size={14} />
+      </button>
+    </div>
+  {/snippet}
+
+  <div class="space-y-3 text-sm leading-relaxed" style="color: var(--paper-300);">
+    <p>
+      This deletes the SQLite database and its WAL/SHM files, Kaminari's safety and quarantine
+      copies, a local settings file if one exists, and the WebView cache, cookies and local
+      storage. Your library, watched marks, playback progress, history, Continue Watching,
+      installed extensions, extension storage, source library and source history are removed.
+    </p>
+    <p>
+      Downloaded videos, exported backups, and the AniList token in Windows Credential Manager are
+      not deleted. Anything outside Kaminari's data folders stays. Restart Kaminari afterward to
+      start with an empty library and a fresh WebView profile.
+    </p>
+  </div>
+
+  {#snippet footer()}
+    <button
+      class="btn-ghost px-4 py-2 text-sm"
+      onclick={closeClearLocalData}
+      disabled={clearDataBusy}
+      data-autofocus
+    >
+      Cancel
+    </button>
+    <button
+      class="btn-ghost danger-action px-4 py-2 text-sm ml-auto"
+      onclick={() => void clearAllLocalData()}
+      disabled={clearDataBusy}
+      aria-busy={clearDataBusy}
+    >
+      <Icon name="trash" size={14} />
+      {clearDataBusy ? "Clearing…" : "Clear all local data"}
+    </button>
+  {/snippet}
+</Modal>
 
 <style>
   .appearance-panel {
@@ -1805,5 +1963,17 @@
   .theme-swatch.is-c {
     background:
       linear-gradient(180deg, var(--accent-wash-strong), var(--accent-wash-faint));
+  }
+
+  .danger-action {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+  }
+
+  .danger-action:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--danger) 86%, #000);
+    border-color: var(--danger);
+    color: #fff;
   }
 </style>

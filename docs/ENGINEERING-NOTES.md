@@ -128,6 +128,28 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-11 0.28.0 release
+
+Context. 0.28.0 publishes the Phase 1 and Phase 2 hardening batches on top of the Phase 0 work in 0.27.0. It was published on 2026-11-11 from tag `v0.28.0` at merge commit `3b32682` (PR #29).
+
+What we shipped. The public release carries the signed Windows installer, its `.sig`, `latest.json` and the portable zip. CI `check` and `secrets` passed on the release commit. The public assets matched `SHA256SUMS.txt`, public `latest.json` reported 0.28.0, and Minisign verified the installer against the embedded public key.
+
+What we measured. A clean Windows Sandbox run reported `clean_before=True`: 0.27.0 installed, the app launched, 0.28.0 upgraded over it, the marker and SQLite database survived, 0.27.0 rolled back with the marker intact, and the final install was 0.28.0. The first sandbox launch exited without a guest; the second completed, and no sandbox processes remained. A real 0.27.0 install updated through the public GitHub feed to 0.28.0 and reopened 0.28.0.
+
+Key custody. The signing key and password moved from plaintext `%APPDATA%\kaminari-signing` into the DPAPI-encrypted vault at `D:\Data\Key Custody\kaminari-release`. The vault contains the encrypted blob, a loader, an export script, the public key and a README, and is bound to this Windows user profile. An offline copy is staged at `D:\Data\Key Custody\kaminari-release-offline`; physical media is still needed.
+
+What remains. Authenticode signing and the final legal and counsel review are deferred by the maintainer. The L-09 data-at-rest work is complete in the local 0.28.1 candidate, which uses schema version 3.
+
+## 2026-11-11 Data-at-rest hardening
+
+Context. L-09 left two decisions: Windows code signing and whether Kaminari should encrypt local data. Code signing is deferred because no trusted certificate is available. The data-at-rest work had to protect the most sensitive local values without regressing the bundled SQLite 3.54.1 security fix.
+
+What we shipped. `js_storage.value` is encrypted with Windows DPAPI in the current-user scope and stored as `dpapi:v1:<base64>`. The extension API still reads and writes plaintext. Existing plaintext rows migrate when the database opens or when an extension first reads one. Malformed or foreign ciphertext is logged and treated as missing; it is never returned as ciphertext or encrypted twice. Settings > Privacy > Data at rest explains that library, history and source rows remain plaintext and rely on Windows disk encryption. It also offers Clear all local data, which deletes the database and sidecars, safety and quarantine copies, legacy `.bak` copies, a local settings file and the WebView profile, then asks for a restart. A startup marker finishes any file that was still open.
+
+What we measured. The combined branch passes 205 Rust tests and 114 frontend tests, plus fmt, clippy, frontend check, build, style and `cargo audit --no-yanked` with no vulnerabilities. Tests cover DPAPI round trips, empty values, malformed ciphertext, plaintext migration, the 1 MB quota, the clear marker, sidecars, safety and quarantine copies, and the legacy `.bak` copy. A single-instance Windows Sandbox run reported `clean_before=True`, installed 0.28.1, launched the app, created the database and marker, and showed version 0.28.1; the guest shut down with no remaining processes.
+
+What remains. SQLCipher was rejected because it would replace the bundled SQLite build that carries the RUSTSEC-2026-0459 fix, and it would complicate backups and portable use. The library and history stay plaintext. Extension storage encryption is one-way: a build without DPAPI support reads the prefix as an ordinary value, so a downgrade can make extension storage appear missing. The 0.28.1 release bumps the schema to 3, so 0.28.0 and older reject its backups; release notes must also call out the live-downgrade limitation. Code signing remains deferred.
+
 ## 2026-11-11 Phase 2 local hardening
 
 Context. Phase 2 covered the remaining low findings from the production review except code signing and the data-at-rest decision. The work was split across two local sessions, one for privacy and file writes and one for frontend CSP, code cleanup and startup recovery.

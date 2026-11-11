@@ -15,11 +15,17 @@ use crate::error::{AppError, AppResult};
 use crate::ext_host::{ExtStorage, ExtensionTrust, Manifest};
 #[cfg(debug_assertions)]
 use crate::registry::LegacyExtension;
+use crate::storage_crypto;
 
 /// Hard ceiling for a restore input. A Kaminari library is a few megabytes;
 /// a compiled backup anywhere near this size is not something the app should
 /// spend memory or disk on.
 const MAX_BACKUP_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// Written before a clear-all request touches the database. If Windows still
+/// holds a file open, the next start removes whatever is left before opening a
+/// fresh database.
+pub(crate) const CLEAR_DATA_MARKER: &str = "clear-local-data";
 
 /// Extension-controlled source metadata is persisted and rendered. Keep every
 /// field bounded so one package cannot bloat the database or freeze a list.
@@ -36,7 +42,7 @@ const MAX_ANILIST_PROGRESS: i64 = 10_000;
 
 /// Bumped whenever a migration changes the on-disk schema. A backup from a
 /// newer version is rejected instead of being silently run against older code.
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 /// Base delay before retrying a failed AniList queue row. Doubles per failed
 /// attempt, with deterministic jitter so a large queue does not retry in
@@ -309,6 +315,15 @@ impl Db {
         let conn = Connection::open(&path)?;
         apply_pragmas(&conn)?;
         apply_migrations(&conn)?;
+        // Best effort: a DPAPI failure must not lock the user out of the app.
+        // Plaintext rows stay readable and are retried when an extension reads
+        // them or the database opens again.
+        if let Err(err) = migrate_plaintext_storage(&conn) {
+            tracing::warn!(
+                error = %err,
+                "extension storage: plaintext migration failed; values stay readable and will retry on read"
+            );
+        }
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
             path: Arc::new(path),
@@ -1469,6 +1484,39 @@ impl Db {
         remove_database_files(&temp);
         Ok(())
     }
+
+    /// Clears all rows by closing the on-disk database and deleting its file,
+    /// WAL and SHM. The process keeps a fresh in-memory database so commands
+    /// that arrive before the restart still work. If Windows still holds a
+    /// file open, the marker makes the next start retry before opening a new
+    /// database.
+    pub fn clear_local_data(&self) -> AppResult<bool> {
+        let (parent, _) = database_parent_and_name(&self.path);
+        let marker = parent.join(CLEAR_DATA_MARKER);
+
+        let replacement = Connection::open_in_memory()?;
+        apply_pragmas(&replacement)?;
+        apply_migrations(&replacement)?;
+        std::fs::write(&marker, b"1").map_err(|err| {
+            AppError::Db(format!(
+                "cannot write the clear-data marker at {}: {err}",
+                marker.display()
+            ))
+        })?;
+
+        let old = {
+            let mut conn = self.conn.lock().map_err(|_| db_locked())?;
+            std::mem::replace(&mut *conn, replacement)
+        };
+        old.close()
+            .map_err(|(_, err)| AppError::Db(format!("cannot close the local database: {err}")))?;
+
+        let all_removed = remove_database_files_and_copies(&self.path);
+        if all_removed {
+            let _ = std::fs::remove_file(&marker);
+        }
+        Ok(all_removed)
+    }
 }
 
 fn absolute_path(path: &str) -> AppResult<PathBuf> {
@@ -1694,6 +1742,128 @@ fn remove_database_files(path: &Path) {
     let _ = std::fs::remove_file(path);
     let _ = std::fs::remove_file(sidecar_path(path, "-wal"));
     let _ = std::fs::remove_file(sidecar_path(path, "-shm"));
+}
+
+/// Removes the safety copies and quarantine folders Kaminari itself creates next
+/// to the live database. A clear-all request must not leave an older library
+/// behind under one of those names.
+pub(crate) fn remove_database_copies(db_path: &Path) -> bool {
+    if db_path.as_os_str() == ":memory:" {
+        return true;
+    }
+    let (parent, name) = database_parent_and_name(db_path);
+    let entries = match std::fs::read_dir(&parent) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return true,
+        Err(err) => {
+            tracing::warn!(
+                path = %parent.display(),
+                error = %err,
+                "clear: database folder could not be inspected"
+            );
+            return false;
+        }
+    };
+    let safety = format!("{name}.safety-");
+    let quarantine = format!("{name}.quarantine-");
+    let restore = format!(".{name}.restore-");
+    let legacy_backup = format!("{name}.bak");
+    let mut all_removed = true;
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let file_name = file_name.to_string_lossy();
+        if file_name != legacy_backup
+            && !file_name.starts_with(&safety)
+            && !file_name.starts_with(&quarantine)
+            && !file_name.starts_with(&restore)
+        {
+            continue;
+        }
+        let path = entry.path();
+        let result = if path.is_dir() {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
+        if let Err(err) = result {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                all_removed = false;
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %err,
+                    "clear: database copy could not be removed; the next start will retry"
+                );
+            }
+        }
+    }
+    all_removed
+}
+
+/// Removes the live database, its WAL/SHM sidecars and the safety/quarantine
+/// copies that belong to it. Returns false when a file is still open; callers
+/// keep the clear marker so the next start retries.
+pub(crate) fn remove_database_files_and_copies(db_path: &Path) -> bool {
+    let mut all_removed = true;
+    for path in [
+        db_path.to_path_buf(),
+        sidecar_path(db_path, "-wal"),
+        sidecar_path(db_path, "-shm"),
+    ] {
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => {
+                all_removed = false;
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %err,
+                    "clear: database file could not be removed; the next start will retry"
+                );
+            }
+        }
+    }
+    if !remove_database_copies(db_path) {
+        all_removed = false;
+    }
+    all_removed
+}
+
+/// Encrypts legacy plaintext `js_storage` rows in one transaction. Rows that
+/// already carry the `dpapi:` family prefix are left alone even when they are
+/// malformed, so a corrupt ciphertext is never encrypted a second time.
+fn migrate_plaintext_storage(conn: &Connection) -> AppResult<usize> {
+    let rows: Vec<(i64, String)> = {
+        let mut statement = conn.prepare(
+            "SELECT rowid, value FROM js_storage
+             WHERE substr(value, 1, 6) <> 'dpapi:'",
+        )?;
+        let mapped = statement.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?;
+        mapped.collect::<Result<Vec<_>, _>>()?
+    };
+    if rows.is_empty() {
+        return Ok(0);
+    }
+
+    let transaction = conn.unchecked_transaction()?;
+    let mut migrated = 0usize;
+    for (rowid, value) in rows {
+        match storage_crypto::encrypt(&value) {
+            Ok(encrypted) => {
+                migrated += transaction.execute(
+                    "UPDATE js_storage SET value = ?1 WHERE rowid = ?2 AND value = ?3",
+                    params![encrypted, rowid, value],
+                )?;
+            }
+            Err(err) => tracing::warn!(
+                error = %err,
+                "extension storage: startup migration skipped one plaintext row"
+            ),
+        }
+    }
+    transaction.commit()?;
+    Ok(migrated)
 }
 
 fn sidecar_path(path: &Path, suffix: &str) -> PathBuf {
@@ -2298,25 +2468,73 @@ fn clamp_watched_through(through: i64, episodes: Option<i32>) -> i64 {
 impl ExtStorage for Db {
     fn get(&self, extension_id: &str, key: &str) -> Option<String> {
         let conn = self.conn.lock().ok()?;
-        conn.query_row(
-            "SELECT value FROM js_storage WHERE extension_id = ?1 AND key = ?2",
-            params![extension_id, key],
-            |row| row.get(0),
-        )
-        .optional()
-        .ok()
-        .flatten()
+        let stored: String = conn
+            .query_row(
+                "SELECT value FROM js_storage WHERE extension_id = ?1 AND key = ?2",
+                params![extension_id, key],
+                |row| row.get(0),
+            )
+            .optional()
+            .ok()??;
+
+        if !storage_crypto::is_encrypted(&stored) {
+            // Legacy plaintext row. Return it now even if the in-place upgrade
+            // fails, so an extension is never locked out of its own data.
+            match storage_crypto::encrypt(&stored) {
+                Ok(encrypted) => {
+                    if let Err(err) = conn.execute(
+                        "UPDATE js_storage SET value = ?1
+                         WHERE extension_id = ?2 AND key = ?3 AND value = ?4",
+                        params![encrypted, extension_id, key, stored],
+                    ) {
+                        tracing::warn!(
+                            extension = extension_id,
+                            key,
+                            error = %err,
+                            "extension storage: plaintext row could not be migrated on read"
+                        );
+                    }
+                }
+                Err(err) => tracing::warn!(
+                    extension = extension_id,
+                    key,
+                    error = %err,
+                    "extension storage: plaintext row could not be encrypted on read"
+                ),
+            }
+            return Some(stored);
+        }
+
+        match storage_crypto::decrypt(&stored) {
+            Ok(value) => Some(value),
+            Err(err) => {
+                tracing::warn!(
+                    extension = extension_id,
+                    key,
+                    error = %err,
+                    "extension storage: unreadable encrypted value ignored"
+                );
+                None
+            }
+        }
     }
 
     fn set(&self, extension_id: &str, key: &str, value: &str) -> AppResult<()> {
+        let encrypted = storage_crypto::encrypt(value)?;
         let conn = self.conn.lock().map_err(|_| db_locked())?;
-        let used: i64 = conn.query_row(
-            "SELECT COALESCE(SUM(length(CAST(key AS BLOB)) + length(CAST(value AS BLOB))), 0)
-             FROM js_storage WHERE extension_id = ?1",
-            params![extension_id],
-            |row| row.get(0),
-        )?;
-        if used as usize + key.len() + value.len() > 1024 * 1024 {
+        let used = storage_usage(&conn, extension_id)?;
+        let previous = conn
+            .query_row(
+                "SELECT value FROM js_storage WHERE extension_id = ?1 AND key = ?2",
+                params![extension_id, key],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        let previous_bytes = previous
+            .as_deref()
+            .map(|stored| key.len() + storage_plaintext_len(stored))
+            .unwrap_or(0);
+        if used.saturating_sub(previous_bytes) + key.len() + value.len() > 1024 * 1024 {
             return Err(AppError::Blocked(
                 "extension storage limit reached (1 MB)".to_string(),
             ));
@@ -2327,7 +2545,7 @@ impl ExtStorage for Db {
              ON CONFLICT(extension_id, key) DO UPDATE SET
                 value = excluded.value,
                 updated_at = unixepoch()",
-            params![extension_id, key, value],
+            params![extension_id, key, encrypted],
         )?;
         Ok(())
     }
@@ -2339,6 +2557,35 @@ impl ExtStorage for Db {
             params![extension_id, key],
         )?;
         Ok(())
+    }
+}
+
+/// The quota stays measured in plaintext bytes, even though SQLite now holds
+/// ciphertext. A malformed row counts as its stored length so it cannot make
+/// the quota smaller than it looks.
+fn storage_usage(conn: &Connection, extension_id: &str) -> AppResult<usize> {
+    let mut statement =
+        conn.prepare("SELECT key, value FROM js_storage WHERE extension_id = ?1")?;
+    let rows = statement.query_map(params![extension_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut used = 0usize;
+    for row in rows {
+        let (key, stored) = row?;
+        used = used
+            .saturating_add(key.len())
+            .saturating_add(storage_plaintext_len(&stored));
+    }
+    Ok(used)
+}
+
+fn storage_plaintext_len(stored: &str) -> usize {
+    if storage_crypto::is_encrypted(stored) {
+        storage_crypto::decrypt(stored)
+            .map(|value| value.len())
+            .unwrap_or(stored.len())
+    } else {
+        stored.len()
     }
 }
 
@@ -2445,6 +2692,168 @@ mod tests {
         db.remove_js_extension(&package.manifest.id).unwrap();
         assert!(db.list_js_extensions().unwrap().is_empty());
         assert_eq!(ExtStorage::get(&db, &package.manifest.id, "token"), None);
+    }
+
+    fn scratch_dir(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "kaminari-db-{name}-{}-{}",
+            std::process::id(),
+            timestamp_nanos()
+        ))
+    }
+
+    fn raw_storage_value(db: &Db, extension_id: &str, key: &str) -> String {
+        db.conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT value FROM js_storage WHERE extension_id = ?1 AND key = ?2",
+                params![extension_id, key],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn extension_storage_round_trips_and_writes_only_ciphertext() {
+        let db = Db::new(":memory:").unwrap();
+        let package = crate::ext_host::sample_package().unwrap();
+        db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
+            .unwrap();
+        let id = &package.manifest.id;
+
+        for value in ["secret-token", "日本語", ""] {
+            ExtStorage::set(&db, id, "round-trip", value).unwrap();
+            assert_eq!(
+                ExtStorage::get(&db, id, "round-trip"),
+                Some(value.to_string())
+            );
+            let raw = raw_storage_value(&db, id, "round-trip");
+            assert!(raw.starts_with(storage_crypto::PREFIX), "{raw}");
+            if !value.is_empty() {
+                assert!(!raw.contains(value), "{raw}");
+            }
+        }
+    }
+
+    #[test]
+    fn plaintext_storage_row_migrates_on_read() {
+        let db = Db::new(":memory:").unwrap();
+        let package = crate::ext_host::sample_package().unwrap();
+        db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
+            .unwrap();
+        let id = &package.manifest.id;
+        db.conn
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO js_storage(extension_id, key, value, updated_at)
+                 VALUES (?1, 'legacy', 'old plaintext', unixepoch())",
+                params![id],
+            )
+            .unwrap();
+
+        assert_eq!(
+            ExtStorage::get(&db, id, "legacy"),
+            Some("old plaintext".to_string())
+        );
+        let raw = raw_storage_value(&db, id, "legacy");
+        assert!(raw.starts_with(storage_crypto::PREFIX));
+        assert!(!raw.contains("old plaintext"));
+        assert_eq!(storage_crypto::decrypt(&raw).unwrap(), "old plaintext");
+    }
+
+    #[test]
+    fn startup_pass_encrypts_existing_plaintext_rows() {
+        let dir = scratch_dir("migrate");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("kaminari.db");
+        let path_text = path.to_string_lossy().into_owned();
+        let package = crate::ext_host::sample_package().unwrap();
+        {
+            let db = Db::new(&path_text).unwrap();
+            db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
+                .unwrap();
+            db.conn
+                .lock()
+                .unwrap()
+                .execute(
+                    "INSERT INTO js_storage(extension_id, key, value, updated_at)
+                     VALUES (?1, 'legacy', 'startup plaintext', unixepoch())",
+                    params![&package.manifest.id],
+                )
+                .unwrap();
+        }
+
+        let reopened = Db::new(&path_text).unwrap();
+        let raw = raw_storage_value(&reopened, &package.manifest.id, "legacy");
+        assert!(raw.starts_with(storage_crypto::PREFIX));
+        assert!(!raw.contains("startup plaintext"));
+        assert_eq!(
+            ExtStorage::get(&reopened, &package.manifest.id, "legacy"),
+            Some("startup plaintext".to_string())
+        );
+        drop(reopened);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn malformed_ciphertext_is_ignored_without_panicking() {
+        let db = Db::new(":memory:").unwrap();
+        let package = crate::ext_host::sample_package().unwrap();
+        db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
+            .unwrap();
+        let id = &package.manifest.id;
+        for (key, raw) in [
+            ("bad-base64", "dpapi:v1:not base64"),
+            ("bad-version", "dpapi:v2:AAAA"),
+            ("bad-ciphertext", "dpapi:v1:AAAA"),
+        ] {
+            db.conn
+                .lock()
+                .unwrap()
+                .execute(
+                    "INSERT INTO js_storage(extension_id, key, value, updated_at)
+                     VALUES (?1, ?2, ?3, unixepoch())",
+                    params![id, key, raw],
+                )
+                .unwrap();
+            assert_eq!(ExtStorage::get(&db, id, key), None);
+            assert_eq!(raw_storage_value(&db, id, key), raw);
+        }
+    }
+
+    #[test]
+    fn clear_local_data_removes_database_and_sidecars() {
+        let dir = scratch_dir("clear");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("kaminari.db");
+        let path_text = path.to_string_lossy().into_owned();
+        let db = Db::new(&path_text).unwrap();
+        let package = crate::ext_host::sample_package().unwrap();
+        db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
+            .unwrap();
+        ExtStorage::set(&db, &package.manifest.id, "token", "still-secret").unwrap();
+        let safety = dir.join("kaminari.db.safety-1.db");
+        let quarantine = dir.join("kaminari.db.quarantine-1");
+        let legacy_backup = dir.join("kaminari.db.bak");
+        std::fs::write(&safety, b"older library").unwrap();
+        std::fs::write(&legacy_backup, b"older library").unwrap();
+        std::fs::create_dir_all(&quarantine).unwrap();
+        std::fs::write(quarantine.join("kaminari.db"), b"older library").unwrap();
+
+        assert!(db.clear_local_data().unwrap());
+        assert!(!path.exists());
+        assert!(!sidecar_path(&path, "-wal").exists());
+        assert!(!sidecar_path(&path, "-shm").exists());
+        assert!(!dir.join(CLEAR_DATA_MARKER).exists());
+        assert!(!safety.exists());
+        assert!(!legacy_backup.exists());
+        assert!(!quarantine.exists());
+        assert!(db.list_js_extensions().unwrap().is_empty());
+
+        drop(db);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
