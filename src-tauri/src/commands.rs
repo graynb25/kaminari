@@ -16,18 +16,21 @@ use tokio::sync::Semaphore;
 use crate::anilist::{
     decide_write, AniListAuthStatus, AniListClient, Media, ShelfKind, Viewer, WriteDecision,
 };
+#[cfg(debug_assertions)]
+use crate::db::InstalledSource;
 use crate::db::{
     validate_source_library_input, validate_source_progress_input, validate_source_progress_marks,
-    ContinueItem, Db, ExtensionInstallPreview, HistoryItem, InstalledSource, JsExtensionRow,
-    LibraryItem, SourceContinueItem, SourceHistoryItem, SourceLibraryItem, SourceProgress,
-    SourceProgressMark,
+    ContinueItem, Db, ExtensionInstallPreview, HistoryItem, JsExtensionRow, LibraryItem,
+    SourceContinueItem, SourceHistoryItem, SourceLibraryItem, SourceProgress, SourceProgressMark,
 };
 use crate::error::AppError;
 use crate::ext_host::{self, ExtPackage, ExtStorage, ExtensionTrust};
+use crate::fsutil::replace_file;
 use crate::mangayomi;
 use crate::path_guard::{PathAuthority, PathOperation};
 use crate::player::{self, PlaybackInfo, PlaybackRequest, PlayerState, PlayerStatus};
 use crate::proxy::{ProxyStatus, ProxyStore, ProxyStreamInput, ProxyUrl};
+#[cfg(debug_assertions)]
 use crate::registry::{fetch_index, LegacyExtension};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -803,31 +806,37 @@ pub fn history_remove(state: State<'_, Db>, anilist_id: i64, episode: i64) -> Re
     state.history_remove(anilist_id, episode).map_err(ipc_error)
 }
 
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub fn source_validate_id(id: String) -> bool {
     ext_host::validate_source_id(&id)
 }
 
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub async fn registry_fetch(url: String) -> Result<Vec<LegacyExtension>, String> {
     fetch_index(&url).await.map_err(ipc_error)
 }
 
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub fn source_list(state: State<'_, Db>) -> Result<Vec<InstalledSource>, String> {
     state.list_sources().map_err(ipc_error)
 }
 
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub fn source_install(state: State<'_, Db>, extension: LegacyExtension) -> Result<(), String> {
     state.install_source(&extension).map_err(ipc_error)
 }
 
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub fn source_remove(state: State<'_, Db>, id: String) -> Result<(), String> {
     state.remove_source(&id).map_err(ipc_error)
 }
 
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub fn source_toggle(state: State<'_, Db>, id: String, enabled: bool) -> Result<(), String> {
     state.toggle_source(&id, enabled).map_err(ipc_error)
@@ -1594,20 +1603,6 @@ fn random_suffix() -> Result<String, String> {
     let mut bytes = [0u8; 8];
     getrandom::fill(&mut bytes).map_err(|err| format!("random source failed: {err}"))?;
     Ok(hex::encode(bytes))
-}
-
-fn replace_file(temp: &Path, target: &Path) -> std::io::Result<()> {
-    match std::fs::rename(temp, target) {
-        Ok(()) => Ok(()),
-        Err(err)
-            if err.kind() == std::io::ErrorKind::AlreadyExists
-                || err.kind() == std::io::ErrorKind::PermissionDenied =>
-        {
-            std::fs::remove_file(target)?;
-            std::fs::rename(temp, target)
-        }
-        Err(err) => Err(err),
-    }
 }
 
 #[cfg(test)]

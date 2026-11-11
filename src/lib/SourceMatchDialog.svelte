@@ -32,11 +32,17 @@
 
   let extensions = $state<JsExtension[]>([]);
   let groups = $state<Group[]>([]);
-  let query = $state(displayTitle(media));
+  let query = $state("");
   let loading = $state(true);
   let error = $state<string | null>(null);
   let hiddenNsfw = $state(0);
   let disposed = false;
+
+  // Seed the search box from the selected title. A later media change (for
+  // example a refreshed AniList row) updates it; typing only changes query.
+  $effect.pre(() => {
+    query = displayTitle(media);
+  });
 
   onMount(() => {
     void load();
@@ -50,6 +56,9 @@
   }
 
   async function load() {
+    // The pre-effect seeds the box before paint; this also covers the mount
+    // ordering if load starts first.
+    if (!query.trim()) query = displayTitle(media);
     loading = true;
     error = null;
     try {

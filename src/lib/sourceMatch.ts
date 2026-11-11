@@ -1,15 +1,8 @@
 // Match an AniList title to a source's search results. The source still owns
 // the final list; this only puts the closest names first.
 
+import { normalizeTitle } from "./format";
 import type { JsSearchItem } from "./types";
-
-export function normalizeTitle(value: string): string {
-  return String(value ?? "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 export function titleScore(candidate: string, query: string): number {
   const left = normalizeTitle(candidate);

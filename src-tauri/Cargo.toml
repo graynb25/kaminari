@@ -24,6 +24,9 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["io"] }
 futures-util = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots", "json", "stream", "gzip", "blocking"] }
+# Native startup dialogs before the Tauri event loop exists. The feature is
+# already enabled by tauri-plugin-dialog's own rfd dependency.
+rfd = { version = "0.17", default-features = false, features = ["common-controls-v6"] }
 # 0.41 pulls libsqlite3-sys 0.39, which bundles SQLite 3.54.0+ and fixes
 # RUSTSEC-2026-0459 (CVE-2026-119375).
 rusqlite = { version = "0.41", default-features = false, features = ["bundled", "backup"] }

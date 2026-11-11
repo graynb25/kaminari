@@ -38,6 +38,7 @@
     sourceProgressMarkAll,
     sourceProgressSet,
   } from "./api";
+  import { cleanHtml } from "./format";
   import { libmpvEnabled, libmpvNeedsProxy } from "./libmpv";
   import {
     pickStream,
@@ -900,20 +901,6 @@
       : `${minutes}:${String(seconds).padStart(2, "0")}`;
   }
 
-  function clean(text?: string | null): string {
-    if (!text) return "";
-    return text
-      .replace(/<br\s*\/?>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&quot;/g, '"')
-      .replace(/&#0?39;/g, "'")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
   function hostOf(url: string): string {
     try {
       return new URL(url).host;
@@ -1046,7 +1033,7 @@
                 </div>
               {/if}
               <p class="text-sm mt-3 leading-relaxed max-w-2xl line-clamp-3" style="color: var(--paper-300);">
-                {clean(selected.synopsis) || "This source did not return a synopsis."}
+                {cleanHtml(selected.synopsis) || "This source did not return a synopsis."}
               </p>
             </div>
           </div>

@@ -5,6 +5,7 @@ import {
   displayTitle,
   isRateLimitMessage,
   metaOf,
+  normalizeTitle,
   scoreLabel,
   scoreOutOfTen,
   timeAgo,
@@ -57,10 +58,22 @@ describe("coverOf", () => {
   });
 });
 
+describe("normalizeTitle", () => {
+  it("folds case, punctuation and accents into comparable words", () => {
+    expect(normalizeTitle("Frieren: Beyond Journey's End")).toBe(
+      "frieren beyond journey s end",
+    );
+    expect(normalizeTitle("Pokémon")).toBe("pokemon");
+    expect(normalizeTitle("  Mob   Psycho 100!! ")).toBe("mob psycho 100");
+    expect(normalizeTitle("")).toBe("");
+  });
+});
+
 describe("cleanHtml", () => {
   it("strips tags, decodes entities and collapses whitespace", () => {
     expect(cleanHtml("<p>A &amp; B</p><br>  next &quot;line&quot;")).toBe('A & B next "line"');
     expect(cleanHtml("It&#039;s fine")).toBe("It's fine");
+    expect(cleanHtml("a &lt;tag&gt; &amp;amp; b")).toBe("a <tag> &amp; b");
   });
 
   it("returns an empty string for missing text", () => {

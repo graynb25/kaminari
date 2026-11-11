@@ -7,13 +7,11 @@ import type {
   ContinueItem,
   ExtensionInstallOutcome,
   HistoryItem,
-  InstalledSource,
   JsEpisode,
   JsExtension,
   JsSearchResult,
   JsShowDetail,
   JsStream,
-  LegacyExtension,
   LibraryItem,
   MangayomiPreview,
   Media,
@@ -102,26 +100,6 @@ export function historyRemove(anilistId: number, episode: number): Promise<void>
   return invoke<void>("history_remove", { anilistId, episode });
 }
 
-export function registryFetch(url: string): Promise<LegacyExtension[]> {
-  return invoke<LegacyExtension[]>("registry_fetch", { url });
-}
-
-export function sourceList(): Promise<InstalledSource[]> {
-  return invoke<InstalledSource[]>("source_list");
-}
-
-export function sourceInstall(extension: LegacyExtension): Promise<void> {
-  return invoke<void>("source_install", { extension });
-}
-
-export function sourceRemove(id: string): Promise<void> {
-  return invoke<void>("source_remove", { id });
-}
-
-export function sourceToggle(id: string, enabled: boolean): Promise<void> {
-  return invoke<void>("source_toggle", { id, enabled });
-}
-
 export function jsExtensionList(): Promise<JsExtension[]> {
   return invoke<JsExtension[]>("js_extension_list");
 }
@@ -203,10 +181,6 @@ export function proxyStatus(): Promise<ProxyStatus> {
 
 export function playerPlay(request: PlaybackRequest): Promise<PlaybackInfo> {
   return invoke<PlaybackInfo>("player_play", { request });
-}
-
-export function playerStop(): Promise<void> {
-  return invoke<void>("player_stop");
 }
 
 export function playerStatus(): Promise<PlayerStatus> {

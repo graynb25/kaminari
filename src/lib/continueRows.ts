@@ -1,4 +1,4 @@
-import { displayTitle } from "./format";
+import { displayTitle, normalizeTitle } from "./format";
 import type { ContinueItem, SourceContinueItem } from "./types";
 
 export type ContinueRow =
@@ -12,15 +12,6 @@ export type ContinueRow =
       suggested: boolean;
     };
 
-export function normalizeContinueTitle(title: string): string {
-  return title
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
 function anilistTitles(item: ContinueItem): string[] {
   return [
     displayTitle(item.media),
@@ -29,7 +20,7 @@ function anilistTitles(item: ContinueItem): string[] {
     item.media.title.native,
   ]
     .filter((value): value is string => Boolean(value))
-    .map(normalizeContinueTitle);
+    .map(normalizeTitle);
 }
 
 /**
@@ -94,7 +85,7 @@ export function mergeContinueRows(
   const suggestedSource = new Set<SourceContinueItem>();
   for (const sourceItem of orderedSources) {
     if (sourceItem.anilistId != null) continue;
-    const key = normalizeContinueTitle(sourceItem.title);
+    const key = normalizeTitle(sourceItem.title);
     const candidate = (byTitle.get(key) ?? []).find(
       (item) => !suggestedAniList.has(item),
     );

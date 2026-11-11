@@ -8,14 +8,17 @@ mod db;
 mod download;
 mod error;
 mod ext_host;
+mod fsutil;
 mod mangayomi;
 mod mpv_embed;
 mod path_guard;
 mod player;
 mod portable;
 mod proxy;
+#[cfg(debug_assertions)]
 mod registry;
 mod safe_http;
+mod startup;
 mod tray;
 
 use tauri::Manager;
@@ -35,7 +38,7 @@ fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    tauri::Builder::default()
+    let result = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -57,10 +60,20 @@ fn main() {
         .manage(commands::ExtensionInstallState::new())
         .manage(commands::AniListSyncGuard::new())
         .setup(|app| {
-            let data_dir = app.path().app_data_dir()?;
-            std::fs::create_dir_all(&data_dir)?;
-            let db_path = data_dir.join("kaminari.db");
-            let database = db::Db::new(db_path.to_string_lossy().as_ref())?;
+            let data_dir = match app.path().app_data_dir() {
+                Ok(dir) => dir,
+                Err(err) => {
+                    startup::report_fatal(&format!(
+                        "Kaminari could not resolve its data folder: {err}"
+                    ));
+                    std::process::exit(1);
+                }
+            };
+            let Some(database) = startup::open_database(app.handle(), &data_dir) else {
+                // The recovery dialog's cancel/close button quits without
+                // touching user data.
+                std::process::exit(0);
+            };
             app.manage(database);
 
             let sync_handle = app.handle().clone();
@@ -143,11 +156,21 @@ fn main() {
             commands::history_list,
             commands::history_clear,
             commands::history_remove,
+            // Legacy Aniyomi registry/source commands stay available to
+            // development builds and tests but are not reachable from the
+            // release webview. The metadata code remains for future runtime
+            // work.
+            #[cfg(debug_assertions)]
             commands::source_validate_id,
+            #[cfg(debug_assertions)]
             commands::registry_fetch,
+            #[cfg(debug_assertions)]
             commands::source_list,
+            #[cfg(debug_assertions)]
             commands::source_install,
+            #[cfg(debug_assertions)]
             commands::source_remove,
+            #[cfg(debug_assertions)]
             commands::source_toggle,
             commands::js_extension_list,
             commands::js_extension_install_sample,
@@ -199,6 +222,10 @@ fn main() {
             download::download_cancel,
             download::downloads_list
         ])
-        .run(tauri::generate_context!())
-        .expect("error starting Kaminari");
+        .run(tauri::generate_context!());
+
+    if let Err(err) = result {
+        startup::report_fatal(&format!("Kaminari stopped before its window opened: {err}"));
+        std::process::exit(1);
+    }
 }

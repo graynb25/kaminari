@@ -105,7 +105,7 @@ CREATE TABLE sources(
 CREATE TABLE http_cache(key TEXT PRIMARY KEY, body BLOB NOT NULL, fetched_at INTEGER NOT NULL, ttl_sec INTEGER NOT NULL);
 ```
 
-Complete past 90 percent marks complete and advances. Backup uses `VACUUM INTO`. Corrupt files move to `kaminari.corrupt-<ts>.db`, recreate, toast plus diagnostics. Never delete quietly. Source ids that can exceed 2 to the 53 stay TEXT on every boundary. See registry notes in `docs/EXTENSION-API.md` and the measured sample in `docs/ENGINEERING-NOTES.md`.
+Complete past 90 percent marks complete and advances. Backup uses `VACUUM INTO`. If the database cannot be opened at startup, a native recovery dialog offers Retry, Open data folder and Quarantine; quarantine moves `kaminari.db` and its `-wal`/`-shm` sidecars into a `kaminari.db.quarantine-<ts>` folder and starts a fresh database. Nothing is deleted quietly. Source ids that can exceed 2 to the 53 stay TEXT on every boundary. See registry notes in `docs/EXTENSION-API.md` and the measured sample in `docs/ENGINEERING-NOTES.md`.
 
 ## Extension host
 
@@ -121,7 +121,7 @@ Net uses one reqwest Client, rustls, h2, gzip and brotli, 30s idle pool. Fronten
 
 Images: URL to sha256 filename, LRU 512MB, 30 day TTL, resize to display width, blurhash stored at ingest. Serve through the asset protocol. Miss shows placeholder color, one retry, then an error chip. Grid decode never blocks the UI thread.
 
-Logging: tracing with rolling files at 10MB by 5, JSON in CI. Info default, debug behind a toggle. Diagnostics export zips a redacted 1000 line tail plus versions plus DB integrity plus mpv version. Tokens and keys strip before write.
+Logging: `tracing` writes to stderr, with the `RUST_LOG` environment filter and info as the default. Release builds use the Windows subsystem, so there is no console and logs are not persisted; Kaminari does not write a rolling log file, ship a log tail or upload diagnostics. The in-app Copy diagnostics action builds a one-off redacted report (error code, version, time and message). Tokens, cookies and Authorization values are redacted before display or copy.
 
 Updater: `tauri-plugin-updater` plus GitHub Releases plus Minisign. Pubkey pinned in `tauri.conf.json`. Channels stable and beta in Settings. Silent download, toast `Restart to update`, relaunch. Windows ships NSIS plus WebView2 bootstrapper. Unsigned nightly builds warn on SmartScreen. That warning is documented, never bypassed quietly. macOS and Linux land in P3.
 

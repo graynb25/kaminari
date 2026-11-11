@@ -122,10 +122,6 @@ export function downloadCancel(id: string): Promise<void> {
   return invoke<void>("download_cancel", { id });
 }
 
-export function downloadsList(): Promise<DownloadProgress[]> {
-  return invoke<DownloadProgress[]>("downloads_list");
-}
-
 export function onDownloadProgress(
   handler: (progress: DownloadProgress) => void,
 ): Promise<UnlistenFn> {

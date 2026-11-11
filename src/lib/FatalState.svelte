@@ -74,8 +74,8 @@
       </button>
     </div>
     <p class="fatal-note">
-      This covers failures after the WebView loads. It does not catch Rust startup
-      or database errors that happen before the window appears.
+      This covers failures after the WebView loads. Database errors before the
+      window appears use a native recovery dialog instead.
     </p>
   </div>
 </div>

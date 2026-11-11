@@ -13,6 +13,8 @@ use sha2::{Digest, Sha256};
 use crate::anilist::{AniListListEntry, CoverImage, Media, MediaTitle};
 use crate::error::{AppError, AppResult};
 use crate::ext_host::{ExtStorage, ExtensionTrust, Manifest};
+use crate::fsutil::replace_file;
+#[cfg(debug_assertions)]
 use crate::registry::LegacyExtension;
 
 /// Hard ceiling for a restore input. A Kaminari library is a few megabytes;
@@ -154,6 +156,7 @@ pub struct ContinueItem {
     pub updated_at: i64,
 }
 
+#[cfg(debug_assertions)]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstalledSource {
@@ -1338,6 +1341,7 @@ impl Db {
         Ok(())
     }
 
+    #[cfg(debug_assertions)]
     pub fn list_sources(&self) -> AppResult<Vec<InstalledSource>> {
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         let mut statement = conn.prepare(
@@ -1364,6 +1368,7 @@ impl Db {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    #[cfg(debug_assertions)]
     pub fn install_source(&self, entry: &LegacyExtension) -> AppResult<()> {
         if !entry.valid() {
             return Err(AppError::Blocked(
@@ -1384,12 +1389,14 @@ impl Db {
         Ok(())
     }
 
+    #[cfg(debug_assertions)]
     pub fn remove_source(&self, id: &str) -> AppResult<()> {
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         conn.execute("DELETE FROM sources WHERE id = ?1", params![id])?;
         Ok(())
     }
 
+    #[cfg(debug_assertions)]
     pub fn toggle_source(&self, id: &str, enabled: bool) -> AppResult<()> {
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         conn.execute(
@@ -1771,20 +1778,6 @@ fn has_column(conn: &Connection, table: &str, column: &str) -> AppResult<bool> {
         }
     }
     Ok(false)
-}
-
-fn replace_file(temp: &std::path::Path, target: &std::path::Path) -> std::io::Result<()> {
-    match std::fs::rename(temp, target) {
-        Ok(()) => Ok(()),
-        Err(err)
-            if err.kind() == std::io::ErrorKind::AlreadyExists
-                || err.kind() == std::io::ErrorKind::PermissionDenied =>
-        {
-            std::fs::remove_file(target)?;
-            std::fs::rename(temp, target)
-        }
-        Err(err) => Err(err),
-    }
 }
 
 fn anilist_library_status(status: &str) -> Option<&'static str> {
@@ -2350,6 +2343,7 @@ impl ExtStorage for Db {
 mod tests {
     use super::*;
     use crate::ext_host::ExtStorage;
+    #[cfg(debug_assertions)]
     use crate::registry::LegacySource;
 
     fn sample_media() -> Media {
@@ -2391,6 +2385,7 @@ mod tests {
         assert!(db.list_library().unwrap().is_empty());
     }
 
+    #[cfg(debug_assertions)]
     #[test]
     fn install_toggle_remove_source() {
         let db = Db::new(":memory:").unwrap();

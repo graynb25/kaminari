@@ -2352,6 +2352,7 @@ dependencies = [
  "httpdate",
  "keyring",
  "reqwest 0.12.28",
+ "rfd",
  "rquickjs",
  "rusqlite",
  "scraper",

@@ -40,6 +40,7 @@ const SELECT_ROW_OVERHEAD_BYTES: usize = 512;
 const MAX_STORAGE_BYTES: usize = 1024 * 1024;
 pub(crate) const MAX_KEXT_BYTES: usize = 4 * 1024 * 1024;
 
+#[cfg(debug_assertions)]
 pub fn validate_source_id(id: &str) -> bool {
     !id.is_empty() && id.chars().all(|c| c.is_ascii_digit())
 }
@@ -1195,6 +1196,7 @@ mod tests {
         Arc::new(MemoryStorage::default())
     }
 
+    #[cfg(debug_assertions)]
     #[test]
     fn legacy_source_ids_stay_digits_only() {
         assert!(validate_source_id("8542735178285060053"));

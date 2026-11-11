@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { mergeContinueRows, normalizeContinueTitle } from "./continueRows";
+import { mergeContinueRows } from "./continueRows";
+import { normalizeTitle } from "./format";
 import type { ContinueItem, SourceContinueItem } from "./types";
 
 function anilist(id: number, title: string, updatedAt: number): ContinueItem {
@@ -37,8 +38,8 @@ function source(
 
 describe("continue rows", () => {
   it("normalizes punctuation, case and accents", () => {
-    expect(normalizeContinueTitle("Mob Psycho 100!!")).toBe("mob psycho 100");
-    expect(normalizeContinueTitle("Pokémon")).toBe("pokemon");
+    expect(normalizeTitle("Mob Psycho 100!!")).toBe("mob psycho 100");
+    expect(normalizeTitle("Pokémon")).toBe("pokemon");
   });
 
   it("merges by durable AniList id even when titles differ", () => {
