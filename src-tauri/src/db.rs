@@ -1371,8 +1371,10 @@ impl Db {
                ) AS rank
                FROM source_progress latest
                WHERE latest.continue_visible = 1
-                 AND latest.position_sec > 0
-                 AND latest.watched = 0
+                 AND (
+                   latest.position_sec > 0
+                   OR (latest.watched = 1 AND latest.duration_sec > 0)
+                 )
              ) sp
              JOIN source_library sl
                ON sl.extension_id = sp.extension_id AND sl.show_id = sp.show_id
@@ -3785,9 +3787,12 @@ mod tests {
         assert_eq!(progress[0].position_sec, 600.0);
         assert_eq!(progress[2].position_sec, 720.0);
         assert_eq!(db.source_library_list().unwrap()[0].watched_count, 3);
-        // Manual watch-all is not playback progress, so it stays out of
-        // Continue Watching.
-        assert!(db.source_continue(10).unwrap().is_empty());
+        // A watched row with a real duration is rewatch-eligible. Zero-duration
+        // mark-all rows, such as the Sasaki case, stay out.
+        let continue_items = db.source_continue(10).unwrap();
+        assert_eq!(continue_items.len(), 1);
+        assert_eq!(continue_items[0].episode_number, 3);
+        assert!(continue_items[0].watched);
         assert_eq!(db.source_history(10).unwrap().len(), 3);
 
         db.source_progress_mark_all(&package.manifest.id, "show-1", &marks, false)
@@ -3800,9 +3805,49 @@ mod tests {
         assert!(db.source_history(10).unwrap().is_empty());
         assert!(db.source_continue(10).unwrap().is_empty());
 
-        // Re-marking watched still does not create a Continue row.
+        // Re-marking watched restores the rewatch-eligible rows.
         db.source_progress_mark_all(&package.manifest.id, "show-1", &marks, true)
             .unwrap();
+        let continue_items = db.source_continue(10).unwrap();
+        assert_eq!(continue_items.len(), 1);
+        assert!(continue_items[0].watched);
+        assert_eq!(continue_items[0].episode_number, 3);
+    }
+
+    #[test]
+    fn zero_duration_mark_all_stays_out_of_continue() {
+        let db = Db::new(":memory:").unwrap();
+        let package = crate::ext_host::sample_package().unwrap();
+        db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
+            .unwrap();
+        db.source_library_add(
+            &package.manifest.id,
+            "show-1",
+            "Popeye",
+            None,
+            Some(1933),
+            None,
+            None,
+        )
+        .unwrap();
+        let marks = vec![
+            SourceProgressMark {
+                episode_id: "ep-1".to_string(),
+                episode_number: 1,
+                episode_title: Some("Episode 1".to_string()),
+                duration_sec: 0.0,
+            },
+            SourceProgressMark {
+                episode_id: "ep-2".to_string(),
+                episode_number: 2,
+                episode_title: Some("Episode 2".to_string()),
+                duration_sec: 0.0,
+            },
+        ];
+
+        db.source_progress_mark_all(&package.manifest.id, "show-1", &marks, true)
+            .unwrap();
+        assert_eq!(db.source_library_list().unwrap()[0].watched_count, 2);
         assert!(db.source_continue(10).unwrap().is_empty());
     }
 

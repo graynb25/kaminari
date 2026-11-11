@@ -154,6 +154,14 @@ Key custody. The signing key and password moved from plaintext `%APPDATA%\kamina
 
 What remains. Authenticode signing and the final legal and counsel review are deferred by the maintainer. The L-09 data-at-rest work is complete in the local 0.28.1 candidate, which uses schema version 3.
 
+## 2026-11-11 Continue Watching rewatch correction
+
+Context. 0.28.3 required source Continue rows to be unwatched with `position_sec > 0`. That removed real rewatch rows whose playback had completed, including Reincarnated as a Sword, and left the shelf empty for users who had finished episodes.
+
+What we shipped. Source Continue now includes a watched row when it has a real `duration_sec > 0`, and still excludes zero-duration manual mark-all rows such as the Sasaki season. The AniList progress query still requires a real playback position, and the duplicate-link repair is unchanged.
+
+What we measured. 219 Rust tests and 123 frontend tests pass. On the real database the shelf returned one `Reincarnated as a Sword` rewatch card with `23:40 / 23:40`, Sasaki stayed out, and the page had no errors. The zero-duration mark-all test asserts an empty Continue shelf.
+
 ## 2026-11-11 Source link and Continue Watching fix
 
 Context. Opening a source result from AniList Watch created a source library row before playback. Two Sasaki source rows were linked to AniList 176314, which is Season 2. Marking Season 1 all watched queued progress for Season 2, and the linked row appeared in Continue Watching even though Season 2 had no playback.
