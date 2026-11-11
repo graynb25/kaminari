@@ -4,9 +4,12 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.28.3 - 2026-11-11
+
 - Sources: opening a result from AniList Watch no longer adds it to the source library. The source row and durable AniList link are created when playback starts or an episode is marked watched. The Library button still saves immediately
 - Sources: keep one source show per AniList id per extension and clear legacy duplicate links on startup, so one season cannot queue progress to another
 - Continue Watching: only real playback progress appears. Manual watched marks and zero-position rows stay in Library and History
+- Version: bump to 0.28.3
 
 ## 0.28.2 - 2026-11-11
 
