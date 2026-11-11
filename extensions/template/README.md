@@ -23,7 +23,7 @@ Ids stay strings everywhere. Registry source ids are decimal strings larger than
 
 Redirects count. If a resolved stream redirects to a CDN, a media host, or an embed host, list that host in `permissions.hosts` too. The loopback proxy rechecks every redirect hop and fails closed with a 502 when a host is missing. Widening hosts on update asks the user again.
 
-Entry shape: `https://host`, `https://host/path`, with an optional `*` at the end. No wildcard subdomains in v0.1.
+Entry shape: `https://host[:port]` or `https://host[:port]/path`, with an optional `*` at the end. A path rule matches that path and its child paths, never a sibling prefix. An explicit port narrows the rule to that port; without one, only the default HTTPS port is allowed. `https://*.example.com/*` matches subdomains of `example.com` but not the apex. Percent-encoded dot segments and separators are rejected.
 
 ## Limits
 

@@ -26,6 +26,8 @@ A `.kext` file is a zip. It holds `manifest.json`, `index.js` (bundled, max 2MB)
 
 `id` is stable and reverse DNS. `lang` follows the source lang, `all` means multilingual. `permissions.hosts` is an allowlist. Widening hosts on update asks again. No silent escalation.
 
+Host entries take the form `https://host[:port]` or `https://host[:port]/path`, with an optional `*` at the end. A path rule matches that path and its child paths, never a sibling prefix. An explicit port narrows the rule to that port; without one, only the default HTTPS port is allowed. `https://*.example.com/*` matches subdomains of `example.com` but not the apex. Percent-encoded dot segments and separators are rejected so a path rule cannot be bypassed by upstream path normalization.
+
 Redirects count as hosts. If a resolved stream redirects to a CDN or media host, list that host in `permissions.hosts` too. The loopback proxy rechecks every redirect hop and fails closed with a 502 when a host is missing.
 
 ## Contract
