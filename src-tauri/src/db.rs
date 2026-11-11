@@ -8,10 +8,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use rusqlite::backup::Backup;
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::anilist::{AniListListEntry, CoverImage, Media, MediaTitle};
 use crate::error::{AppError, AppResult};
-use crate::ext_host::{ExtStorage, Manifest};
+use crate::ext_host::{ExtStorage, ExtensionTrust, Manifest};
 use crate::registry::LegacyExtension;
 
 /// Hard ceiling for a restore input. A Kaminari library is a few megabytes;
@@ -35,6 +36,12 @@ const MAX_ANILIST_PROGRESS: i64 = 10_000;
 /// Bumped whenever a migration changes the on-disk schema. A backup from a
 /// newer version is rejected instead of being silently run against older code.
 const SCHEMA_VERSION: i64 = 2;
+
+/// Base delay before retrying a failed AniList queue row. Doubles per failed
+/// attempt, with deterministic jitter so a large queue does not retry in
+/// lockstep, and stops growing at half an hour.
+pub const ANILIST_SYNC_BACKOFF_BASE_SECS: i64 = 30;
+pub const ANILIST_SYNC_BACKOFF_MAX_SECS: i64 = 30 * 60;
 
 /// Tables and columns that every Kaminari backup must contain before it can
 /// replace the live library. Newer tables are validated separately when they
@@ -179,6 +186,40 @@ pub struct JsExtensionRow {
     pub installed_at: i64,
     pub hosts: Vec<String>,
     pub nsfw: bool,
+}
+
+/// One field that differs between an installed package and a replacement.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionInstallChange {
+    pub field: String,
+    pub before: String,
+    pub after: String,
+}
+
+/// What would happen if a package were installed over the current state. The
+/// webview uses this to ask before replacing a package the user already has.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionInstallPreview {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub api_version: String,
+    pub trust: String,
+    pub new_install: bool,
+    pub requires_approval: bool,
+    pub code_changed: bool,
+    pub name_changed: bool,
+    pub version_changed: bool,
+    pub manifest_changed: bool,
+    pub trust_changed: bool,
+    pub added_hosts: Vec<String>,
+    pub removed_hosts: Vec<String>,
+    pub existing_name: Option<String>,
+    pub existing_version: Option<String>,
+    pub existing_trust: Option<String>,
+    pub changes: Vec<ExtensionInstallChange>,
 }
 
 #[derive(Debug, Clone)]
@@ -336,8 +377,15 @@ impl Db {
     }
 
     pub fn remove_from_library(&self, id: i64) -> AppResult<()> {
-        let conn = self.conn.lock().map_err(|_| db_locked())?;
-        conn.execute("DELETE FROM library WHERE anilist_id = ?1", params![id])?;
+        let mut conn = self.conn.lock().map_err(|_| db_locked())?;
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM library WHERE anilist_id = ?1", params![id])?;
+        // A local removal must not be undone by a queued write from before it.
+        tx.execute(
+            "DELETE FROM anilist_sync_queue WHERE anilist_id = ?1",
+            params![id],
+        )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -357,24 +405,45 @@ impl Db {
         Ok(())
     }
 
+    #[cfg(test)]
     pub fn pending_anilist_sync(&self) -> AppResult<Vec<AniListSyncRow>> {
         let conn = self.conn.lock().map_err(|_| db_locked())?;
-        let mut statement = conn.prepare(
+        read_anilist_queue(&conn)
+    }
+
+    /// Rows whose retry delay has elapsed, oldest first, capped at `limit`.
+    /// A successful or fresh local change resets `attempts`, so those rows are
+    /// immediately eligible again.
+    pub fn pending_anilist_sync_due(&self, limit: usize) -> AppResult<Vec<AniListSyncRow>> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let rows = read_anilist_queue(&conn)?;
+        let now = unix_now();
+        Ok(rows
+            .into_iter()
+            .filter(|row| anilist_sync_row_due(row, now))
+            .take(limit)
+            .collect())
+    }
+
+    pub fn anilist_sync_row(&self, anilist_id: i64) -> AppResult<Option<AniListSyncRow>> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        conn.query_row(
             "SELECT anilist_id, status, progress, updated_at, attempts, last_error
-             FROM anilist_sync_queue
-             ORDER BY updated_at, anilist_id",
-        )?;
-        let rows = statement.query_map([], |row| {
-            Ok(AniListSyncRow {
-                anilist_id: row.get(0)?,
-                status: row.get(1)?,
-                progress: row.get(2)?,
-                updated_at: row.get(3)?,
-                attempts: row.get(4)?,
-                last_error: row.get(5)?,
-            })
-        })?;
-        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+             FROM anilist_sync_queue WHERE anilist_id = ?1",
+            params![anilist_id],
+            |row| {
+                Ok(AniListSyncRow {
+                    anilist_id: row.get(0)?,
+                    status: row.get(1)?,
+                    progress: row.get(2)?,
+                    updated_at: row.get(3)?,
+                    attempts: row.get(4)?,
+                    last_error: row.get(5)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(AppError::from)
     }
 
     pub fn pending_anilist_sync_count(&self) -> AppResult<usize> {
@@ -382,6 +451,7 @@ impl Db {
         pending_anilist_sync_count(&conn)
     }
 
+    #[cfg(test)]
     pub fn remove_anilist_sync(&self, anilist_id: i64) -> AppResult<()> {
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         conn.execute(
@@ -391,14 +461,60 @@ impl Db {
         Ok(())
     }
 
+    /// Removes the queue row only when it still matches the snapshot that was
+    /// pushed. A newer local edit stays queued for the next run.
+    pub fn complete_anilist_sync(&self, snapshot: &AniListSyncRow) -> AppResult<bool> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let changed = conn.execute(
+            "DELETE FROM anilist_sync_queue
+             WHERE anilist_id = ?1 AND updated_at = ?2 AND status = ?3
+               AND progress = ?4 AND attempts = ?5",
+            params![
+                snapshot.anilist_id,
+                snapshot.updated_at,
+                snapshot.status,
+                snapshot.progress,
+                snapshot.attempts
+            ],
+        )?;
+        Ok(changed > 0)
+    }
+
+    #[cfg(test)]
     pub fn fail_anilist_sync(&self, anilist_id: i64, error: &str) -> AppResult<()> {
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         conn.execute(
-            "UPDATE anilist_sync_queue SET attempts = attempts + 1, last_error = ?2
+            "UPDATE anilist_sync_queue
+             SET attempts = attempts + 1, last_error = ?2, updated_at = unixepoch()
              WHERE anilist_id = ?1",
             params![anilist_id, error],
         )?;
         Ok(())
+    }
+
+    /// Records a failure only for the queue snapshot that was attempted, so a
+    /// newer local edit keeps its zero-attempt state and is retried at once.
+    pub fn fail_anilist_sync_snapshot(
+        &self,
+        snapshot: &AniListSyncRow,
+        error: &str,
+    ) -> AppResult<bool> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let changed = conn.execute(
+            "UPDATE anilist_sync_queue
+             SET attempts = attempts + 1, last_error = ?6, updated_at = unixepoch()
+             WHERE anilist_id = ?1 AND updated_at = ?2 AND status = ?3
+               AND progress = ?4 AND attempts = ?5",
+            params![
+                snapshot.anilist_id,
+                snapshot.updated_at,
+                snapshot.status,
+                snapshot.progress,
+                snapshot.attempts,
+                error
+            ],
+        )?;
+        Ok(changed > 0)
     }
 
     pub fn sync_anilist_entries(&self, entries: &[AniListListEntry]) -> AppResult<usize> {
@@ -524,7 +640,10 @@ impl Db {
             ensure_library_entry(&conn, media.id)?;
         }
         apply_watched(&conn, media.id, episode, watched)?;
-        enqueue_anilist_sync(&conn, media.id, &current_library_status(&conn, media.id)?)?;
+        // A negative local action must not add the title to AniList. Only an
+        // existing library row can produce a queued write, and it keeps the
+        // status the user already chose.
+        enqueue_anilist_sync_if_in_library(&conn, media.id)?;
         read_watched(&conn, media.id)
     }
 
@@ -574,7 +693,7 @@ impl Db {
                 params![media.id],
             )?;
         }
-        enqueue_anilist_sync(&tx, media.id, &current_library_status(&tx, media.id)?)?;
+        enqueue_anilist_sync_if_in_library(&tx, media.id)?;
         tx.commit()?;
         read_watched(&conn, media.id)
     }
@@ -662,7 +781,9 @@ impl Db {
                 version: row.get(2)?,
                 api_version: row.get(3)?,
                 enabled: row.get::<_, i64>(4)? != 0,
-                trust: row.get(5)?,
+                trust: ExtensionTrust::from_stored(&row.get::<_, String>(5)?)
+                    .as_str()
+                    .to_string(),
                 installed_at: row.get(6)?,
                 hosts,
                 nsfw,
@@ -688,11 +809,67 @@ impl Db {
         Ok(Some(StoredJsExtension { manifest, code }))
     }
 
+    /// Compares a package with the installed row and reports every user-visible
+    /// change. Any replacement that is not byte-identical needs approval.
+    pub fn extension_install_preview(
+        &self,
+        manifest: &Manifest,
+        code: &str,
+        trust: ExtensionTrust,
+    ) -> AppResult<ExtensionInstallPreview> {
+        manifest.validate()?;
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        install_preview(&conn, manifest, code, trust)
+    }
+
+    /// Installs only when the ID is free or the package is identical. A
+    /// different package with the same ID is refused; the caller must review
+    /// the preview and use `replace_js_extension` after approval.
     pub fn install_js_extension(
         &self,
         manifest: &Manifest,
         code: &str,
-        trust: &str,
+        trust: ExtensionTrust,
+    ) -> AppResult<()> {
+        manifest.validate()?;
+        let manifest_raw =
+            serde_json::to_string(manifest).map_err(|err| AppError::Db(err.to_string()))?;
+        let mut conn = self.conn.lock().map_err(|_| db_locked())?;
+        let tx = conn.transaction()?;
+        let preview = install_preview(&tx, manifest, code, trust)?;
+        if preview.requires_approval {
+            return Err(AppError::Blocked(format!(
+                "extension {} is already installed with different content; review the update before replacing it",
+                manifest.id
+            )));
+        }
+        if preview.new_install {
+            tx.execute(
+                "INSERT INTO js_extensions(
+                    id, name, version, api_version, manifest, code, enabled, trust, installed_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, unixepoch())",
+                params![
+                    manifest.id,
+                    manifest.name,
+                    manifest.version,
+                    manifest.api_version,
+                    manifest_raw,
+                    code,
+                    trust.as_str(),
+                ],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Replaces an installed package. This is only called after the webview
+    /// showed the preview and the user approved the exact changes.
+    pub fn replace_js_extension(
+        &self,
+        manifest: &Manifest,
+        code: &str,
+        trust: ExtensionTrust,
     ) -> AppResult<()> {
         manifest.validate()?;
         let manifest_raw =
@@ -716,7 +893,7 @@ impl Db {
                 manifest.api_version,
                 manifest_raw,
                 code,
-                trust,
+                trust.as_str(),
             ],
         )?;
         Ok(())
@@ -1432,7 +1609,10 @@ fn prepare_restore_database(source_path: &Path, temp: &Path) -> AppResult<()> {
     apply_migrations(&temp_conn)?;
     // Disable packages in the prepared copy as well, so a crash between the
     // live page copy and the final UPDATE cannot leave them enabled.
-    temp_conn.execute("UPDATE js_extensions SET enabled = 0", [])?;
+    temp_conn.execute(
+        "UPDATE js_extensions SET enabled = 0, trust = 'sideloaded'",
+        [],
+    )?;
     // Leave the scratch database as a single file: a read-only reopen below
     // must not depend on a WAL that was never checkpointed.
     temp_conn
@@ -1454,8 +1634,12 @@ fn replace_live_database(conn: &mut Connection, temp: &Path) -> AppResult<()> {
     apply_migrations(conn)?;
     // A package from an untrusted backup was never reviewed by this
     // installation. Keep the row so the user can inspect it, but never let its
-    // code run until it is explicitly enabled again.
-    conn.execute("UPDATE js_extensions SET enabled = 0", [])?;
+    // code run until it is explicitly enabled again, and do not preserve a
+    // trust label the backup supplied.
+    conn.execute(
+        "UPDATE js_extensions SET enabled = 0, trust = 'sideloaded'",
+        [],
+    )?;
     check_integrity(conn).map_err(|err| {
         AppError::Db(format!(
             "restored library failed the SQLite integrity check: {err}"
@@ -1552,6 +1736,13 @@ fn apply_migrations(conn: &Connection) -> AppResult<()> {
         )?;
     }
     conn.execute_batch(include_str!("../migrations/0007_source_anilist.sql"))?;
+    // Trust is earned from the install path, never from a package, a caller or
+    // an older backup. Drop legacy labels such as `signed`.
+    conn.execute(
+        "UPDATE js_extensions SET trust = 'sideloaded'
+         WHERE trust NOT IN ('builtin', 'sideloaded')",
+        [],
+    )?;
     if !has_column(conn, "source_progress", "continue_visible")? {
         conn.execute(
             "ALTER TABLE source_progress
@@ -1665,7 +1856,7 @@ fn ensure_library_entry(conn: &Connection, anilist_id: i64) -> AppResult<()> {
     Ok(())
 }
 
-fn current_library_status(conn: &Connection, anilist_id: i64) -> AppResult<String> {
+fn enqueue_anilist_sync_if_in_library(conn: &Connection, anilist_id: i64) -> AppResult<bool> {
     let status: Option<String> = conn
         .query_row(
             "SELECT status FROM library WHERE anilist_id = ?1",
@@ -1673,7 +1864,11 @@ fn current_library_status(conn: &Connection, anilist_id: i64) -> AppResult<Strin
             |row| row.get(0),
         )
         .optional()?;
-    Ok(status.unwrap_or_else(|| "watching".to_string()))
+    let Some(status) = status else {
+        return Ok(false);
+    };
+    enqueue_anilist_sync(conn, anilist_id, &status)?;
+    Ok(true)
 }
 
 fn enqueue_anilist_sync(conn: &Connection, anilist_id: i64, status: &str) -> AppResult<()> {
@@ -1707,6 +1902,230 @@ fn pending_anilist_sync_count(conn: &Connection) -> AppResult<usize> {
         row.get(0)
     })?;
     Ok(count as usize)
+}
+
+fn read_anilist_queue(conn: &Connection) -> AppResult<Vec<AniListSyncRow>> {
+    let mut statement = conn.prepare(
+        "SELECT anilist_id, status, progress, updated_at, attempts, last_error
+         FROM anilist_sync_queue
+         ORDER BY updated_at, anilist_id",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok(AniListSyncRow {
+            anilist_id: row.get(0)?,
+            status: row.get(1)?,
+            progress: row.get(2)?,
+            updated_at: row.get(3)?,
+            attempts: row.get(4)?,
+            last_error: row.get(5)?,
+        })
+    })?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+/// Deterministic exponential backoff with up to 25 percent jitter. Attempt 1
+/// waits about 30 seconds; the cap is 30 minutes.
+pub fn anilist_sync_backoff_secs(anilist_id: i64, attempts: i64) -> i64 {
+    if attempts <= 0 {
+        return 0;
+    }
+    let exponent = (attempts - 1).min(6) as u32;
+    let base = ANILIST_SYNC_BACKOFF_BASE_SECS
+        .saturating_mul(1i64 << exponent)
+        .min(ANILIST_SYNC_BACKOFF_MAX_SECS);
+    let jitter_span = (base / 4).max(1) as u64;
+    let mut seed = (anilist_id as u64) ^ ((attempts as u64) << 32) ^ 0x9E37_79B9_7F4A_7C15u64;
+    seed ^= seed >> 30;
+    seed = seed.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    seed ^= seed >> 27;
+    base + (seed % jitter_span) as i64
+}
+
+fn anilist_sync_row_due(row: &AniListSyncRow, now: i64) -> bool {
+    if row.attempts <= 0 {
+        return true;
+    }
+    let delay = anilist_sync_backoff_secs(row.anilist_id, row.attempts);
+    now >= row.updated_at.saturating_add(delay)
+}
+
+fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_secs() as i64)
+        .unwrap_or_default()
+}
+
+fn code_hash(code: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(code.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+fn short_hash(hash: &str) -> String {
+    hash.chars().take(12).collect()
+}
+
+fn install_preview(
+    conn: &Connection,
+    manifest: &Manifest,
+    code: &str,
+    trust: ExtensionTrust,
+) -> AppResult<ExtensionInstallPreview> {
+    let manifest_value =
+        serde_json::to_value(manifest).map_err(|err| AppError::Db(err.to_string()))?;
+    let existing = conn
+        .query_row(
+            "SELECT name, version, api_version, manifest, code, trust
+             FROM js_extensions WHERE id = ?1",
+            params![manifest.id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                ))
+            },
+        )
+        .optional()?;
+
+    let mut preview = ExtensionInstallPreview {
+        id: manifest.id.clone(),
+        name: manifest.name.clone(),
+        version: manifest.version.clone(),
+        api_version: manifest.api_version.clone(),
+        trust: trust.as_str().to_string(),
+        new_install: existing.is_none(),
+        requires_approval: false,
+        code_changed: false,
+        name_changed: false,
+        version_changed: false,
+        manifest_changed: false,
+        trust_changed: false,
+        added_hosts: Vec::new(),
+        removed_hosts: Vec::new(),
+        existing_name: None,
+        existing_version: None,
+        existing_trust: None,
+        changes: Vec::new(),
+    };
+    let Some((name, version, api_version, old_manifest_raw, old_code, old_trust)) = existing else {
+        return Ok(preview);
+    };
+
+    preview.existing_name = Some(name.clone());
+    preview.existing_version = Some(version.clone());
+    preview.existing_trust = Some(old_trust.clone());
+    preview.name_changed = name != manifest.name;
+    preview.version_changed = version != manifest.version;
+    preview.code_changed = old_code != code;
+    preview.trust_changed = old_trust != trust.as_str();
+    let old_manifest = serde_json::from_str::<Manifest>(&old_manifest_raw).ok();
+    let old_manifest_value = serde_json::from_str::<serde_json::Value>(&old_manifest_raw).ok();
+    preview.manifest_changed = old_manifest_value.as_ref() != Some(&manifest_value);
+
+    if preview.name_changed {
+        preview.changes.push(ExtensionInstallChange {
+            field: "name".to_string(),
+            before: name,
+            after: manifest.name.clone(),
+        });
+    }
+    if preview.version_changed {
+        preview.changes.push(ExtensionInstallChange {
+            field: "version".to_string(),
+            before: version,
+            after: manifest.version.clone(),
+        });
+    }
+    if api_version != manifest.api_version {
+        preview.changes.push(ExtensionInstallChange {
+            field: "apiVersion".to_string(),
+            before: api_version,
+            after: manifest.api_version.clone(),
+        });
+    }
+    if preview.code_changed {
+        preview.changes.push(ExtensionInstallChange {
+            field: "code".to_string(),
+            before: short_hash(&code_hash(&old_code)),
+            after: short_hash(&code_hash(code)),
+        });
+    }
+    if preview.trust_changed {
+        preview.changes.push(ExtensionInstallChange {
+            field: "trust".to_string(),
+            before: old_trust,
+            after: trust.as_str().to_string(),
+        });
+    }
+    if let Some(old_manifest) = old_manifest {
+        if old_manifest.base_url != manifest.base_url {
+            preview.changes.push(ExtensionInstallChange {
+                field: "baseUrl".to_string(),
+                before: old_manifest.base_url,
+                after: manifest.base_url.clone(),
+            });
+        }
+        if old_manifest.nsfw != manifest.nsfw {
+            preview.changes.push(ExtensionInstallChange {
+                field: "nsfw".to_string(),
+                before: old_manifest.nsfw.to_string(),
+                after: manifest.nsfw.to_string(),
+            });
+        }
+        let old_hosts: HashSet<&str> = old_manifest
+            .permissions
+            .hosts
+            .iter()
+            .map(String::as_str)
+            .collect();
+        let new_hosts: HashSet<&str> = manifest
+            .permissions
+            .hosts
+            .iter()
+            .map(String::as_str)
+            .collect();
+        preview.added_hosts = manifest
+            .permissions
+            .hosts
+            .iter()
+            .filter(|host| !old_hosts.contains(host.as_str()))
+            .cloned()
+            .collect();
+        preview.removed_hosts = old_manifest
+            .permissions
+            .hosts
+            .iter()
+            .filter(|host| !new_hosts.contains(host.as_str()))
+            .cloned()
+            .collect();
+    } else {
+        preview.added_hosts = manifest.permissions.hosts.clone();
+    }
+    if preview.manifest_changed
+        && preview.changes.is_empty()
+        && preview.added_hosts.is_empty()
+        && preview.removed_hosts.is_empty()
+    {
+        preview.changes.push(ExtensionInstallChange {
+            field: "manifest".to_string(),
+            before: "installed package".to_string(),
+            after: "new package".to_string(),
+        });
+    }
+    preview.requires_approval = preview.manifest_changed
+        || preview.code_changed
+        || preview.name_changed
+        || preview.version_changed
+        || preview.trust_changed
+        || !preview.added_hosts.is_empty()
+        || !preview.removed_hosts.is_empty()
+        || !preview.changes.is_empty();
+    Ok(preview)
 }
 
 fn apply_watched(conn: &Connection, anilist_id: i64, episode: i64, watched: bool) -> AppResult<()> {
@@ -2009,7 +2428,7 @@ mod tests {
     fn install_js_extension_and_storage() {
         let db = Db::new(":memory:").unwrap();
         let package = crate::ext_host::sample_package().unwrap();
-        db.install_js_extension(&package.manifest, &package.code, "builtin")
+        db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
             .unwrap();
 
         let list = db.list_js_extensions().unwrap();
@@ -2031,12 +2450,192 @@ mod tests {
     }
 
     #[test]
+    fn extension_update_preview_detects_replacement_changes() {
+        let db = Db::new(":memory:").unwrap();
+        let package = crate::ext_host::sample_package().unwrap();
+        db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
+            .unwrap();
+
+        let unchanged = db
+            .extension_install_preview(&package.manifest, &package.code, ExtensionTrust::Builtin)
+            .unwrap();
+        assert!(!unchanged.new_install);
+        assert!(!unchanged.requires_approval);
+        assert!(unchanged.changes.is_empty());
+
+        let mut updated = package.manifest.clone();
+        updated.name = "Updated Animation".to_string();
+        updated.version = "9.9.9".to_string();
+        updated.permissions.hosts = vec![
+            "https://archive.org/*".to_string(),
+            "https://cdn.example/*".to_string(),
+        ];
+        let new_code = format!("{}\n// replaced", package.code);
+        let preview = db
+            .extension_install_preview(&updated, &new_code, ExtensionTrust::Sideloaded)
+            .unwrap();
+        assert!(preview.requires_approval);
+        assert!(preview.name_changed);
+        assert!(preview.version_changed);
+        assert!(preview.code_changed);
+        assert!(preview.trust_changed);
+        assert_eq!(preview.added_hosts, vec!["https://cdn.example/*"]);
+        assert_eq!(
+            preview.existing_name.as_deref(),
+            Some("Public Domain Animation")
+        );
+
+        // A create-only install refuses to replace a different package.
+        let error = db
+            .install_js_extension(&updated, &new_code, ExtensionTrust::Sideloaded)
+            .unwrap_err();
+        assert!(error.to_string().contains("review the update"));
+
+        db.replace_js_extension(&updated, &new_code, ExtensionTrust::Sideloaded)
+            .unwrap();
+        let list = db.list_js_extensions().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "Updated Animation");
+        assert_eq!(list[0].version, "9.9.9");
+        assert_eq!(list[0].trust, "sideloaded");
+        assert_eq!(list[0].hosts.len(), 2);
+    }
+
+    #[test]
+    fn extension_preview_reports_a_new_install() {
+        let db = Db::new(":memory:").unwrap();
+        let package = crate::ext_host::sample_package().unwrap();
+        let preview = db
+            .extension_install_preview(&package.manifest, &package.code, ExtensionTrust::Sideloaded)
+            .unwrap();
+        assert!(preview.new_install);
+        assert!(!preview.requires_approval);
+        assert!(preview.changes.is_empty());
+        assert_eq!(preview.trust, "sideloaded");
+    }
+
+    #[test]
+    fn unwatch_without_library_does_not_queue_anilist_write() {
+        let db = Db::new(":memory:").unwrap();
+        let media = sample_media();
+        db.set_watched(&media, 1, true).unwrap();
+        assert_eq!(db.pending_anilist_sync_count().unwrap(), 1);
+
+        // Removing the title is a local negative action and must cancel the
+        // write that was queued by the positive action before it.
+        db.remove_from_library(media.id).unwrap();
+        assert_eq!(db.pending_anilist_sync_count().unwrap(), 0);
+        assert!(db.list_library().unwrap().is_empty());
+
+        db.set_watched(&media, 1, false).unwrap();
+        assert_eq!(db.pending_anilist_sync_count().unwrap(), 0);
+        assert!(db.list_library().unwrap().is_empty());
+    }
+
+    #[test]
+    fn unwatch_in_library_keeps_the_users_status() {
+        let db = Db::new(":memory:").unwrap();
+        let media = sample_media();
+        db.add_to_library(&media, "planning").unwrap();
+        db.set_watched(&media, 1, true).unwrap();
+        let row = db.anilist_sync_row(media.id).unwrap().unwrap();
+        assert_eq!(row.status, "planning");
+        assert_eq!(row.progress, 1);
+
+        db.set_watched(&media, 1, false).unwrap();
+        let row = db.anilist_sync_row(media.id).unwrap().unwrap();
+        assert_eq!(row.status, "planning");
+        assert_eq!(row.progress, 0);
+    }
+
+    #[test]
+    fn clearing_a_completed_title_keeps_completed_status() {
+        let db = Db::new(":memory:").unwrap();
+        let media = sample_media();
+        db.add_to_library(&media, "completed").unwrap();
+        db.mark_all_watched(&media, 5, true).unwrap();
+        db.mark_all_watched(&media, 5, false).unwrap();
+        let row = db.anilist_sync_row(media.id).unwrap().unwrap();
+        assert_eq!(row.status, "completed");
+        assert_eq!(row.progress, 0);
+    }
+
+    #[test]
+    fn anilist_backoff_grows_and_caps() {
+        assert_eq!(anilist_sync_backoff_secs(1, 0), 0);
+        let first = anilist_sync_backoff_secs(1, 1);
+        assert!(
+            (ANILIST_SYNC_BACKOFF_BASE_SECS..ANILIST_SYNC_BACKOFF_BASE_SECS * 2).contains(&first)
+        );
+        assert!(
+            anilist_sync_backoff_secs(1, 2) > anilist_sync_backoff_secs(1, 1),
+            "backoff must grow with attempts"
+        );
+        let capped = anilist_sync_backoff_secs(1, 99);
+        assert!(capped >= ANILIST_SYNC_BACKOFF_MAX_SECS);
+        assert!(capped <= ANILIST_SYNC_BACKOFF_MAX_SECS * 5 / 4);
+        // Different titles do not all retry at the same second.
+        assert_ne!(
+            anilist_sync_backoff_secs(1, 3),
+            anilist_sync_backoff_secs(2, 3)
+        );
+    }
+
+    #[test]
+    fn pending_sync_due_skips_backed_off_rows_and_caps_the_batch() {
+        let db = Db::new(":memory:").unwrap();
+        let media = sample_media();
+        db.add_to_library(&media, "watching").unwrap();
+        db.set_watched(&media, 1, true).unwrap();
+        let mut second = sample_media();
+        second.id = 2;
+        db.add_to_library(&second, "watching").unwrap();
+        db.set_watched(&second, 1, true).unwrap();
+
+        db.fail_anilist_sync(media.id, "offline").unwrap();
+        let due = db.pending_anilist_sync_due(10).unwrap();
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].anilist_id, second.id);
+
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE anilist_sync_queue SET updated_at = unixepoch() - 3600
+                 WHERE anilist_id = ?1",
+                params![media.id],
+            )
+            .unwrap();
+        }
+        assert_eq!(db.pending_anilist_sync_due(10).unwrap().len(), 2);
+        assert_eq!(db.pending_anilist_sync_due(1).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn completing_sync_only_removes_the_pushed_snapshot() {
+        let db = Db::new(":memory:").unwrap();
+        let media = sample_media();
+        db.add_to_library(&media, "watching").unwrap();
+        db.set_watched(&media, 1, true).unwrap();
+        let snapshot = db.anilist_sync_row(media.id).unwrap().unwrap();
+
+        // A newer local edit keeps the row and must survive the old delete,
+        // even when both edits land in the same wall-clock second.
+        db.set_watched(&media, 2, true).unwrap();
+        assert!(!db.complete_anilist_sync(&snapshot).unwrap());
+        assert_eq!(db.pending_anilist_sync_count().unwrap(), 1);
+
+        let fresh = db.anilist_sync_row(media.id).unwrap().unwrap();
+        assert!(db.complete_anilist_sync(&fresh).unwrap());
+        assert_eq!(db.pending_anilist_sync_count().unwrap(), 0);
+    }
+
+    #[test]
     fn list_js_extensions_exposes_manifest_nsfw() {
         let db = Db::new(":memory:").unwrap();
         let package = crate::ext_host::sample_package().unwrap();
         let mut manifest = package.manifest.clone();
         manifest.nsfw = true;
-        db.install_js_extension(&manifest, &package.code, "sideloaded")
+        db.install_js_extension(&manifest, &package.code, ExtensionTrust::Sideloaded)
             .unwrap();
 
         let list = db.list_js_extensions().unwrap();
@@ -2048,7 +2647,7 @@ mod tests {
     fn source_library_and_progress() {
         let db = Db::new(":memory:").unwrap();
         let package = crate::ext_host::sample_package().unwrap();
-        db.install_js_extension(&package.manifest, &package.code, "builtin")
+        db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
             .unwrap();
 
         db.source_library_add(
@@ -2425,7 +3024,7 @@ mod tests {
     fn source_progress_mark_all_updates_library_and_continue() {
         let db = Db::new(":memory:").unwrap();
         let package = crate::ext_host::sample_package().unwrap();
-        db.install_js_extension(&package.manifest, &package.code, "builtin")
+        db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
             .unwrap();
         db.source_library_add(
             &package.manifest.id,
@@ -2504,7 +3103,7 @@ mod tests {
         db.set_watched(&media, 2, true).unwrap();
 
         let package = crate::ext_host::sample_package().unwrap();
-        db.install_js_extension(&package.manifest, &package.code, "builtin")
+        db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
             .unwrap();
         db.source_library_add(
             &package.manifest.id,
@@ -2596,7 +3195,7 @@ mod tests {
         db.set_watched(&media, 2, true).unwrap();
 
         let package = crate::ext_host::sample_package().unwrap();
-        db.install_js_extension(&package.manifest, &package.code, "builtin")
+        db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
             .unwrap();
         db.source_library_add(
             &package.manifest.id,
@@ -2697,7 +3296,7 @@ mod tests {
     fn source_history_backfill_runs_once() {
         let db = Db::new(":memory:").unwrap();
         let package = crate::ext_host::sample_package().unwrap();
-        db.install_js_extension(&package.manifest, &package.code, "builtin")
+        db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
             .unwrap();
         db.source_library_add(
             &package.manifest.id,
@@ -3131,8 +3730,15 @@ mod tests {
         {
             let source = Db::new(&source_raw).unwrap();
             source
-                .install_js_extension(&package.manifest, &package.code, "signed")
+                .install_js_extension(&package.manifest, &package.code, ExtensionTrust::Sideloaded)
                 .unwrap();
+            // Simulate a backup made by an older build that trusted a label
+            // supplied by the package.
+            {
+                let conn = source.conn.lock().unwrap();
+                conn.execute("UPDATE js_extensions SET trust = 'signed'", [])
+                    .unwrap();
+            }
             source.add_to_library(&sample_media(), "watching").unwrap();
             source.mark_all_watched(&sample_media(), 2, true).unwrap();
             source
@@ -3193,7 +3799,7 @@ mod tests {
         let extensions = db.list_js_extensions().unwrap();
         assert_eq!(extensions.len(), 1);
         assert_eq!(extensions[0].id, package.manifest.id);
-        assert_eq!(extensions[0].trust, "signed");
+        assert_eq!(extensions[0].trust, "sideloaded");
         assert!(!extensions[0].enabled);
 
         let copies = safety_copies(&dir);

@@ -4,7 +4,7 @@ Status: draft v0.1. The native JavaScript host is live, and a real sample source
 
 ## Package
 
-A `.kext` file is a zip. It holds `manifest.json`, `index.js` (bundled, max 2MB), `icon.png` at 256px, `README.md`. Name reads `<id>-<version>.kext`. Install checks zip integrity, manifest schema, Ed25519 signature over canonical JSON, `apiVersion` compat, host allowlist parse, size caps. Any fail refuses with a code and a log line.
+A `.kext` file is a zip. It holds `manifest.json`, `index.js` (bundled, max 2MB), `icon.png` at 256px, `README.md`. Name reads `<id>-<version>.kext`. Install checks zip integrity, manifest schema, `apiVersion` compat, host allowlist parse, size caps and the package contents. Trust is computed by Kaminari from where the package came from: the compiled-in sample is `builtin`, every file or downloaded package is `sideloaded`. A `.kext` cannot choose its own trust label, and v0.1 has no package signature. Any fail refuses with a code and a log line.
 
 `manifest.json` fields:
 
@@ -27,6 +27,8 @@ A `.kext` file is a zip. It holds `manifest.json`, `index.js` (bundled, max 2MB)
 `id` is stable and reverse DNS. `lang` follows the source lang, `all` means multilingual. `permissions.hosts` is an allowlist. Widening hosts on update asks again. No silent escalation.
 
 Host entries take the form `https://host[:port]` or `https://host[:port]/path`, with an optional `*` at the end. A path rule matches that path and its child paths, never a sibling prefix. An explicit port narrows the rule to that port; without one, only the default HTTPS port is allowed. `https://*.example.com/*` matches subdomains of `example.com` but not the apex. Percent-encoded dot segments and separators are rejected so a path rule cannot be bypassed by upstream path normalization.
+
+Installing a package with an ID that is already present is an update, not a fresh install. Kaminari compares the stored manifest and code with the new package and asks before replacing it when the name, version, API version, base URL, NSFW flag, code, trust or host list changed. The prompt lists the old and new values and calls out added hosts separately. A package that is byte-identical is a no-op. Backups restore extension rows disabled and always as `sideloaded`, because a backup cannot prove where a package came from.
 
 Redirects count as hosts. If a resolved stream redirects to a CDN or media host, list that host in `permissions.hosts` too. The loopback proxy rechecks every redirect hop and fails closed with a 502 when a host is missing.
 
@@ -90,7 +92,7 @@ Source settings: if the source defines `getSourcePreferences()`, the Sources pag
 
 ## Registry
 
-A registry is a signed JSON file with a list of extensions. Each entry holds id, name, version, min host, download URL, sha256, signature. Kaminari pins the key per registry URL. Trust levels read signed, sideloaded, disabled. NSFW sources are installed but hidden from the Sources page and source search while Settings > Privacy > Show NSFW sources is off, which is the default.
+A registry is a signed JSON file with a list of extensions. Each entry holds id, name, version, min host, download URL, sha256, signature. Kaminari pins the key per registry URL. Current builds compute trust from the install path: the compiled-in sample is `builtin`, every file or downloaded package is `sideloaded`, and a restored package is disabled until reviewed. A `signed` level is reserved for a future build that verifies the registry signature; no current package can claim it. NSFW sources are installed but hidden from the Sources page and source search while Settings > Privacy > Show NSFW sources is off, which is the default.
 
 ### Registry compatibility: Aniyomi style index
 

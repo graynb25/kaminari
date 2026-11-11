@@ -12,6 +12,7 @@ mod mangayomi;
 mod mpv_embed;
 mod path_guard;
 mod player;
+mod portable;
 mod proxy;
 mod registry;
 mod safe_http;
@@ -53,6 +54,8 @@ fn main() {
         .manage(mpv_embed::MpvEmbedState::default())
         .manage(download::DownloadState::default())
         .manage(path_guard::PathAuthority::new())
+        .manage(commands::ExtensionInstallState::new())
+        .manage(commands::AniListSyncGuard::new())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
@@ -103,8 +106,10 @@ fn main() {
             });
 
             #[cfg(any(target_os = "linux", all(target_os = "windows", debug_assertions)))]
-            if let Err(err) = app.deep_link().register_all() {
-                tracing::warn!(error = %err, "deep link: scheme registration failed");
+            if !portable::is_portable() {
+                if let Err(err) = app.deep_link().register_all() {
+                    tracing::warn!(error = %err, "deep link: scheme registration failed");
+                }
             }
 
             if let Ok(Some(urls)) = app.deep_link().get_current() {
@@ -122,6 +127,8 @@ fn main() {
             commands::anilist_auth_start,
             commands::anilist_auth_status,
             commands::anilist_auth_logout,
+            commands::anilist_oauth_status,
+            commands::anilist_register_callback,
             commands::anilist_sync_pull,
             commands::anilist_sync_push,
             commands::anilist_sync_pending,
@@ -146,6 +153,7 @@ fn main() {
             commands::js_extension_install_sample,
             commands::js_extension_install_pick,
             commands::js_extension_install_package,
+            commands::js_extension_install_confirm,
             commands::mangayomi_preview,
             commands::mangayomi_install,
             commands::js_extension_remove,

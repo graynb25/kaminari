@@ -7,8 +7,9 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::Semaphore;
 
@@ -17,11 +18,12 @@ use crate::anilist::{
 };
 use crate::db::{
     validate_source_library_input, validate_source_progress_input, validate_source_progress_marks,
-    ContinueItem, Db, HistoryItem, InstalledSource, JsExtensionRow, LibraryItem,
-    SourceContinueItem, SourceHistoryItem, SourceLibraryItem, SourceProgress, SourceProgressMark,
+    ContinueItem, Db, ExtensionInstallPreview, HistoryItem, InstalledSource, JsExtensionRow,
+    LibraryItem, SourceContinueItem, SourceHistoryItem, SourceLibraryItem, SourceProgress,
+    SourceProgressMark,
 };
 use crate::error::AppError;
-use crate::ext_host::{self, ExtPackage, ExtStorage};
+use crate::ext_host::{self, ExtPackage, ExtStorage, ExtensionTrust};
 use crate::mangayomi;
 use crate::path_guard::{PathAuthority, PathOperation};
 use crate::player::{self, PlaybackInfo, PlaybackRequest, PlayerState, PlayerStatus};
@@ -65,9 +67,122 @@ pub struct AniListPushResult {
     pub pending: usize,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AniListOAuthStatus {
+    pub portable: bool,
+    pub callback_registered: bool,
+    pub can_register: bool,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionInstallOutcome {
+    pub installed: bool,
+    pub approval_token: Option<String>,
+    pub preview: ExtensionInstallPreview,
+}
+
+struct PendingExtensionInstall {
+    token: String,
+    expires_at: Instant,
+    package: ExtPackage,
+    trust: ExtensionTrust,
+    preview: ExtensionInstallPreview,
+}
+
+/// Holds one package between its review and the user's approval. The webview
+/// never gets the code or the path back, only a one-time token.
+#[derive(Clone, Default)]
+pub struct ExtensionInstallState {
+    pending: Arc<Mutex<Option<PendingExtensionInstall>>>,
+}
+
+impl ExtensionInstallState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn put(
+        &self,
+        package: ExtPackage,
+        trust: ExtensionTrust,
+        preview: ExtensionInstallPreview,
+    ) -> Result<String, String> {
+        let mut bytes = [0u8; 32];
+        getrandom::fill(&mut bytes).map_err(|err| format!("random source failed: {err}"))?;
+        let token = hex::encode(bytes);
+        let mut pending = self
+            .pending
+            .lock()
+            .map_err(|_| "extension install lock is poisoned".to_string())?;
+        *pending = Some(PendingExtensionInstall {
+            token: token.clone(),
+            expires_at: Instant::now() + EXTENSION_APPROVAL_TTL,
+            package,
+            trust,
+            preview,
+        });
+        Ok(token)
+    }
+
+    fn take(
+        &self,
+        token: &str,
+    ) -> Result<(ExtPackage, ExtensionTrust, ExtensionInstallPreview), String> {
+        let mut pending = self
+            .pending
+            .lock()
+            .map_err(|_| "extension install lock is poisoned".to_string())?;
+        let Some(entry) = pending.take() else {
+            return Err("the update approval expired; choose the package again".to_string());
+        };
+        if Instant::now() >= entry.expires_at {
+            return Err("the update approval expired; choose the package again".to_string());
+        }
+        if entry.token != token {
+            return Err("the update approval is not valid; choose the package again".to_string());
+        }
+        Ok((entry.package, entry.trust, entry.preview))
+    }
+}
+
+/// One AniList sync at a time. A manual push or pull waits for the guard; a
+/// background tick skips instead of queueing behind a long run.
+#[derive(Clone)]
+pub struct AniListSyncGuard {
+    sync: Arc<tokio::sync::Mutex<()>>,
+}
+
+impl Default for AniListSyncGuard {
+    fn default() -> Self {
+        Self {
+            sync: Arc::new(tokio::sync::Mutex::new(())),
+        }
+    }
+}
+
+impl AniListSyncGuard {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    async fn acquire(&self) -> tokio::sync::OwnedMutexGuard<()> {
+        self.sync.clone().lock_owned().await
+    }
+
+    fn try_acquire(&self) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+        self.sync.clone().try_lock_owned().ok()
+    }
+}
+
 const SETTINGS_MAX_BYTES: usize = 64 * 1024;
 const ANILIST_KEYRING_SERVICE: &str = "app.kaminari.desktop";
 const ANILIST_KEYRING_USER: &str = "anilist";
+const ANILIST_SYNC_TICK_ROWS: usize = 20;
+const ANILIST_SYNC_MANUAL_ROWS: usize = 100;
+const EXTENSION_APPROVAL_TTL: Duration = Duration::from_secs(5 * 60);
 // One slow source must not occupy the whole blocking pool. Calls beyond this
 // limit wait for a permit before they are handed to spawn_blocking.
 const EXT_MAX_PARALLEL_PER_SOURCE: usize = 2;
@@ -342,8 +457,88 @@ pub async fn anilist_detail(state: State<'_, AniListClient>, id: i64) -> Result<
 }
 
 #[tauri::command]
+pub fn anilist_oauth_status(app: AppHandle) -> AniListOAuthStatus {
+    oauth_status(&app)
+}
+
+fn oauth_status(app: &AppHandle) -> AniListOAuthStatus {
+    let portable = crate::portable::is_portable();
+    #[cfg(any(windows, target_os = "linux"))]
+    {
+        match app.deep_link().is_registered("kaminari") {
+            Ok(true) => AniListOAuthStatus {
+                portable,
+                callback_registered: true,
+                can_register: true,
+                message: None,
+            },
+            Ok(false) => AniListOAuthStatus {
+                portable,
+                callback_registered: false,
+                can_register: true,
+                message: Some(if portable {
+                    "This portable build is not registered for the kaminari:// sign in callback. Enable it once for this Windows account.".to_string()
+                } else {
+                    "The kaminari:// sign in callback is not registered. Enable it to connect AniList.".to_string()
+                }),
+            },
+            Err(err) => AniListOAuthStatus {
+                portable,
+                callback_registered: false,
+                can_register: true,
+                message: Some(format!(
+                    "Kaminari could not check the kaminari:// callback registration: {err}"
+                )),
+            },
+        }
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        let _ = app;
+        AniListOAuthStatus {
+            portable,
+            callback_registered: true,
+            can_register: false,
+            message: None,
+        }
+    }
+}
+
+#[tauri::command]
+pub fn anilist_register_callback(app: AppHandle) -> Result<(), String> {
+    app.deep_link()
+        .register_all()
+        .map_err(|err| format!("cannot register the kaminari:// callback: {err}"))?;
+    #[cfg(any(windows, target_os = "linux"))]
+    if !app
+        .deep_link()
+        .is_registered("kaminari")
+        .map_err(|err| format!("cannot verify the kaminari:// callback: {err}"))?
+    {
+        return Err(
+            "This system still does not point kaminari:// at this build. Install Kaminari normally, or allow protocol registration when the system asks."
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn anilist_auth_start(app: AppHandle) -> Result<String, String> {
     use tauri_plugin_opener::OpenerExt;
+
+    #[cfg(any(windows, target_os = "linux"))]
+    {
+        let registered = app
+            .deep_link()
+            .is_registered("kaminari")
+            .map_err(|err| format!("cannot check the kaminari:// callback: {err}"))?;
+        if !registered {
+            return Err(
+                "Enable the kaminari:// sign in callback first, then connect AniList.".to_string(),
+            );
+        }
+    }
 
     let state = app
         .state::<crate::anilist::AniListAuthState>()
@@ -374,7 +569,9 @@ pub fn anilist_auth_logout(state: State<'_, AniListClient>) -> Result<(), String
 pub async fn anilist_sync_pull(
     state: State<'_, AniListClient>,
     db: State<'_, Db>,
+    guard: State<'_, AniListSyncGuard>,
 ) -> Result<AniListSyncResult, String> {
+    let _guard = guard.acquire().await;
     let token = load_anilist_token()?
         .filter(|token| !token.trim().is_empty())
         .ok_or_else(|| "Connect AniList first.".to_string())?;
@@ -388,18 +585,35 @@ pub async fn anilist_sync_pull(
     })
 }
 
+/// Pushes at most `limit` due rows. The queue snapshot is re-checked before
+/// every write and every delete, so a local edit made while a request is in
+/// flight is never overwritten or dropped.
 async fn push_pending_anilist(
     client: &AniListClient,
     db: &Db,
+    limit: usize,
 ) -> Result<AniListPushResult, AppError> {
-    let rows = db.pending_anilist_sync()?;
+    let rows = db.pending_anilist_sync_due(limit)?;
     let mut pushed = 0;
     let mut conflicts = 0;
     for row in rows {
+        if !client.has_token() {
+            break;
+        }
+        let Some(current) = db.anilist_sync_row(row.anilist_id)? else {
+            continue;
+        };
+        if current.updated_at != row.updated_at
+            || current.attempts != row.attempts
+            || current.status != row.status
+            || current.progress != row.progress
+        {
+            continue;
+        }
         let server = match client.media_list_entry(row.anilist_id).await {
             Ok(entry) => entry,
             Err(err @ (AppError::Net(_) | AppError::RateLimited(_))) => {
-                db.fail_anilist_sync(row.anilist_id, &err.to_string())?;
+                db.fail_anilist_sync_snapshot(&row, &err.to_string())?;
                 continue;
             }
             Err(err) => return Err(err),
@@ -414,11 +628,12 @@ async fn push_pending_anilist(
                         "anilist: server entry is newer, keeping AniList and dropping the local write"
                     );
                 }
-                db.remove_anilist_sync(row.anilist_id)?;
-                conflicts += 1;
+                if db.complete_anilist_sync(&row)? {
+                    conflicts += 1;
+                }
             }
             WriteDecision::SkipMatching => {
-                db.remove_anilist_sync(row.anilist_id)?;
+                db.complete_anilist_sync(&row)?;
             }
             WriteDecision::Push => {
                 match client
@@ -426,11 +641,12 @@ async fn push_pending_anilist(
                     .await
                 {
                     Ok(_) => {
-                        db.remove_anilist_sync(row.anilist_id)?;
-                        pushed += 1;
+                        if db.complete_anilist_sync(&row)? {
+                            pushed += 1;
+                        }
                     }
                     Err(err @ (AppError::Net(_) | AppError::RateLimited(_))) => {
-                        db.fail_anilist_sync(row.anilist_id, &err.to_string())?;
+                        db.fail_anilist_sync_snapshot(&row, &err.to_string())?;
                     }
                     Err(err) => return Err(err),
                 }
@@ -450,12 +666,14 @@ pub async fn anilist_sync_push(
     app: AppHandle,
     state: State<'_, AniListClient>,
     db: State<'_, Db>,
+    guard: State<'_, AniListSyncGuard>,
 ) -> Result<AniListPushResult, String> {
+    let _guard = guard.acquire().await;
     let token = load_anilist_token()?
         .filter(|token| !token.trim().is_empty())
         .ok_or_else(|| "Connect AniList first.".to_string())?;
     state.set_token(&token);
-    let result = push_pending_anilist(state.inner(), db.inner())
+    let result = push_pending_anilist(state.inner(), db.inner(), ANILIST_SYNC_MANUAL_ROWS)
         .await
         .map_err(ipc_error)?;
     if result.conflicts > 0 {
@@ -479,6 +697,11 @@ pub async fn anilist_sync_tick(app: &AppHandle) {
             return;
         }
     }
+    let guard = app.state::<AniListSyncGuard>();
+    let Some(_guard) = guard.try_acquire() else {
+        tracing::debug!("anilist: previous sync is still running, skipping this tick");
+        return;
+    };
     let token = match load_anilist_token() {
         Ok(Some(token)) if !token.trim().is_empty() => token,
         Ok(_) => {
@@ -492,7 +715,7 @@ pub async fn anilist_sync_tick(app: &AppHandle) {
     };
     let client = app.state::<AniListClient>();
     client.set_token(&token);
-    match push_pending_anilist(client.inner(), db.inner()).await {
+    match push_pending_anilist(client.inner(), db.inner(), ANILIST_SYNC_TICK_ROWS).await {
         Ok(result) if result.conflicts > 0 => {
             let _ = app.emit("anilist-sync-conflict", &result);
         }
@@ -618,9 +841,37 @@ pub fn js_extension_list(state: State<'_, Db>) -> Result<Vec<JsExtensionRow>, St
 #[tauri::command]
 pub fn js_extension_install_sample(state: State<'_, Db>) -> Result<(), String> {
     let package = ext_host::sample_package().map_err(ipc_error)?;
+    // The sample is compiled into this build, so its trust and content do not
+    // come from a package file. Reinstalling it is safe without a prompt.
     state
-        .install_js_extension(&package.manifest, &package.code, "builtin")
+        .replace_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
         .map_err(ipc_error)
+}
+
+fn install_extension_or_request_approval(
+    db: &Db,
+    installs: &ExtensionInstallState,
+    package: ExtPackage,
+    trust: ExtensionTrust,
+) -> Result<ExtensionInstallOutcome, String> {
+    let preview = db
+        .extension_install_preview(&package.manifest, &package.code, trust)
+        .map_err(ipc_error)?;
+    if preview.requires_approval {
+        let approval_token = installs.put(package, trust, preview.clone())?;
+        return Ok(ExtensionInstallOutcome {
+            installed: false,
+            approval_token: Some(approval_token),
+            preview,
+        });
+    }
+    db.install_js_extension(&package.manifest, &package.code, trust)
+        .map_err(ipc_error)?;
+    Ok(ExtensionInstallOutcome {
+        installed: true,
+        approval_token: None,
+        preview,
+    })
 }
 
 #[tauri::command]
@@ -648,10 +899,12 @@ pub async fn js_extension_install_pick(
 pub async fn js_extension_install_package(
     authority: State<'_, PathAuthority>,
     state: State<'_, Db>,
+    installs: State<'_, ExtensionInstallState>,
     token: String,
-) -> Result<(), String> {
+) -> Result<ExtensionInstallOutcome, String> {
     let path = authority.consume(&token, PathOperation::ExtensionInstall)?;
     let db = state.inner().clone();
+    let installs = installs.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let metadata = std::fs::metadata(&path).map_err(|err| {
             AppError::Extension(format!("cannot read package: {err}")).to_string()
@@ -666,11 +919,31 @@ pub async fn js_extension_install_package(
             return Err("the package is larger than 4 MB".to_string());
         }
         let package = ext_host::package_from_kext(&bytes).map_err(ipc_error)?;
-        db.install_js_extension(&package.manifest, &package.code, "sideloaded")
-            .map_err(ipc_error)
+        install_extension_or_request_approval(&db, &installs, package, ExtensionTrust::Sideloaded)
     })
     .await
     .map_err(|err| format!("extension install failed: {err}"))?
+}
+
+#[tauri::command]
+pub fn js_extension_install_confirm(
+    state: State<'_, Db>,
+    installs: State<'_, ExtensionInstallState>,
+    approval_token: String,
+) -> Result<(), String> {
+    let (package, trust, expected) = installs.take(&approval_token)?;
+    let current = state
+        .extension_install_preview(&package.manifest, &package.code, trust)
+        .map_err(ipc_error)?;
+    if current != expected {
+        return Err(
+            "the installed extension changed while the update was being reviewed; choose the package again"
+                .to_string(),
+        );
+    }
+    state
+        .replace_js_extension(&package.manifest, &package.code, trust)
+        .map_err(ipc_error)
 }
 
 #[derive(Debug, Serialize)]
@@ -697,10 +970,11 @@ pub async fn mangayomi_preview(url: String) -> Result<MangayomiPreview, String> 
 #[tauri::command]
 pub async fn mangayomi_install(
     state: State<'_, Db>,
+    installs: State<'_, ExtensionInstallState>,
     url: String,
     source_index: usize,
     sha256: String,
-) -> Result<String, String> {
+) -> Result<ExtensionInstallOutcome, String> {
     let (code, actual, _) = fetch_mangayomi_source(&url).await?;
     if actual != sha256 {
         return Err(
@@ -710,10 +984,16 @@ pub async fn mangayomi_install(
     let source = mangayomi::source_at(&code, source_index).map_err(ipc_error)?;
     let manifest = mangayomi::build_manifest(&source, source_index).map_err(ipc_error)?;
     let wrapped = mangayomi::wrap_code(&code, source_index);
-    state
-        .install_js_extension(&manifest, &wrapped, "sideloaded")
-        .map_err(ipc_error)?;
-    Ok(manifest.id)
+    let package = ExtPackage {
+        manifest,
+        code: wrapped,
+    };
+    install_extension_or_request_approval(
+        state.inner(),
+        installs.inner(),
+        package,
+        ExtensionTrust::Sideloaded,
+    )
 }
 
 async fn fetch_mangayomi_source(url: &str) -> Result<(String, String, usize), String> {
@@ -1327,5 +1607,54 @@ fn replace_file(temp: &Path, target: &Path) -> std::io::Result<()> {
             std::fs::rename(temp, target)
         }
         Err(err) => Err(err),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_running_sync_makes_the_next_tick_skip() {
+        let guard = AniListSyncGuard::new();
+        let held = guard.acquire().await;
+        assert!(guard.try_acquire().is_none());
+        drop(held);
+        assert!(guard.try_acquire().is_some());
+    }
+
+    #[test]
+    fn approval_tokens_are_one_use() {
+        let db = Db::new(":memory:").unwrap();
+        let package = crate::ext_host::sample_package().unwrap();
+        let preview = db
+            .extension_install_preview(&package.manifest, &package.code, ExtensionTrust::Sideloaded)
+            .unwrap();
+        let installs = ExtensionInstallState::new();
+        let token = installs
+            .put(package, ExtensionTrust::Sideloaded, preview)
+            .unwrap();
+        let (package, trust, taken_preview) = installs.take(&token).unwrap();
+        assert_eq!(trust, ExtensionTrust::Sideloaded);
+        assert!(package.manifest.id.starts_with("app.kaminari."));
+        assert!(taken_preview.new_install);
+        assert!(installs.take(&token).is_err());
+    }
+
+    #[test]
+    fn an_unknown_approval_token_is_rejected() {
+        let db = Db::new(":memory:").unwrap();
+        let package = crate::ext_host::sample_package().unwrap();
+        let preview = db
+            .extension_install_preview(&package.manifest, &package.code, ExtensionTrust::Sideloaded)
+            .unwrap();
+        let installs = ExtensionInstallState::new();
+        let _token = installs
+            .put(package, ExtensionTrust::Sideloaded, preview)
+            .unwrap();
+        assert!(installs.take("not-the-token").is_err());
+        // The wrong attempt consumes the pending package; a fresh install is
+        // needed, which is the safe failure direction.
+        assert!(installs.take("not-the-token").is_err());
     }
 }

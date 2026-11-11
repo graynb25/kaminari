@@ -202,6 +202,36 @@ pub struct ExtPackage {
     pub code: String,
 }
 
+/// The trust a package earns from where it came from. This is computed in Rust
+/// by the install path and is never accepted from a package, a backup row or a
+/// webview caller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExtensionTrust {
+    Builtin,
+    Sideloaded,
+}
+
+impl ExtensionTrust {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ExtensionTrust::Builtin => "builtin",
+            ExtensionTrust::Sideloaded => "sideloaded",
+        }
+    }
+
+    /// Older builds allowed arbitrary trust labels, including `signed` for
+    /// packages that were never signed. Keep only the two labels this build
+    /// can actually prove.
+    pub fn from_stored(value: &str) -> Self {
+        if value == ExtensionTrust::Builtin.as_str() {
+            ExtensionTrust::Builtin
+        } else {
+            ExtensionTrust::Sideloaded
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct HostLimits {
     pub timeout: Duration,
