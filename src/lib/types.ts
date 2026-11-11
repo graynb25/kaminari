@@ -99,6 +99,39 @@ export type JsExtension = {
   nsfw: boolean;
 };
 
+export type ExtensionInstallChange = {
+  field: string;
+  before: string;
+  after: string;
+};
+
+export type ExtensionInstallPreview = {
+  id: string;
+  name: string;
+  version: string;
+  apiVersion: string;
+  trust: string;
+  newInstall: boolean;
+  requiresApproval: boolean;
+  codeChanged: boolean;
+  nameChanged: boolean;
+  versionChanged: boolean;
+  manifestChanged: boolean;
+  trustChanged: boolean;
+  addedHosts: string[];
+  removedHosts: string[];
+  existingName: string | null;
+  existingVersion: string | null;
+  existingTrust: string | null;
+  changes: ExtensionInstallChange[];
+};
+
+export type ExtensionInstallOutcome = {
+  installed: boolean;
+  approvalToken: string | null;
+  preview: ExtensionInstallPreview;
+};
+
 export type MangayomiSourcePreview = {
   index: number;
   name: string;

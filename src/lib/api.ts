@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Boot,
   ContinueItem,
+  ExtensionInstallOutcome,
   HistoryItem,
   InstalledSource,
   JsEpisode,
@@ -133,8 +134,12 @@ export function jsExtensionInstallPick(): Promise<string | null> {
   return invoke<string | null>("js_extension_install_pick");
 }
 
-export function jsExtensionInstallPackage(token: string): Promise<void> {
-  return invoke<void>("js_extension_install_package", { token });
+export function jsExtensionInstallPackage(token: string): Promise<ExtensionInstallOutcome> {
+  return invoke<ExtensionInstallOutcome>("js_extension_install_package", { token });
+}
+
+export function jsExtensionInstallConfirm(approvalToken: string): Promise<void> {
+  return invoke<void>("js_extension_install_confirm", { approvalToken });
 }
 
 export function mangayomiPreview(url: string): Promise<MangayomiPreview> {
@@ -145,8 +150,8 @@ export function mangayomiInstall(
   url: string,
   sourceIndex: number,
   sha256: string,
-): Promise<string> {
-  return invoke<string>("mangayomi_install", { url, sourceIndex, sha256 });
+): Promise<ExtensionInstallOutcome> {
+  return invoke<ExtensionInstallOutcome>("mangayomi_install", { url, sourceIndex, sha256 });
 }
 
 export function jsExtensionPreferences(id: string): Promise<SourcePreferences> {

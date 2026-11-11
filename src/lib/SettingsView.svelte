@@ -12,8 +12,11 @@
     anilistAuthLogout,
     anilistAuthStart,
     anilistAuthStatus,
+    anilistOAuthStatus,
+    anilistRegisterCallback,
     onAnilistAuthChanged,
     type AniListAuthStatus,
+    type AniListOAuthStatus,
   } from "./anilistAuth";
   import { anilistSyncPending, anilistSyncPush } from "./anilistSync";
   import { readDownloadsFolder, saveDownloadsFolder } from "./downloads";
@@ -82,7 +85,9 @@
   let dataStatusTone = $state<"success" | "error">("success");
   let restartNeeded = $state(false);
   let anilistAuth = $state<AniListAuthStatus | null>(null);
+  let anilistOAuth = $state<AniListOAuthStatus | null>(null);
   let anilistBusy = $state(false);
+  let anilistRegistering = $state(false);
   let anilistWaiting = $state(false);
   let anilistSyncing = $state(false);
   let anilistPushing = $state(false);
@@ -395,12 +400,26 @@
     }
   }
 
+  async function refreshOAuthStatus() {
+    try {
+      anilistOAuth = await anilistOAuthStatus();
+    } catch {
+      anilistOAuth = null;
+    }
+  }
+
   async function connectAniList() {
     if (anilistBusy || anilistWaiting) return;
     anilistError = "";
     anilistNotice = "";
     if (anilistAuth?.error) {
       anilistAuth = { ...anilistAuth, error: null };
+    }
+    if (anilistOAuth && !anilistOAuth.callbackRegistered) {
+      anilistError =
+        anilistOAuth.message ??
+        "Enable the kaminari:// sign in callback before connecting AniList.";
+      return;
     }
     anilistBusy = true;
     anilistWaiting = true;
@@ -411,6 +430,28 @@
       anilistError = errorText(err);
     } finally {
       anilistBusy = false;
+    }
+  }
+
+  async function enableOAuthCallback() {
+    if (anilistBusy || anilistRegistering || anilistWaiting) return;
+    anilistError = "";
+    anilistNotice = "";
+    anilistRegistering = true;
+    try {
+      await anilistRegisterCallback();
+      anilistOAuth = await anilistOAuthStatus();
+      if (!anilistOAuth.callbackRegistered) {
+        anilistError =
+          anilistOAuth.message ??
+          "The system did not register the kaminari:// callback for this build.";
+        return;
+      }
+      await connectAniList();
+    } catch (err) {
+      anilistError = errorText(err);
+    } finally {
+      anilistRegistering = false;
     }
   }
 
@@ -476,8 +517,16 @@
           result.conflicts === 1
             ? `Sent ${result.pushed} changes. AniList had a newer change for 1 title, so the AniList value was kept.`
             : `Sent ${result.pushed} changes. AniList had newer changes for ${result.conflicts} titles, so the AniList values were kept.`;
+        if (result.pending > 0) {
+          anilistNotice += ` ${result.pending} ${result.pending === 1 ? "change is" : "changes are"} still waiting to send.`;
+        }
       } else if (result.pushed > 0) {
         anilistNotice = `Sent ${result.pushed} changes to AniList.`;
+        if (result.pending > 0) {
+          anilistNotice += ` ${result.pending} ${result.pending === 1 ? "change is" : "changes are"} still waiting to send.`;
+        }
+      } else if (result.pending > 0) {
+        anilistNotice = `${result.pending} ${result.pending === 1 ? "change is" : "changes are"} still waiting for AniList. Kaminari will retry automatically.`;
       } else {
         anilistNotice = "AniList is already up to date.";
       }
@@ -591,6 +640,7 @@
     let eventSeq = 0;
 
     void refreshAniListPending();
+    void refreshOAuthStatus();
 
     void (async () => {
       try {
@@ -1186,19 +1236,45 @@
                       <div class="min-w-0 flex-1">
                         <p class="text-sm font-semibold">AniList account</p>
                         <p class="text-xs mt-0.5" style="color: var(--paper-400);">
-                          Connect to keep your AniList list and progress in step.
+                          {#if anilistOAuth && !anilistOAuth.callbackRegistered}
+                            {anilistOAuth.portable
+                              ? "Portable build: enable the sign in callback once for this Windows account."
+                              : "Enable the kaminari:// callback to connect AniList."}
+                          {:else}
+                            Connect to keep your AniList list and progress in step.
+                          {/if}
                         </p>
                       </div>
-                      <button
-                        class="btn-ghost px-3 py-2 text-xs"
-                        disabled={anilistBusy || anilistWaiting}
-                        onclick={connectAniList}
-                      >
-                        <Icon name="external" size={14} />
-                        {anilistHasError ? "Reconnect" : "Connect AniList"}
-                      </button>
+                      {#if anilistOAuth && !anilistOAuth.callbackRegistered}
+                        <button
+                          class="btn-ghost px-3 py-2 text-xs"
+                          disabled={anilistBusy || anilistWaiting || anilistRegistering || !anilistOAuth.canRegister}
+                          onclick={() => void enableOAuthCallback()}
+                          title={anilistOAuth.message ?? undefined}
+                        >
+                          <Icon name="link" size={14} />
+                          {anilistRegistering ? "Enabling" : "Enable AniList sign in"}
+                        </button>
+                      {:else}
+                        <button
+                          class="btn-ghost px-3 py-2 text-xs"
+                          disabled={anilistBusy || anilistWaiting}
+                          onclick={connectAniList}
+                        >
+                          <Icon name="external" size={14} />
+                          {anilistHasError ? "Reconnect" : "Connect AniList"}
+                        </button>
+                      {/if}
                     {/if}
                   </div>
+                  {#if anilistOAuth && !anilistOAuth.callbackRegistered && anilistOAuth.message}
+                    <p class="text-[11px] mt-2 leading-relaxed" style="color: var(--paper-450);">
+                      {anilistOAuth.message}
+                      {#if anilistOAuth.portable}
+                        Installed builds register the callback automatically; the portable build asks first.
+                      {/if}
+                    </p>
+                  {/if}
                   {#if anilistStatusText}
                     <p
                       role="status"

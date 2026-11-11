@@ -16,10 +16,25 @@ export type AniListAuthStatus = {
   error: string | null;
 };
 
+export type AniListOAuthStatus = {
+  portable: boolean;
+  callbackRegistered: boolean;
+  canRegister: boolean;
+  message: string | null;
+};
+
 export const ANILIST_AUTH_EVENT = "anilist-auth-changed";
 
 export function anilistAuthStart(): Promise<string> {
   return invoke<string>("anilist_auth_start");
+}
+
+export function anilistOAuthStatus(): Promise<AniListOAuthStatus> {
+  return invoke<AniListOAuthStatus>("anilist_oauth_status");
+}
+
+export function anilistRegisterCallback(): Promise<void> {
+  return invoke<void>("anilist_register_callback");
 }
 
 export function anilistAuthStatus(): Promise<AniListAuthStatus> {

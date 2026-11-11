@@ -153,6 +153,8 @@ The zip lands at `src-tauri/target/release/bundle/portable/Kaminari_<version>_x6
 
 The portable build is installer-free, not data-free. Settings and the SQLite library stay in the normal per-user app data folder, so replacing the folder keeps them. A true portable-data mode is a separate change.
 
+The portable zip has no installer, so Windows does not know about `kaminari://` until something registers it. Settings > AniList shows an **Enable AniList sign in** button in this build. The first click writes the per-user `kaminari://` handler for the portable `Kaminari.exe` and then opens AniList; the browser still shows its normal protocol prompt. The same button appears for an installed build whose handler is missing or points at another copy. If registration is refused, the Connect button stays disabled and Settings shows the reason instead of sending the user to a callback that cannot return. Moving the portable folder later needs the button again, because the registered handler names the old path.
+
 ## Publishing checklist
 
 1. Move the signing key and password out of plaintext `%APPDATA%\kaminari-signing` storage and sign from the offline key store.
