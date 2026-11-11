@@ -1964,4 +1964,16 @@
     background:
       linear-gradient(180deg, var(--accent-wash-strong), var(--accent-wash-faint));
   }
+
+  .danger-action {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+  }
+
+  .danger-action:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--danger) 86%, #000);
+    border-color: var(--danger);
+    color: #fff;
+  }
 </style>
