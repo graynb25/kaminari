@@ -10,7 +10,7 @@ use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
 
-use crate::db::Db;
+use crate::db::{remove_database_files_and_copies, Db, CLEAR_DATA_MARKER};
 
 const ERROR_CODE: &str = "KAMINARI_STARTUP_DB";
 const RETRY: &str = "Retry";
@@ -28,6 +28,12 @@ enum Choice {
 /// Open the database, retrying until it succeeds or the user quits. Quarantine
 /// moves the live files aside and leaves them on disk for manual recovery.
 pub fn open_database(app: &tauri::AppHandle, data_dir: &Path) -> Option<Db> {
+    if !clear_requested_data(data_dir) {
+        tracing::warn!(
+            path = %data_dir.display(),
+            "startup: previous clear-local-data request left files behind"
+        );
+    }
     let db_path = data_dir.join("kaminari.db");
     loop {
         let attempt = std::fs::create_dir_all(data_dir)
@@ -80,6 +86,39 @@ pub fn open_database(app: &tauri::AppHandle, data_dir: &Path) -> Option<Db> {
             }
         }
     }
+}
+
+/// Completes a "clear all local data" request that could not remove every file
+/// while the app was still running. The marker is written before the live
+/// connection is closed, so a crash at any point still leaves the request.
+pub(crate) fn clear_requested_data(data_dir: &Path) -> bool {
+    let marker = data_dir.join(CLEAR_DATA_MARKER);
+    if !marker.is_file() {
+        return true;
+    }
+    let db_path = data_dir.join("kaminari.db");
+    let mut all_removed = remove_database_files_and_copies(&db_path);
+    for path in [
+        data_dir.join("settings.json"),
+        data_dir.join("settings.json.tmp"),
+    ] {
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => {
+                all_removed = false;
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %err,
+                    "startup: clear-local-data could not remove a file"
+                );
+            }
+        }
+    }
+    if all_removed {
+        let _ = std::fs::remove_file(&marker);
+    }
+    all_removed
 }
 
 /// Last-resort native message for a failure outside the database path, such as
@@ -227,6 +266,43 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let result = quarantine_database_files(&dir.join("kaminari.db"));
         assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::NotFound);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn clear_marker_removes_database_settings_and_sidecars() {
+        let dir = scratch("clear");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("kaminari.db");
+        std::fs::write(&db, b"db").unwrap();
+        std::fs::write(sidecar_path(&db, "-wal"), b"wal").unwrap();
+        std::fs::write(sidecar_path(&db, "-shm"), b"shm").unwrap();
+        std::fs::write(dir.join("settings.json"), b"{}").unwrap();
+        std::fs::write(dir.join(CLEAR_DATA_MARKER), b"1").unwrap();
+        let safety = dir.join("kaminari.db.safety-1.db");
+        std::fs::write(&safety, b"older library").unwrap();
+
+        assert!(clear_requested_data(&dir));
+        assert!(!db.exists());
+        assert!(!sidecar_path(&db, "-wal").exists());
+        assert!(!sidecar_path(&db, "-shm").exists());
+        assert!(!dir.join("settings.json").exists());
+        assert!(!dir.join(CLEAR_DATA_MARKER).exists());
+        assert!(!safety.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn no_clear_marker_leaves_data_alone() {
+        let dir = scratch("no-clear");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("kaminari.db");
+        std::fs::write(&db, b"db").unwrap();
+
+        assert!(clear_requested_data(&dir));
+        assert!(db.exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -1,6 +1,6 @@
 # Public release checklist
 
-Status: the repository is public as of 2026-11-10. `v0.28.0` is the current published signed release, published on 2026-11-11 from tag `v0.28.0` at merge commit `3b32682` (PR #29). The public assets matched `SHA256SUMS.txt`, public `latest.json` reported 0.28.0, Minisign verified the installer, CI `check` and `secrets` passed, and a real 0.27.0 install updated through the public GitHub feed to 0.28.0. The clean Windows Sandbox install, update and rollback pass completed on 2026-11-11. The signing key and password live in the DPAPI-encrypted vault at `D:\Data\Key Custody\kaminari-release`; the plaintext `%APPDATA%\kaminari-signing` folder is gone. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled. Legal review and Authenticode signing are deferred by the maintainer. The L-09 data-at-rest decision is in progress in a separate session.
+Status: the repository is public as of 2026-11-10. `v0.28.0` is the current published signed release, published on 2026-11-11 from tag `v0.28.0` at merge commit `3b32682` (PR #29). The public assets matched `SHA256SUMS.txt`, public `latest.json` reported 0.28.0, Minisign verified the installer, CI `check` and `secrets` passed, and a real 0.27.0 install updated through the public GitHub feed to 0.28.0. The clean Windows Sandbox install, update and rollback pass completed on 2026-11-11. The signing key and password live in the DPAPI-encrypted vault at `D:\Data\Key Custody\kaminari-release`; the plaintext `%APPDATA%\kaminari-signing` folder is gone. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled. Legal review and Authenticode signing are deferred by the maintainer. The L-09 data-at-rest work is complete in the local 0.28.1 branch; code signing remains deferred.
 
 ## Before public
 
@@ -62,7 +62,8 @@ The repository is public. Current state:
 - [x] L-06: CSP `worker-src`, Svelte warnings and shared normalization helpers.
 - [x] L-07: dev harnesses and unused wrappers removed; legacy registry and source commands are debug-only.
 - [x] L-08: native startup recovery dialog and corrected logging documentation.
-- [ ] L-09: Windows Authenticode code signing and an explicit data-at-rest decision. Authenticode signing is deferred by the maintainer; the data-at-rest decision is in progress in a separate session.
+- [x] L-09 data at rest: extension storage values are DPAPI-encrypted with transparent reads/writes and plaintext migration; Settings > Privacy > Data at rest explains the split and offers Clear all local data. SQLCipher was rejected because it would regress the bundled SQLite 3.54.1 fix; library and history remain plaintext and rely on BitLocker/Device Encryption.
+- [ ] L-09 code signing: Windows Authenticode signing and published hashes. Deferred by the owner; the unsigned installer still triggers SmartScreen.
 - [x] Clean Windows Sandbox install, update and rollback pass. Completed on 2026-11-11 with a 0.27.0 install, 0.28.0 upgrade, 0.27.0 rollback and final 0.28.0; the marker and database survived each step.
 - [ ] Final legal review and counsel sign-off. Deferred by the maintainer; counsel review has not happened.
 

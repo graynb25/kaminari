@@ -13,7 +13,7 @@ Kaminari is a Windows desktop app. It ships no anime catalog, no source list, an
 
 1. Download `Kaminari_<version>_x64-setup.exe` from the Releases page.
 2. Run it. The installer is per-user, so it does not need administrator rights.
-3. Windows SmartScreen may warn because the installer is not code-signed. Check that you downloaded it from the official release, then choose More info and Run anyway if you trust it.
+3. Windows SmartScreen may warn because the installer is not code-signed. Windows Authenticode signing is deferred by the owner. Check that you downloaded it from the official release, then choose More info and Run anyway if you trust it.
 4. Launch Kaminari from the Start Menu.
 
 The app installs under `%LOCALAPPDATA%\Kaminari`. Your library is separate, under `%APPDATA%\app.kaminari.desktop`.
@@ -71,6 +71,14 @@ Some sources expose settings. Open the source card menu and choose Settings. Com
 - Backups restore the library and watch progress. Restored extensions are left disabled until you review them in Sources and enable the ones you trust. Keep the timestamped safety copy next to your library until you are sure the restore is correct. Backups made by 0.28 or later are not accepted by older builds.
 - NSFW sources are hidden by default. Enable Show NSFW sources in Settings, Privacy to see them in Sources and source search.
 
+## Data at rest
+
+Kaminari does not encrypt its whole SQLite database. The library, watched marks, playback progress, history, source library, source progress and source history are plaintext rows. They rely on your Windows account and on Windows disk encryption such as BitLocker or Device Encryption. Turn on full-disk encryption if the device or its backups may be accessible to someone else.
+
+Extension storage is different: the values an extension reads and writes through `storage.get` and `storage.set` are encrypted with Windows DPAPI for your Windows account before they are saved. The extension still sees normal text, and old plaintext values are migrated automatically. The encrypted values are tied to this Windows user and device, so a backup restored under another account may not be able to read them.
+
+Settings > Privacy > Data at rest explains this split and has **Clear all local data**. It deletes the SQLite database and its WAL/SHM files, Kaminari's safety and quarantine copies, a local settings file if present, and the WebView cache, cookies and local storage, then asks you to restart. Downloaded videos, exported backups and the AniList token in Windows Credential Manager are not deleted.
+
 ## Updates
 
 The app checks the signed release feed from Settings. A build with no public feed shows a local-build warning instead of failing.
@@ -88,6 +96,7 @@ Use Windows Settings, Apps, Installed apps, Kaminari, Uninstall. The uninstaller
 - **Portable build will not start:** keep the `lib` folder next to `Kaminari.exe`, and install the WebView2 Runtime.
 - **Kaminari will not start or reports a database problem:** a native recovery dialog appears before the window opens. Choose Retry after closing anything that may hold the database, open the data folder to back it up, or choose Quarantine and start fresh. Quarantine moves `kaminari.db`, `kaminari.db-wal` and `kaminari.db-shm` into a timestamped `kaminari.db.quarantine-<number>` folder and creates a new database. Nothing is deleted.
 - **Clear cached images, cookies or WebView data:** open Settings, Privacy and choose Clear WebView data. It clears the shared WebView profile asynchronously, so restart Kaminari afterward.
+- **Remove everything Kaminari stores:** open Settings, Privacy, Data at rest and choose Clear all local data. It deletes the database, local settings and WebView profile, then asks for a restart. Downloads, exported backups and the AniList token are kept.
 - **Update check warns:** the release feed is not publicly reachable. This is expected for a private or local build.
 
 ## Rights and privacy

@@ -42,6 +42,17 @@ export function clearWebviewData(): Promise<void> {
   return invoke<void>("clear_webview_data");
 }
 
+export type ClearLocalDataResult = {
+  databaseFilesRemoved: boolean;
+  settingsFileRemoved: boolean;
+  webviewDataCleared: boolean;
+  warnings: string[];
+};
+
+export function clearLocalData(): Promise<ClearLocalDataResult> {
+  return invoke<ClearLocalDataResult>("clear_local_data");
+}
+
 export function trending(page = 1): Promise<Media[]> {
   return invoke<Media[]>("anilist_trending", { page });
 }

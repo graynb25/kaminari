@@ -21,6 +21,8 @@ pub enum AppError {
     Extension(String),
     #[error("extension timed out after {0} seconds")]
     ExtensionTimeout(u64),
+    #[error("data protection error: {0}")]
+    Crypto(String),
 }
 
 impl From<rusqlite::Error> for AppError {

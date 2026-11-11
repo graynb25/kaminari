@@ -56,6 +56,15 @@ pub struct BackupExport {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ClearLocalDataResult {
+    pub database_files_removed: bool,
+    pub settings_file_removed: bool,
+    pub webview_data_cleared: bool,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AniListSyncResult {
     pub titles: usize,
     pub viewer_name: String,
@@ -1542,12 +1551,78 @@ pub async fn settings_read(
 
 #[tauri::command]
 pub async fn clear_webview_data(app: AppHandle) -> Result<(), String> {
+    clear_webview_data_now(&app)
+}
+
+fn clear_webview_data_now(app: &AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "the main window is unavailable".to_string())?;
     window
         .clear_all_browsing_data()
         .map_err(|err| format!("cannot clear WebView data: {err}"))
+}
+
+/// Deletes the live database, its sidecars, a local settings file and the
+/// WebView profile. The app keeps a fresh in-memory database until the
+/// requested restart, and a marker makes the next start retry any file that
+/// Windows still had open.
+#[tauri::command]
+pub async fn clear_local_data(
+    app: AppHandle,
+    state: State<'_, Db>,
+) -> Result<ClearLocalDataResult, String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|err| format!("cannot resolve the data folder: {err}"))?;
+    let db = state.inner().clone();
+    let database_files_removed =
+        tauri::async_runtime::spawn_blocking(move || db.clear_local_data())
+            .await
+            .map_err(|err| format!("clear local data failed: {err}"))?
+            .map_err(ipc_error)?;
+
+    let mut warnings = Vec::new();
+    if !database_files_removed {
+        warnings.push(
+            "Some database files were still open. Restart Kaminari to finish removing them."
+                .to_string(),
+        );
+    }
+
+    let mut settings_file_removed = true;
+    for path in [
+        data_dir.join("settings.json"),
+        data_dir.join("settings.json.tmp"),
+    ] {
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => {
+                settings_file_removed = false;
+                warnings.push(format!(
+                    "The settings file at {} could not be removed: {err}",
+                    path.display()
+                ));
+            }
+        }
+    }
+
+    let webview_data_cleared = match clear_webview_data_now(&app) {
+        Ok(()) => true,
+        Err(err) => {
+            warnings.push(err);
+            false
+        }
+    };
+
+    Ok(ClearLocalDataResult {
+        database_files_removed,
+        settings_file_removed,
+        webview_data_cleared,
+        warnings,
+    })
 }
 
 #[tauri::command]
