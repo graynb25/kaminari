@@ -1,17 +1,17 @@
 # Public release checklist
 
-Status: the repository is public as of 2026-11-10. `v0.27.0` is the current published signed release. The Phase 1 and Phase 2 hardening batches are integrated on a local branch as 0.28.0 and are being prepared for publication. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled. Legal review and Authenticode signing are deferred by the maintainer. The clean Windows VM pass remains open because Windows Sandbox is not installed and Hyper-V is disabled.
+Status: the repository is public as of 2026-11-10. `v0.28.0` is the current published signed release, published on 2026-11-11 from tag `v0.28.0` at merge commit `3b32682` (PR #29). The public assets matched `SHA256SUMS.txt`, public `latest.json` reported 0.28.0, Minisign verified the installer, CI `check` and `secrets` passed, and a real 0.27.0 install updated through the public GitHub feed to 0.28.0. The clean Windows Sandbox install, update and rollback pass completed on 2026-11-11. The signing key and password live in the DPAPI-encrypted vault at `D:\Data\Key Custody\kaminari-release`; the plaintext `%APPDATA%\kaminari-signing` folder is gone. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled. Legal review and Authenticode signing are deferred by the maintainer. The L-09 data-at-rest decision is in progress in a separate session.
 
 ## Before public
 
 - [x] Scan the full git history with Gitleaks. The 8.30.1 run on 2026-11-10 scanned 114 commits. Two findings were verified as fake example tokens in a test and a proxy doc. The current files use placeholders and the two historical commits are narrowly allowlisted in `.gitleaks.toml`.
 - [x] Add a private security advisory link and a public takedown issue template in `.github/ISSUE_TEMPLATE/`.
 - [x] Keep the update private key and password outside the repository.
-- [x] Move the signing key and password out of plaintext app data into a DPAPI-encrypted vault, with a loader and an export path for offline media.
+- [x] Move the signing key and password out of plaintext app data into a DPAPI-encrypted vault, with a loader and an export path for offline media. The vault is at `D:\Data\Key Custody\kaminari-release`; the plaintext `%APPDATA%\kaminari-signing` folder is gone.
 - [x] Keep `VERSION`, the installer and the portable zip reproducible from the repository.
 - [x] Generate `latest.json` from the signed installer with `pnpm release:manifest`, reject a UTF-8 BOM and verify the signed version.
 - [x] Remove the tag-triggered release workflow. It cannot sign or ship the local libmpv payload. Releases are built and uploaded from the maintainer machine.
-- [ ] Have counsel review `docs/LEGAL-REVIEW-DRAFT.md` and the Terms.
+- [ ] Have counsel review `docs/LEGAL-REVIEW-DRAFT.md` and the Terms. Deferred by the maintainer; counsel review has not happened.
 - [x] Run a dependency and license audit after the final release build. Dependabot alerts were reviewed on 2026-11-10; zip, Vite and Vitest were upgraded, glib was dismissed as Linux-only, and deepmerge as a build-time low severity report. Licenses were regenerated for 0.26.6.
 - [x] Confirm no source list, media, APK or user database is tracked.
 - [x] Confirm the CI secret scan passes on the exact release commit.
@@ -28,7 +28,8 @@ The repository is public. Current state:
 5. [ ] Confirm two-factor authentication on the maintainer account. This cannot be checked from the repository API.
 6. [x] The tag-triggered release workflow was removed. Releases are built locally with the libmpv payload and signing key.
 7. [x] `v0.26.2` and `v0.26.3` have the signed installer, `.sig`, `latest.json` and portable zip. `v0.26.3` also has `SHA256SUMS.txt`.
-8. [x] Test the in-app update from the previous signed build. 0.26.9 found 0.27.0, downloaded it, closed, let the installer replace the files, reopened 0.27.0 and reported up to date. The signed-version requirement accepted the 0.27.0 feed. The library hash survived. Host only; the clean VM pass is still open.
+8. [x] Test the in-app update from the previous signed build. 0.26.9 found 0.27.0, downloaded it, closed, let the installer replace the files, reopened 0.27.0 and reported up to date. The signed-version requirement accepted the 0.27.0 feed. The library hash survived. Host only; the clean sandbox pass is recorded under VM checks.
+9. [x] Test the public GitHub feed after 0.28.0 was published. A real 0.27.0 install found 0.28.0, downloaded it, accepted the signed version, installed it and reopened 0.28.0. The public `latest.json` reported 0.28.0.
 
 ## Production review Phase 0
 
@@ -61,9 +62,9 @@ The repository is public. Current state:
 - [x] L-06: CSP `worker-src`, Svelte warnings and shared normalization helpers.
 - [x] L-07: dev harnesses and unused wrappers removed; legacy registry and source commands are debug-only.
 - [x] L-08: native startup recovery dialog and corrected logging documentation.
-- [ ] L-09: Windows Authenticode code signing and an explicit data-at-rest decision.
-- [ ] Clean Windows VM install, update and rollback pass.
-- [ ] Final legal review and counsel sign-off.
+- [ ] L-09: Windows Authenticode code signing and an explicit data-at-rest decision. Authenticode signing is deferred by the maintainer; the data-at-rest decision is in progress in a separate session.
+- [x] Clean Windows Sandbox install, update and rollback pass. Completed on 2026-11-11 with a 0.27.0 install, 0.28.0 upgrade, 0.27.0 rollback and final 0.28.0; the marker and database survived each step.
+- [ ] Final legal review and counsel sign-off. Deferred by the maintainer; counsel review has not happened.
 
 ## Release assets
 
@@ -86,6 +87,6 @@ The clean VM pass covers:
 
 Local host result, 2026-11-10: 0.26.1 install, 0.26.2 upgrade and 0.26.1 rollback all exited 0 with the expected file versions. The SQLite hash was identical before, after upgrade, after rollback and after uninstall. Uninstall removed the install directory and kept the data. This is not a clean machine result.
 
-Local host result, 2026-11-11: 0.27.0 install, 0.28.0 upgrade, 0.27.0 rollback and 0.28.0 reinstall all exited 0 with the expected file versions. A marker file and the row counts for media, library, watched, history, source library, source progress, source history and extensions survived. Minisign verified the 0.28.0 installer signature against the embedded public key and the trusted comment carries `version:0.28.0`. A corrupt database produced the native recovery window with Retry, Open data folder and Quarantine and start fresh; the real database was restored afterward. The in-app update path passed against a temporary local feed built from the exact 0.27.0 release code, downloading and installing the real signed 0.28.0 installer. The public GitHub feed from 0.27.0 remains open until 0.28.0 is published. This is not a clean machine result.
+Local host result, 2026-11-11: 0.27.0 install, 0.28.0 upgrade, 0.27.0 rollback and 0.28.0 reinstall all exited 0 with the expected file versions. A marker file and the row counts for media, library, watched, history, source library, source progress, source history and extensions survived. Minisign verified the 0.28.0 installer signature against the embedded public key and the trusted comment carries `version:0.28.0`. A corrupt database produced the native recovery window with Retry, Open data folder and Quarantine and start fresh; the real database was restored afterward. The in-app update path passed against a temporary local feed built from the exact 0.27.0 release code, downloading and installing the real signed 0.28.0 installer. The public GitHub feed from 0.27.0 to 0.28.0 was tested separately after publication. This is not a clean machine result.
 
-Windows Sandbox failed to produce a guest or result file on two attempts. The clean VM pass remains open. The host result is recorded in `docs/ENGINEERING-NOTES.md`.
+Clean Windows Sandbox result, 2026-11-11: `clean_before=True`; 0.27.0 install; app launched; 0.28.0 upgrade; marker and database survived; 0.27.0 rollback with marker; final 0.28.0. The first sandbox launch exited without a guest; the second completed. No sandbox processes remain. The clean Windows VM pass is closed.

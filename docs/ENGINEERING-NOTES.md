@@ -128,6 +128,18 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-11 0.28.0 release
+
+Context. 0.28.0 publishes the Phase 1 and Phase 2 hardening batches on top of the Phase 0 work in 0.27.0. It was published on 2026-11-11 from tag `v0.28.0` at merge commit `3b32682` (PR #29).
+
+What we shipped. The public release carries the signed Windows installer, its `.sig`, `latest.json` and the portable zip. CI `check` and `secrets` passed on the release commit. The public assets matched `SHA256SUMS.txt`, public `latest.json` reported 0.28.0, and Minisign verified the installer against the embedded public key.
+
+What we measured. A clean Windows Sandbox run reported `clean_before=True`: 0.27.0 installed, the app launched, 0.28.0 upgraded over it, the marker and SQLite database survived, 0.27.0 rolled back with the marker intact, and the final install was 0.28.0. The first sandbox launch exited without a guest; the second completed, and no sandbox processes remained. A real 0.27.0 install updated through the public GitHub feed to 0.28.0 and reopened 0.28.0.
+
+Key custody. The signing key and password moved from plaintext `%APPDATA%\kaminari-signing` into the DPAPI-encrypted vault at `D:\Data\Key Custody\kaminari-release`. The vault contains the encrypted blob, a loader, an export script, the public key and a README, and is bound to this Windows user profile. An offline copy is staged at `D:\Data\Key Custody\kaminari-release-offline`; physical media is still needed.
+
+What remains. Authenticode signing and the final legal and counsel review are deferred by the maintainer. The L-09 data-at-rest decision is in progress in a separate session.
+
 ## 2026-11-11 Phase 2 local hardening
 
 Context. Phase 2 covered the remaining low findings from the production review except code signing and the data-at-rest decision. The work was split across two local sessions, one for privacy and file writes and one for frontend CSP, code cleanup and startup recovery.
