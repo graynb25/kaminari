@@ -535,23 +535,24 @@ impl Db {
         watched: bool,
     ) -> AppResult<Vec<i64>> {
         let through = clamp_watched_through(through, media.episodes);
-        let conn = self.conn.lock().map_err(|_| db_locked())?;
-        upsert_media(&conn, media)?;
+        let mut conn = self.conn.lock().map_err(|_| db_locked())?;
+        let tx = conn.transaction()?;
+        upsert_media(&tx, media)?;
         if watched {
-            ensure_library_entry(&conn, media.id)?;
+            ensure_library_entry(&tx, media.id)?;
             for episode in 1..=through {
-                conn.execute(
+                tx.execute(
                     "INSERT OR IGNORE INTO watched(anilist_id, episode, watched_at)
                      VALUES (?1, ?2, unixepoch())",
                     params![media.id, episode],
                 )?;
             }
-            conn.execute(
+            tx.execute(
                 "INSERT INTO history(anilist_id, episode, watched_at)
                  VALUES (?1, ?2, unixepoch())",
                 params![media.id, through],
             )?;
-            conn.execute(
+            tx.execute(
                 "INSERT INTO progress(anilist_id, episode, position_sec, duration_sec, updated_at)
                  VALUES (?1, ?2, 0, 0, unixepoch())
                  ON CONFLICT(anilist_id) DO UPDATE SET
@@ -560,20 +561,21 @@ impl Db {
                 params![media.id, through],
             )?;
         } else {
-            conn.execute(
+            tx.execute(
                 "DELETE FROM watched WHERE anilist_id = ?1",
                 params![media.id],
             )?;
-            conn.execute(
+            tx.execute(
                 "DELETE FROM history WHERE anilist_id = ?1",
                 params![media.id],
             )?;
-            conn.execute(
+            tx.execute(
                 "DELETE FROM progress WHERE anilist_id = ?1",
                 params![media.id],
             )?;
         }
-        enqueue_anilist_sync(&conn, media.id, &current_library_status(&conn, media.id)?)?;
+        enqueue_anilist_sync(&tx, media.id, &current_library_status(&tx, media.id)?)?;
+        tx.commit()?;
         read_watched(&conn, media.id)
     }
 
