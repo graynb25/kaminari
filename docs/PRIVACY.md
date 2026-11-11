@@ -93,7 +93,7 @@ We may update this policy. The updated version will be posted with the app or in
 
 Privacy questions: [[CONTACT_EMAIL]].
 
-Project repository: [[REPOSITORY_URL]].
+Project repository: https://github.com/graynb25/kaminari.
 
 ## Note
 

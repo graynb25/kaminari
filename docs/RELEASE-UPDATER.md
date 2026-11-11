@@ -77,7 +77,13 @@ That URL only works when the repository is public and a release marked latest co
 
 `signature` is the contents of the `.sig` file as a JSON string. Tauri writes the `.sig` file as a single base64 line; copy it verbatim and do not reformat or line-wrap it. The upload must use the exact asset name in `url`. The updater downloads the installer, verifies the signature and the signed version against the manifest, and only then installs.
 
-A local copy is written to `src-tauri/target/release/bundle/nsis/latest.json` after a build. It is an artifact, not source.
+The Tauri CLI writes the installer and `.sig`, not `latest.json`. Generate the manifest from the signature after the signed build:
+
+```powershell
+npm exec --yes pnpm@10 -- release:manifest -- --notes "Release notes for this version."
+```
+
+The script reads `VERSION`, refuses a `.sig` whose trusted comment carries a different version, and writes `src-tauri/target/release/bundle/nsis/latest.json` as UTF-8 without a BOM. The updater rejects a manifest with a BOM, so do not rewrite it with a tool that adds one. The manifest is an artifact, not source.
 
 ## Verify assets before publishing
 
@@ -92,6 +98,11 @@ $manifestPath = Join-Path $nsis "latest.json"
 
 if (-not (Test-Path $installer)) { throw "Missing installer for $version" }
 if (-not (Test-Path $signature)) { throw "Missing signature for $version" }
+
+$manifestBytes = [IO.File]::ReadAllBytes($manifestPath)
+if ($manifestBytes.Length -ge 3 -and $manifestBytes[0] -eq 0xEF -and $manifestBytes[1] -eq 0xBB -and $manifestBytes[2] -eq 0xBF) {
+  throw "latest.json has a UTF-8 BOM; the updater rejects it"
+}
 
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
 if ($manifest.version -ne $version) {

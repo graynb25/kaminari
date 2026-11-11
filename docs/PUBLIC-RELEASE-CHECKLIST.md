@@ -8,6 +8,7 @@ Status: the repository is public as of 2026-11-10. `v0.27.0` is the current publ
 - [x] Add a private security advisory link and a public takedown issue template in `.github/ISSUE_TEMPLATE/`.
 - [x] Keep the update private key and password outside the repository.
 - [x] Keep `VERSION`, the installer and the portable zip reproducible from the repository.
+- [x] Generate `latest.json` from the signed installer with `pnpm release:manifest`, reject a UTF-8 BOM and verify the signed version.
 - [x] Remove the tag-triggered release workflow. It cannot sign or ship the local libmpv payload. Releases are built and uploaded from the maintainer machine.
 - [ ] Have counsel review `docs/LEGAL-REVIEW-DRAFT.md` and the Terms.
 - [x] Run a dependency and license audit after the final release build. Dependabot alerts were reviewed on 2026-11-10; zip, Vite and Vitest were upgraded, glib was dismissed as Linux-only, and deepmerge as a build-time low severity report. Licenses were regenerated for 0.26.6.
