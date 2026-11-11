@@ -349,24 +349,28 @@ impl HostRule {
         if url.scheme() != "https" {
             return false;
         }
-        if !self.any_host {
-            let Some(host) = url.host_str() else {
-                return false;
-            };
-            let host = host.to_ascii_lowercase();
-            let host_matches = if self.subdomains {
-                host.len() > self.host.len()
-                    && host.ends_with(&self.host)
-                    && host.as_bytes()[host.len() - self.host.len() - 1] == b'.'
-            } else {
-                host == self.host
-            };
-            if !host_matches {
-                return false;
-            }
-            if self.port != url.port_or_known_default() {
-                return false;
-            }
+        // A compat `*` rule deliberately has no host or path scope. Keep the
+        // original behavior for it; path normalization only applies to rules
+        // that actually restrict a path.
+        if self.any_host {
+            return true;
+        }
+        let Some(host) = url.host_str() else {
+            return false;
+        };
+        let host = host.to_ascii_lowercase();
+        let host_matches = if self.subdomains {
+            host.len() > self.host.len()
+                && host.ends_with(&self.host)
+                && host.as_bytes()[host.len() - self.host.len() - 1] == b'.'
+        } else {
+            host == self.host
+        };
+        if !host_matches {
+            return false;
+        }
+        if self.port != url.port_or_known_default() {
+            return false;
         }
         let Some(path) = normalize_rule_path(url.path()) else {
             return false;
