@@ -44,6 +44,13 @@ pub fn open_database(app: &tauri::AppHandle, data_dir: &Path) -> Option<Db> {
 
         match attempt {
             Ok(database) => {
+                let removed = crate::db::cleanup_safety_copies(&db_path);
+                if removed > 0 {
+                    tracing::info!(
+                        removed,
+                        "startup: removed old safety copies, keeping the newest three"
+                    );
+                }
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                 }

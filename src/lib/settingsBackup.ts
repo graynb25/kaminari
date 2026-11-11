@@ -2,6 +2,12 @@
 
 import { getAccent, parseAccent, setAccent, type AccentId } from "./accent";
 import {
+  parseHistoryRetention,
+  readHistoryRetention,
+  saveHistoryRetention,
+  type HistoryRetention,
+} from "./historyRetention";
+import {
   parseQualityPreference,
   readQualityPreference,
   saveQualityPreference,
@@ -19,6 +25,7 @@ export type SettingsData = {
   accent: AccentId;
   proxy: boolean;
   quality: QualityPreference;
+  historyRetention: HistoryRetention;
 };
 
 const FORMAT = "kaminari-settings";
@@ -34,6 +41,7 @@ export function collectSettings(): SettingsData {
     accent: getAccent(),
     proxy: proxyFlagEnabled(),
     quality: readQualityPreference(),
+    historyRetention: readHistoryRetention(),
   };
 }
 
@@ -73,6 +81,7 @@ export function parseSettings(raw: string): SettingsData {
     accent: parseAccent(typeof record.accent === "string" ? record.accent : null),
     proxy: record.proxy,
     quality: parseQualityPreference(record.quality),
+    historyRetention: parseHistoryRetention(record.historyRetention),
   };
 }
 
@@ -81,4 +90,5 @@ export function applySettings(data: SettingsData): void {
   setAccent(data.accent);
   setProxyFlag(data.proxy);
   saveQualityPreference(data.quality);
+  saveHistoryRetention(data.historyRetention);
 }

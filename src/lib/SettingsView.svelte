@@ -9,12 +9,22 @@
   import PageHeader from "./PageHeader.svelte";
   import ProgressBar from "./ProgressBar.svelte";
   import {
+    applyHistoryRetention,
     clearLocalData,
     clearWebviewData,
+    diagnosticsExportPick,
+    exportDiagnostics,
     playerStatus,
     proxyStatus,
     type ClearLocalDataResult,
   } from "./api";
+  import {
+    HISTORY_RETENTION_OPTIONS,
+    historyRetentionDays,
+    readHistoryRetention,
+    saveHistoryRetention,
+    type HistoryRetention,
+  } from "./historyRetention";
   import {
     anilistAuthLogout,
     anilistAuthStart,
@@ -87,6 +97,13 @@
   let qualityPreference = $state<QualityPreference>("auto");
   let autoplayOn = $state(true);
   let showNsfw = $state(showNsfwEnabled());
+  let historyRetention = $state<HistoryRetention>(readHistoryRetention());
+  let historyRetentionBusy = $state(false);
+  let historyRetentionStatus = $state("");
+  let historyRetentionTone = $state<"success" | "error">("success");
+  let diagnosticsBusy = $state(false);
+  let diagnosticsStatus = $state("");
+  let diagnosticsTone = $state<"success" | "error">("success");
   let folderBusy = $state(false);
   let dataStatus = $state("");
   let dataStatusTone = $state<"success" | "error">("success");
@@ -459,7 +476,23 @@
       themeMode = data.theme;
       accent = data.accent;
       proxyOn = data.proxy;
-      setDataStatus("success", "Settings imported.");
+      historyRetention = data.historyRetention;
+      const retentionApplied = await applyHistoryRetention(
+        historyRetentionDays(data.historyRetention),
+      ).then(
+        () => true,
+        (err) => {
+          setDataStatus(
+            "error",
+            `Settings imported, but history retention failed. ${errorText(err)}`,
+          );
+          return false;
+        },
+      );
+      if (retentionApplied) {
+        setDataStatus("success", "Settings imported.");
+        onDataChanged?.();
+      }
     } catch (err) {
       setDataStatus("error", errorText(err));
     } finally {
@@ -472,6 +505,54 @@
       await invoke("app_restart");
     } catch (err) {
       setDataStatus("error", errorText(err));
+    }
+  }
+
+  async function changeHistoryRetention(next: HistoryRetention) {
+    if (historyRetentionBusy || next === historyRetention) return;
+    const previous = historyRetention;
+    historyRetention = next;
+    saveHistoryRetention(next);
+    historyRetentionBusy = true;
+    historyRetentionStatus = "";
+    historyRetentionTone = "success";
+    try {
+      const result = await applyHistoryRetention(historyRetentionDays(next));
+      if (next === "forever") {
+        historyRetentionStatus = "History is kept until you clear it.";
+      } else {
+        const removed = result.anilistHistory + result.sourceHistory;
+        historyRetentionStatus =
+          removed === 0
+            ? `No history entries were older than ${next} days.`
+            : `Removed ${result.anilistHistory} activity and ${result.sourceHistory} source entries older than ${next} days.`;
+      }
+      onDataChanged?.();
+    } catch (err) {
+      historyRetention = previous;
+      saveHistoryRetention(previous);
+      historyRetentionTone = "error";
+      historyRetentionStatus = errorText(err);
+    } finally {
+      historyRetentionBusy = false;
+    }
+  }
+
+  async function exportDiagnosticsAction() {
+    if (diagnosticsBusy) return;
+    diagnosticsBusy = true;
+    diagnosticsStatus = "";
+    diagnosticsTone = "success";
+    try {
+      const token = await diagnosticsExportPick();
+      if (!token) return;
+      const result = await exportDiagnostics(token);
+      diagnosticsStatus = `Diagnostics saved (${formatBytes(result.bytes)}).`;
+    } catch (err) {
+      diagnosticsTone = "error";
+      diagnosticsStatus = errorText(err);
+    } finally {
+      diagnosticsBusy = false;
     }
   }
 
@@ -803,7 +884,7 @@
         { label: "Extension budget", value: "" },
         {
           label: "Diagnostics export",
-          value: "Copy redacted diagnostics from error screens. No bundle export yet.",
+          value: "Redacted JSON with app version, OS, schema version and row counts. No titles, URLs, paths or tokens.",
         },
       ],
     },
@@ -1297,6 +1378,37 @@
                     Updates are signed and checked before install. The release feed is live when a signed release is published on GitHub.
                   </p>
                 </div>
+
+                <div class="mt-4 pt-4" style="border-top: 1px solid var(--line);">
+                  <div class="flex flex-wrap items-center gap-3">
+                    <div class="min-w-0 flex-1">
+                      <p class="text-sm" style="color: var(--paper-50);">Diagnostics report</p>
+                      <p class="text-xs mt-0.5 leading-relaxed" style="color: var(--paper-400);">
+                        A redacted JSON file with the app version, OS version and architecture, database
+                        schema version, row counts and non-sensitive feature flags. It contains no titles,
+                        URLs, hosts, paths, cookies, tokens, extension IDs or settings values.
+                      </p>
+                    </div>
+                    <button
+                      class="btn-ghost px-3 py-2 text-xs shrink-0"
+                      disabled={diagnosticsBusy}
+                      onclick={() => void exportDiagnosticsAction()}
+                    >
+                      <Icon name="download" size={14} />
+                      {diagnosticsBusy ? "Exporting" : "Export diagnostics"}
+                    </button>
+                  </div>
+                  {#if diagnosticsStatus}
+                    <p
+                      role="status"
+                      class="data-status"
+                      class:is-error={diagnosticsTone === "error"}
+                      class:is-success={diagnosticsTone === "success"}
+                    >
+                      {diagnosticsStatus}
+                    </p>
+                  {/if}
+                </div>
               {/if}
               <dl>
                 {#each section.rows as row, position}
@@ -1310,6 +1422,46 @@
                 {/each}
               </dl>
               {#if section.id === "settings-data"}
+                <div class="py-3" style="border-top: 1px solid var(--line);">
+                  <div class="flex flex-wrap items-center gap-3">
+                    <div class="min-w-0 flex-1">
+                      <p class="text-sm" style="color: var(--paper-50);">Keep history for</p>
+                      <p class="text-xs mt-0.5 leading-relaxed" style="color: var(--paper-400);">
+                        Older History and source history entries are removed on startup and when you
+                        change this. Watched marks, library rows, Continue Watching, source progress and
+                        extension storage stay.
+                      </p>
+                    </div>
+                    <label class="flex items-center gap-2 text-xs shrink-0" style="color: var(--paper-400);">
+                      <span class="sr-only">Keep history for</span>
+                      <select
+                        class="h-8 rounded-lg px-2 text-xs outline-none"
+                        style="background: var(--input-bg); border: 1px solid var(--line); color: var(--text-1);"
+                        value={historyRetention}
+                        disabled={historyRetentionBusy}
+                        onchange={(event) =>
+                          void changeHistoryRetention(
+                            (event.currentTarget as HTMLSelectElement).value as HistoryRetention,
+                          )}
+                        aria-label="Keep history for"
+                      >
+                        {#each HISTORY_RETENTION_OPTIONS as option (option.id)}
+                          <option value={option.id}>{option.label}</option>
+                        {/each}
+                      </select>
+                    </label>
+                  </div>
+                  {#if historyRetentionStatus}
+                    <p
+                      role="status"
+                      class="data-status"
+                      class:is-error={historyRetentionTone === "error"}
+                      class:is-success={historyRetentionTone === "success"}
+                    >
+                      {historyRetentionStatus}
+                    </p>
+                  {/if}
+                </div>
                 <div class="flex flex-wrap items-center gap-3 py-3" style="border-top: 1px solid var(--line);">
                   <span class="w-8 h-8 grid place-items-center rounded-lg shrink-0" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
                     <Icon name="folder" size={15} />

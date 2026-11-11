@@ -30,6 +30,7 @@
   import Toasts from "./lib/Toasts.svelte";
   import {
     addToLibrary,
+    applyHistoryRetention,
     bootSnapshot,
     continueWatching,
     detail as fetchDetail,
@@ -52,6 +53,10 @@
   } from "./lib/api";
   import { displayTitle, isRateLimitMessage } from "./lib/format";
   import { mergeContinueRows } from "./lib/continueRows";
+  import {
+    historyRetentionDays,
+    readHistoryRetention,
+  } from "./lib/historyRetention";
   import { onAniListSyncConflict } from "./lib/anilistSync";
   import type {
     Boot,
@@ -529,6 +534,10 @@
     mainEl?.focus();
     void (async () => {
       await loadBoot();
+      const retentionDays = historyRetentionDays(readHistoryRetention());
+      await applyHistoryRetention(retentionDays).catch(() => {
+        // The window still applies on the next launch or when Settings changes it.
+      });
       onboardingOpen = shouldShowOnboarding();
       incognito = incognitoEnabled();
       void setIncognitoMode(incognito).catch(() => {
@@ -936,6 +945,9 @@
               onOpenOnboarding={() => (onboardingOpen = true)}
               onDataChanged={() => {
                 void refreshLibrary();
+                void refreshContinue();
+                void refreshHistory();
+                void refreshSourceActivity();
               }}
             />
           {/if}

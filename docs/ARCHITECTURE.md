@@ -45,7 +45,7 @@ extensionInstall(pathOrUrl: string): Promise<ExtensionMeta>
 extensionRun(sourceId: string, op: ExtOp, args: unknown): Promise<unknown> // 5s timeout
 playerOpen(stream: ResolvedStream, resumeSec?: number): Promise<void>
 playerCommand(cmd: string, value?: number): Promise<void>
-systemDiagnostics(): Promise<DiagnosticsBundle> // redacted zip path
+diagnosticsExport(token: string): Promise<{ bytes: number }> // redacted local JSON report
 updaterCheck(): Promise<UpdateStatus>
 authLogin(): Promise<void> // OS browser, PKCE
 authLogout(): Promise<void>
@@ -115,6 +115,16 @@ Extension storage is the exception. `js_storage.value` is protected with Windows
 
 Settings > Privacy > Data at rest explains the split and offers **Clear all local data**. It writes a marker, closes the live database, deletes `kaminari.db` plus `-wal`/`-shm`, removes Kaminari's `kaminari.db.safety-*` and `kaminari.db.quarantine-*` copies, removes a local `settings.json` if present, clears the WebView profile, and asks for a restart. The process keeps a fresh in-memory database until then. If Windows still holds a file open, the marker makes the next start finish the deletion before opening a new database. Downloads, exported backups and the AniList token in Windows Credential Manager are not touched.
 
+### History retention and safety copies
+
+Settings > Data has **Keep history for**: 30 days, 90 days, 365 days or Forever. The choice is stored with the other local settings, included in settings export and import, and applied through `history_retention_apply`. Rust computes the cutoff and deletes only `history` rows with `watched_at < cutoff` and `source_history` rows with `updated_at < cutoff`. Watched marks, library rows, `progress`, `source_progress`, Continue Watching and `js_storage` are not touched. The app applies the window after startup and whenever the choice changes. The existing `idx_history_watched` index covers the AniList history delete; `source_history` is bounded per show and uses its primary key, so no new index is added.
+
+A restore writes a safety copy with `VACUUM INTO` before replacing the live database. Restore and startup call `cleanup_safety_copies`, which keeps the newest three `kaminari.db.safety-<nanos>.db` files in the data folder. The matcher accepts only regular files with a numeric stamp and the exact safety prefix. The live database, `-wal`/`-shm` sidecars, `.restore-*` scratch files and `kaminari.db.quarantine-*` folders are not matched and are never deleted by this cleanup.
+
+### Diagnostics export
+
+Settings > Updates and diagnostics exports `kaminari-diagnostics.json` through a native save dialog. The path is granted by the same one-use `PathAuthority` as settings and backups, and the file is written through `atomic_file::write_atomic`. Rust generates the report from fixed queries: app version from `CARGO_PKG_VERSION`, OS version and architecture, `PRAGMA user_version` and row counts for the nine tables named in `DIAGNOSTICS_TABLES`. Feature flags are coarse booleans. The report does not read row contents, titles, URLs, hosts, paths, cookies, extension IDs, storage keys or settings values. It is local only; nothing is uploaded.
+
 Windows Authenticode code signing remains deferred by the owner. The installer is unsigned and may trigger SmartScreen; the updater's Minisign signature is separate and does not sign the executable.
 
 ## Extension host
@@ -131,7 +141,7 @@ Net uses one reqwest Client, rustls, h2, gzip and brotli, 30s idle pool. Fronten
 
 Images: URL to sha256 filename, LRU 512MB, 30 day TTL, resize to display width, blurhash stored at ingest. Serve through the asset protocol. Miss shows placeholder color, one retry, then an error chip. Grid decode never blocks the UI thread.
 
-Logging: `tracing` writes to stderr, with the `RUST_LOG` environment filter and info as the default. Release builds use the Windows subsystem, so there is no console and logs are not persisted; Kaminari does not write a rolling log file, ship a log tail or upload diagnostics. The in-app Copy diagnostics action builds a one-off redacted report (error code, version, time and message). Tokens, cookies and Authorization values are redacted before display or copy.
+Logging: `tracing` writes to stderr, with the `RUST_LOG` environment filter and info as the default. Release builds use the Windows subsystem, so there is no console and logs are not persisted; Kaminari does not write a rolling log file, ship a log tail or upload diagnostics. The in-app Copy diagnostics action builds a one-off redacted message (error code, version, time and message). Settings > Updates and diagnostics can export a separate redacted JSON report with version, platform, schema version, row counts and feature flags. Tokens, cookies and Authorization values are redacted before display or copy, and neither path reads row contents or settings values.
 
 Updater: `tauri-plugin-updater` plus GitHub Releases plus Minisign. Pubkey pinned in `tauri.conf.json`. Channels stable and beta in Settings. Silent download, toast `Restart to update`, relaunch. Windows ships NSIS plus WebView2 bootstrapper. Unsigned nightly builds warn on SmartScreen. That warning is documented, never bypassed quietly. macOS and Linux land in P3.
 

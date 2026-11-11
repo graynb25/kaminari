@@ -129,6 +129,35 @@ pub struct Db {
     path: Arc<PathBuf>,
 }
 
+/// Counts that are safe to put in a redacted diagnostics report. Only table
+/// names and integers leave the database; no row contents are read.
+#[derive(Debug, Clone)]
+pub struct DiagnosticsSnapshot {
+    pub schema_version: i64,
+    pub row_counts: Vec<(&'static str, i64)>,
+}
+
+/// Tables reported by the diagnostics export. Keep this list fixed: the report
+/// must never take table names from the webview.
+pub const DIAGNOSTICS_TABLES: &[&str] = &[
+    "media",
+    "library",
+    "watched",
+    "history",
+    "source_library",
+    "source_progress",
+    "source_history",
+    "js_extensions",
+    "js_storage",
+];
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryRetentionResult {
+    pub anilist_history: usize,
+    pub source_history: usize,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryItem {
@@ -642,6 +671,58 @@ impl Db {
             params![anilist_id, episode],
         )?;
         Ok(())
+    }
+
+    /// Deletes activity rows older than `days`. Watched marks, library rows,
+    /// playback progress, Continue Watching and extension storage are not
+    /// touched; only the two history tables are pruned. `None` means Forever
+    /// and does nothing.
+    pub fn purge_history_older_than(&self, days: Option<u32>) -> AppResult<HistoryRetentionResult> {
+        let Some(days) = days else {
+            return Ok(HistoryRetentionResult::default());
+        };
+        if days == 0 {
+            return Err(AppError::Blocked(
+                "history retention must be at least one day".to_string(),
+            ));
+        }
+        let cutoff = history_retention_cutoff(unix_now(), days);
+        self.purge_history_before(cutoff)
+    }
+
+    fn purge_history_before(&self, cutoff: i64) -> AppResult<HistoryRetentionResult> {
+        let mut conn = self.conn.lock().map_err(|_| db_locked())?;
+        let tx = conn.transaction()?;
+        let anilist_history =
+            tx.execute("DELETE FROM history WHERE watched_at < ?1", params![cutoff])?;
+        let source_history = tx.execute(
+            "DELETE FROM source_history WHERE updated_at < ?1",
+            params![cutoff],
+        )?;
+        tx.commit()?;
+        Ok(HistoryRetentionResult {
+            anilist_history,
+            source_history,
+        })
+    }
+
+    /// Reads the schema version and row counts for the redacted diagnostics
+    /// report. No titles, URLs, identifiers or row values are selected.
+    pub fn diagnostics_snapshot(&self) -> AppResult<DiagnosticsSnapshot> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let schema_version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        let mut row_counts = Vec::with_capacity(DIAGNOSTICS_TABLES.len());
+        for table in DIAGNOSTICS_TABLES {
+            let count: i64 =
+                conn.query_row(&format!("SELECT COUNT(*) FROM \"{table}\""), [], |row| {
+                    row.get(0)
+                })?;
+            row_counts.push((*table, count));
+        }
+        Ok(DiagnosticsSnapshot {
+            schema_version,
+            row_counts,
+        })
     }
 
     pub fn watched_list(&self, anilist_id: i64) -> AppResult<Vec<i64>> {
@@ -1482,6 +1563,13 @@ impl Db {
         }
 
         remove_database_files(&temp);
+        let removed = cleanup_safety_copies(&self.path);
+        if removed > 0 {
+            tracing::info!(
+                removed,
+                "restore: removed old safety copies, keeping the newest three"
+            );
+        }
         Ok(())
     }
 
@@ -1729,6 +1817,79 @@ fn database_parent_and_name(path: &Path) -> (PathBuf, String) {
 fn safety_copy_path(live: &Path) -> PathBuf {
     let (parent, name) = database_parent_and_name(live);
     parent.join(format!("{name}.safety-{}.db", timestamp_nanos()))
+}
+
+/// Restore keeps a copy of the library it replaces. Three is enough for a
+/// recent mistake without turning the data folder into an unbounded archive.
+pub(crate) const SAFETY_COPY_LIMIT: usize = 3;
+
+/// Removes older `kaminari.db.safety-<nanos>.db` files, keeping the newest
+/// `SAFETY_COPY_LIMIT`. The live database, WAL/SHM sidecars, quarantine folders
+/// and scratch restore files do not match and are never touched.
+pub(crate) fn cleanup_safety_copies(db_path: &Path) -> usize {
+    if db_path.as_os_str() == ":memory:" {
+        return 0;
+    }
+    let (parent, name) = database_parent_and_name(db_path);
+    let prefix = format!("{name}.safety-");
+    let entries = match std::fs::read_dir(&parent) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return 0,
+        Err(err) => {
+            tracing::warn!(
+                path = %parent.display(),
+                error = %err,
+                "safety copies: database folder could not be inspected"
+            );
+            return 0;
+        }
+    };
+
+    let mut copies: Vec<(u128, PathBuf)> = Vec::new();
+    for entry in entries.flatten() {
+        if !entry
+            .file_type()
+            .map(|kind| kind.is_file())
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let file_name = entry.file_name();
+        let Some(file_name) = file_name.to_str() else {
+            continue;
+        };
+        let Some(stamp) = file_name.strip_prefix(&prefix) else {
+            continue;
+        };
+        let Some(stamp) = stamp.strip_suffix(".db") else {
+            continue;
+        };
+        if stamp.is_empty() || !stamp.bytes().all(|byte| byte.is_ascii_digit()) {
+            continue;
+        }
+        let Ok(stamp) = stamp.parse::<u128>() else {
+            continue;
+        };
+        copies.push((stamp, entry.path()));
+    }
+
+    if copies.len() <= SAFETY_COPY_LIMIT {
+        return 0;
+    }
+    copies.sort_by_key(|copy| std::cmp::Reverse(copy.0));
+    let mut removed = 0usize;
+    for (_, path) in copies.into_iter().skip(SAFETY_COPY_LIMIT) {
+        match std::fs::remove_file(&path) {
+            Ok(()) => removed += 1,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => tracing::warn!(
+                path = %path.display(),
+                error = %err,
+                "safety copies: an old copy could not be removed"
+            ),
+        }
+    }
+    removed
 }
 
 fn timestamp_nanos() -> u128 {
@@ -2120,6 +2281,13 @@ fn unix_now() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|value| value.as_secs() as i64)
         .unwrap_or_default()
+}
+
+/// Unix timestamp before which activity is older than the selected retention.
+/// Rows exactly at the cutoff are kept, so a 30 day setting removes entries
+/// strictly older than 30 days.
+pub fn history_retention_cutoff(now: i64, days: u32) -> i64 {
+    now.saturating_sub(i64::from(days) * 86_400)
 }
 
 fn code_hash(code: &str) -> String {
@@ -3594,6 +3762,202 @@ mod tests {
     }
 
     #[test]
+    fn history_retention_cutoff_keeps_the_boundary_row() {
+        let now = 1_700_000_000i64;
+        let cutoff = history_retention_cutoff(now, 30);
+        assert_eq!(cutoff, now - 30 * 86_400);
+
+        let db = Db::new(":memory:").unwrap();
+        let media = sample_media();
+        db.add_to_library(&media, "watching").unwrap();
+        db.set_watched(&media, 1, true).unwrap();
+        db.set_watched(&media, 2, true).unwrap();
+
+        let package = crate::ext_host::sample_package().unwrap();
+        db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
+            .unwrap();
+        db.source_library_add(
+            &package.manifest.id,
+            "show-1",
+            "Popeye",
+            None,
+            Some(1933),
+            None,
+            None,
+        )
+        .unwrap();
+        for episode in 1..=2 {
+            db.source_progress_set(
+                &package.manifest.id,
+                "show-1",
+                &format!("ep-{episode}"),
+                episode,
+                None,
+                10.0,
+                600.0,
+                false,
+            )
+            .unwrap();
+        }
+
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE history SET watched_at = ?1 WHERE episode = 1",
+                params![cutoff],
+            )
+            .unwrap();
+            conn.execute(
+                "UPDATE history SET watched_at = ?1 WHERE episode = 2",
+                params![cutoff - 1],
+            )
+            .unwrap();
+            conn.execute(
+                "UPDATE source_history SET updated_at = ?1 WHERE episode_id = 'ep-1'",
+                params![cutoff],
+            )
+            .unwrap();
+            conn.execute(
+                "UPDATE source_history SET updated_at = ?1 WHERE episode_id = 'ep-2'",
+                params![cutoff - 1],
+            )
+            .unwrap();
+        }
+
+        let result = db.purge_history_before(cutoff).unwrap();
+        assert_eq!(result.anilist_history, 1);
+        assert_eq!(result.source_history, 1);
+        let history = db.history_list(10).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].episode, 1);
+        let source_history = db.source_history(10).unwrap();
+        assert_eq!(source_history.len(), 1);
+        assert_eq!(source_history[0].episode_id, "ep-1");
+    }
+
+    #[test]
+    fn history_retention_preserves_library_watched_progress_and_storage() {
+        let db = Db::new(":memory:").unwrap();
+        let media = sample_media();
+        db.add_to_library(&media, "watching").unwrap();
+        db.set_watched(&media, 1, true).unwrap();
+        db.set_watched(&media, 2, true).unwrap();
+
+        let package = crate::ext_host::sample_package().unwrap();
+        db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
+            .unwrap();
+        db.source_library_add(
+            &package.manifest.id,
+            "show-1",
+            "Popeye",
+            None,
+            Some(1933),
+            None,
+            None,
+        )
+        .unwrap();
+        db.source_progress_set(
+            &package.manifest.id,
+            "show-1",
+            "ep-1",
+            1,
+            Some("Episode 1"),
+            120.0,
+            600.0,
+            false,
+        )
+        .unwrap();
+        db.source_progress_set(
+            &package.manifest.id,
+            "show-1",
+            "ep-2",
+            2,
+            Some("Episode 2"),
+            30.0,
+            600.0,
+            false,
+        )
+        .unwrap();
+        db.set(&package.manifest.id, "session", "keep me").unwrap();
+
+        let now = unix_now();
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE history SET watched_at = ?1 WHERE episode = 1",
+                params![now - 31 * 86_400],
+            )
+            .unwrap();
+            conn.execute(
+                "UPDATE history SET watched_at = ?1 WHERE episode = 2",
+                params![now - 29 * 86_400],
+            )
+            .unwrap();
+            conn.execute(
+                "UPDATE source_history SET updated_at = ?1 WHERE episode_id = 'ep-1'",
+                params![now - 31 * 86_400],
+            )
+            .unwrap();
+            conn.execute(
+                "UPDATE source_history SET updated_at = ?1 WHERE episode_id = 'ep-2'",
+                params![now - 29 * 86_400],
+            )
+            .unwrap();
+        }
+
+        let result = db.purge_history_older_than(Some(30)).unwrap();
+        assert_eq!(
+            result,
+            HistoryRetentionResult {
+                anilist_history: 1,
+                source_history: 1,
+            }
+        );
+
+        let history = db.history_list(10).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].episode, 2);
+
+        assert_eq!(db.watched_list(media.id).unwrap(), vec![1, 2]);
+        let library = db.list_library().unwrap();
+        assert_eq!(library.len(), 1);
+        assert_eq!(library[0].watched_count, 2);
+        assert_eq!(db.continue_watching(10).unwrap().len(), 1);
+
+        let source_history = db.source_history(10).unwrap();
+        assert_eq!(source_history.len(), 1);
+        assert_eq!(source_history[0].episode_id, "ep-2");
+        let progress = db
+            .source_progress_get(&package.manifest.id, "show-1")
+            .unwrap();
+        assert_eq!(progress.len(), 2);
+        assert_eq!(db.source_continue(10).unwrap().len(), 1);
+        assert_eq!(
+            db.get(&package.manifest.id, "session").as_deref(),
+            Some("keep me")
+        );
+    }
+
+    #[test]
+    fn forever_retention_deletes_nothing() {
+        let db = Db::new(":memory:").unwrap();
+        let media = sample_media();
+        db.add_to_library(&media, "watching").unwrap();
+        db.set_watched(&media, 1, true).unwrap();
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute("UPDATE history SET watched_at = 1 WHERE episode = 1", [])
+                .unwrap();
+        }
+
+        assert_eq!(
+            db.purge_history_older_than(None).unwrap(),
+            HistoryRetentionResult::default()
+        );
+        assert_eq!(db.history_list(10).unwrap().len(), 1);
+    }
+
+    #[test]
     fn single_history_entries_can_be_removed() {
         let db = Db::new(":memory:").unwrap();
         let media = sample_media();
@@ -4035,6 +4399,82 @@ mod tests {
                     .is_some_and(|name| name.contains(".safety-"))
             })
             .collect()
+    }
+
+    #[test]
+    fn safety_copy_cleanup_keeps_the_newest_three() {
+        let dir = test_dir("safety-cleanup");
+        let live_path = dir.join("kaminari.db");
+        std::fs::write(&live_path, b"live").unwrap();
+        for stamp in 1..=5 {
+            std::fs::write(
+                dir.join(format!("kaminari.db.safety-{stamp}.db")),
+                format!("copy {stamp}"),
+            )
+            .unwrap();
+        }
+        let quarantine = dir.join("kaminari.db.quarantine-1");
+        std::fs::create_dir(&quarantine).unwrap();
+        std::fs::write(quarantine.join("kaminari.db"), b"quarantined").unwrap();
+        let unrelated = dir.join("notes.db.safety-9.db");
+        std::fs::write(&unrelated, b"other database").unwrap();
+
+        assert_eq!(cleanup_safety_copies(&live_path), 2);
+
+        assert!(live_path.exists());
+        assert!(quarantine.join("kaminari.db").exists());
+        assert!(unrelated.exists());
+        for stamp in 1..=2 {
+            assert!(!dir.join(format!("kaminari.db.safety-{stamp}.db")).exists());
+        }
+        for stamp in 3..=5 {
+            assert!(dir.join(format!("kaminari.db.safety-{stamp}.db")).exists());
+        }
+        assert_eq!(cleaned_safety_copies(&dir), 3);
+
+        // A second run has nothing left to remove.
+        assert_eq!(cleanup_safety_copies(&live_path), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn cleaned_safety_copies(dir: &Path) -> usize {
+        safety_copies(dir)
+            .into_iter()
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("kaminari.db.safety-"))
+            })
+            .count()
+    }
+
+    #[test]
+    fn restore_keeps_the_newest_three_safety_copies() {
+        let dir = test_dir("restore-safety-cleanup");
+        let live_path = dir.join("kaminari.db");
+        let backup_path = dir.join("backup.db");
+        let live_raw = live_path.to_string_lossy().into_owned();
+        let backup_raw = backup_path.to_string_lossy().into_owned();
+
+        for stamp in 1..=4 {
+            std::fs::write(
+                dir.join(format!("kaminari.db.safety-{stamp}.db")),
+                format!("old copy {stamp}"),
+            )
+            .unwrap();
+        }
+
+        let db = Db::new(&live_raw).unwrap();
+        db.add_to_library(&sample_media(), "watching").unwrap();
+        db.backup_to(&backup_raw).unwrap();
+        db.restore_from(&backup_raw).unwrap();
+
+        assert_eq!(cleaned_safety_copies(&dir), 3);
+        assert!(!dir.join("kaminari.db.safety-1.db").exists());
+        assert!(!dir.join("kaminari.db.safety-2.db").exists());
+        assert!(live_path.exists());
+        drop(db);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

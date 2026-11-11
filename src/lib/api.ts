@@ -119,6 +119,27 @@ export function historyRemove(anilistId: number, episode: number): Promise<void>
   return invoke<void>("history_remove", { anilistId, episode });
 }
 
+export type HistoryRetentionResult = {
+  anilistHistory: number;
+  sourceHistory: number;
+};
+
+export function applyHistoryRetention(days: number | null): Promise<HistoryRetentionResult> {
+  return invoke<HistoryRetentionResult>("history_retention_apply", { days });
+}
+
+export type DiagnosticsExport = {
+  bytes: number;
+};
+
+export function diagnosticsExportPick(): Promise<string | null> {
+  return invoke<string | null>("diagnostics_export_pick");
+}
+
+export function exportDiagnostics(token: string): Promise<DiagnosticsExport> {
+  return invoke<DiagnosticsExport>("diagnostics_export", { token });
+}
+
 export function jsExtensionList(): Promise<JsExtension[]> {
   return invoke<JsExtension[]>("js_extension_list");
 }

@@ -44,7 +44,7 @@ anyhow = "1"
 url = "2"
 # DPAPI for extension storage values. Already present transitively through
 # Tauri; it is pinned here so the data-at-rest path does not add a new runtime.
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_SystemInformation"] }
 
 [features]
 default = ["custom-protocol"]
