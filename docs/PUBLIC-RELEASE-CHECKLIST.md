@@ -1,6 +1,6 @@
 # Public release checklist
 
-Status: the repository is public as of 2026-11-10. `v0.27.0` is the current published signed release. A local 0.28.0 hardening batch is prepared and not yet published. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled.
+Status: the repository is public as of 2026-11-10. `v0.27.0` is the current published signed release. The Phase 1 and Phase 2 hardening batches are integrated on a local branch as 0.28.0 and are not yet published. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled.
 
 ## Before public
 
@@ -51,10 +51,17 @@ The repository is public. Current state:
 - [x] M-13: pinned CI actions, gitleaks checksum, read-only permissions, frontend tests and audits.
 - [x] M-15: host allowlist path, port and wildcard rules.
 - [x] M-16: source metadata, duration and row caps.
+- [x] L-01: Incognito recent searches, paused background sync, Clear WebView data and privacy-policy disclosure.
 - [x] L-02: portable AniList callback registration with explicit consent.
+- [x] L-03: transactional `continue_visible` migration with a repair marker.
+- [x] L-04: `create_new` download files, random part names, reserved-name and reparse-point rejection, hard concurrency cap.
+- [x] L-05: shared `create_new` temporary file and atomic replace for settings and backups.
+- [x] L-06: CSP `worker-src`, Svelte warnings and shared normalization helpers.
+- [x] L-07: dev harnesses and unused wrappers removed; legacy registry and source commands are debug-only.
+- [x] L-08: native startup recovery dialog and corrected logging documentation.
+- [ ] L-09: Windows Authenticode code signing and an explicit data-at-rest decision.
 - [ ] Clean Windows VM install, update and rollback pass.
-- [ ] Windows Authenticode code signing.
-- [ ] L-01, L-03 to L-08 low findings and final legal review.
+- [ ] Final legal review and counsel sign-off.
 
 ## Release assets
 

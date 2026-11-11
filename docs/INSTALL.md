@@ -86,6 +86,8 @@ Use Windows Settings, Apps, Installed apps, Kaminari, Uninstall. The uninstaller
 - **A source returns nothing:** the site may have changed, be geo-blocked, or use a challenge Kaminari does not solve. Try another source.
 - **Playback stops:** use 0.26.2 or later, try another quality or server in Streams, or open the stream in mpv.
 - **Portable build will not start:** keep the `lib` folder next to `Kaminari.exe`, and install the WebView2 Runtime.
+- **Kaminari will not start or reports a database problem:** a native recovery dialog appears before the window opens. Choose Retry after closing anything that may hold the database, open the data folder to back it up, or choose Quarantine and start fresh. Quarantine moves `kaminari.db`, `kaminari.db-wal` and `kaminari.db-shm` into a timestamped `kaminari.db.quarantine-<number>` folder and creates a new database. Nothing is deleted.
+- **Clear cached images, cookies or WebView data:** open Settings, Privacy and choose Clear WebView data. It clears the shared WebView profile asynchronously, so restart Kaminari afterward.
 - **Update check warns:** the release feed is not publicly reachable. This is expected for a private or local build.
 
 ## Rights and privacy

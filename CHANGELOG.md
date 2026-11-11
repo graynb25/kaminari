@@ -19,6 +19,13 @@ Every visible change gets a line here. Keep lines short and specific.
 - Sync: one guard serializes AniList push and pull, queue batches are bounded, failures use exponential backoff and negative local actions no longer create unexpected AniList writes
 - Portable: sign in can register the kaminari callback only after an explicit user action, with a visible reason when registration is unavailable
 - CI: actions are pinned to commit SHAs, gitleaks is checksum verified, permissions are read-only and the workflow runs frontend tests and dependency audits
+- Privacy: Incognito no longer writes recent searches, automatic background AniList sync pauses while it is on, and Settings, Privacy adds Clear WebView data. The privacy policy now discloses updater traffic, cache behavior and Incognito limits
+- Security: downloads claim final and part files with `create_new` and random names, reject Windows reserved names and reparse points, and hard-cap concurrent downloads at 8
+- Security: settings and backup writes use one shared `create_new` temporary file and an atomic replace that never deletes the target first
+- Security: the CSP allows `worker-src 'self' blob:` so hls.js can create its worker in release builds
+- Data: the `continue_visible` migration and backfill run in one transaction with a repair marker, so an interrupted upgrade cannot permanently hide old Continue rows
+- Startup: a database or setup failure shows a native recovery dialog with Retry, Open data folder and Quarantine and start fresh instead of a panic. Quarantine moves the database and its sidecars aside without deleting them
+- Maintenance: remove dev harnesses and unused API wrappers. Legacy Aniyomi registry and source commands are compiled only in debug builds and are absent from release builds
 - Compatibility: schema version 2 adds the source AniList link. Backups from this build are rejected by older builds
 - Version: bump to 0.28.0
 
