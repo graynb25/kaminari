@@ -2782,7 +2782,7 @@ mod tests {
     fn removing_extension_deletes_source_rows_and_hides_orphans() {
         let db = Db::new(":memory:").unwrap();
         let package = crate::ext_host::sample_package().unwrap();
-        db.install_js_extension(&package.manifest, &package.code, "builtin")
+        db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
             .unwrap();
         db.source_library_add(
             &package.manifest.id,

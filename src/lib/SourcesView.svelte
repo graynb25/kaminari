@@ -686,9 +686,9 @@
             <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
               <span style="color: var(--paper-450);">{change.field}</span>
               <span class="font-mono text-right break-all">
-                <span style="color: var(--paper-400);">{change.before || "—"}</span>
+                <span style="color: var(--paper-400);">{change.before || "none"}</span>
                 <span style="color: var(--paper-450);"> → </span>
-                <span style="color: var(--paper-100);">{change.after || "—"}</span>
+                <span style="color: var(--paper-100);">{change.after || "none"}</span>
               </span>
             </div>
           {/each}
