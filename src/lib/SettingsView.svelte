@@ -1168,7 +1168,7 @@
             {:else if section.title === "Privacy"}
               <div class="flex flex-wrap items-center justify-between gap-3 py-2.5">
                 <div class="min-w-0">
-                  <p class="text-sm" style="color: var(--paper-50);">Incognito mode</p>
+                  <p id="settings-incognito-title" class="text-sm" style="color: var(--paper-50);">Incognito mode</p>
                   <p class="text-xs mt-0.5" style="color: var(--paper-400);">
                     Playback is not written to history, progress, Continue Watching or AniList.
                     New searches are not saved and automatic AniList sync pauses. Library changes
@@ -1177,7 +1177,7 @@
                 </div>
                 <button
                   class="chip text-[10px] px-2 py-1 shrink-0"
-                  aria-label="Incognito mode"
+                  aria-labelledby="settings-incognito-title"
                   aria-pressed={incognito}
                   disabled={!onToggleIncognito}
                   onclick={() => onToggleIncognito?.(!incognito)}
@@ -1214,7 +1214,8 @@
               </div>
               {#if webviewStatus}
                 <p
-                  role="status"
+                  role={webviewStatusTone === "error" ? "alert" : "status"}
+                  aria-live={webviewStatusTone === "error" ? "assertive" : "polite"}
                   class="text-xs mt-1"
                   style="color: {webviewStatusTone === 'error' ? 'var(--danger, #f87171)' : 'var(--paper-400)'};"
                 >
@@ -1279,7 +1280,8 @@
                 </div>
                 {#if clearDataStatus}
                   <p
-                    role="status"
+                    role={clearDataTone === "error" ? "alert" : "status"}
+                    aria-live={clearDataTone === "error" ? "assertive" : "polite"}
                     class="text-xs mt-2 leading-relaxed"
                     style="color: {clearDataTone === 'error' ? 'var(--danger, #f87171)' : 'var(--paper-400)'};"
                   >
@@ -1316,8 +1318,8 @@
                     class:is-success={updateTone === "success"}
                     class:is-warning={updateTone === "warning"}
                     class:is-error={updateTone === "error"}
-                    role="status"
-                    aria-live="polite"
+                    role={updateTone === "error" ? "alert" : "status"}
+                    aria-live={updateTone === "error" ? "assertive" : "polite"}
                   >
                     <p class="update-message">{updateStatus}</p>
 
@@ -1400,7 +1402,8 @@
                   </div>
                   {#if diagnosticsStatus}
                     <p
-                      role="status"
+                      role={diagnosticsTone === "error" ? "alert" : "status"}
+                      aria-live={diagnosticsTone === "error" ? "assertive" : "polite"}
                       class="data-status"
                       class:is-error={diagnosticsTone === "error"}
                       class:is-success={diagnosticsTone === "success"}
@@ -1453,7 +1456,8 @@
                   </div>
                   {#if historyRetentionStatus}
                     <p
-                      role="status"
+                      role={historyRetentionTone === "error" ? "alert" : "status"}
+                      aria-live={historyRetentionTone === "error" ? "assertive" : "polite"}
                       class="data-status"
                       class:is-error={historyRetentionTone === "error"}
                       class:is-success={historyRetentionTone === "success"}
@@ -1575,7 +1579,8 @@
                   {/if}
                   {#if anilistStatusText}
                     <p
-                      role="status"
+                      role={anilistStatusError ? "alert" : "status"}
+                      aria-live={anilistStatusError ? "assertive" : "polite"}
                       class="data-status"
                       class:is-error={anilistStatusError}
                     >
@@ -1619,7 +1624,8 @@
                     </button>
                   </div>
                   <p
-                    role="status"
+                    role={dataStatusTone === "error" ? "alert" : "status"}
+                    aria-live={dataStatusTone === "error" ? "assertive" : "polite"}
                     class="data-status"
                     class:is-error={dataStatusTone === "error"}
                     class:is-success={dataStatusTone === "success"}
@@ -1696,6 +1702,7 @@
   size="sm"
   overlayName="clear-local-data"
   label="Clear all local data"
+  labelledBy="clear-local-data-title"
   onClose={closeClearLocalData}
   headerClass="px-5 py-4"
   bodyClass="px-5 py-5"
@@ -1710,7 +1717,7 @@
         <Icon name="trash" size={17} />
       </span>
       <div class="min-w-0 flex-1">
-        <h2 class="text-base font-semibold">Clear all local data</h2>
+        <h2 id="clear-local-data-title" class="text-base font-semibold">Clear all local data</h2>
         <p class="text-[11px]" style="color: var(--text-4);">This cannot be undone.</p>
       </div>
       <button

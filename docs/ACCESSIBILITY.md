@@ -114,21 +114,18 @@ player views, `SearchPalette`, `GettingStarted`, `QualitySelect`,
 
 ## Settings status blocks
 
-`SettingsView.svelte` was not edited because another session owns it. Read-only
-findings:
+`SettingsView.svelte` was initially owned by another session. The integration
+commit now fixes the findings:
 
-- The WebView data, clear local data, AniList and data status blocks use
-  `role="status"` even when the message is a failure. They announce politely, but
-  a failed clear, backup or AniList action should use `role="alert"` or an
-  assertive live region so it interrupts.
-- The update status block uses `role="status"` with `aria-live="polite"`, which
-  is fine for progress, but its error tone is still polite.
-- The clear all local data modal relies on `Modal`'s `label` fallback because its
-  visible heading has no id. It still has a valid accessible name, initial focus
-  on Cancel, a trap, Escape and focus return through `Modal`.
-- The Incognito On and Off button has `aria-pressed` and a title, but no explicit
-  `aria-label` tying it to the Incognito heading. Its visible state is text, not
-  color alone, so this is a naming improvement rather than a blocker.
+- Failure tones in the WebView data, clear local data, update, diagnostics,
+  history retention, data and AniList status blocks switch to `role="alert"`
+  with an assertive live region. Success and progress remain polite.
+- The clear all local data dialog is named by its visible heading through
+  `labelledBy`.
+- The Incognito On and Off button is named by the visible Incognito heading
+  through `aria-labelledby`, with `aria-pressed` carrying the state.
+- The history retention select inherits the global unlayered `:focus-visible`
+  ring, so its utility `outline-none` does not remove keyboard focus.
 
 ## Remaining issues and caveats
 
