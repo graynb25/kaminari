@@ -808,7 +808,6 @@ impl Db {
              JOIN media m ON m.anilist_id = p.anilist_id
              JOIN library l ON l.anilist_id = p.anilist_id
              WHERE l.status IN ('watching', 'completed')
-               AND p.position_sec > 0
              ORDER BY p.updated_at DESC
              LIMIT ?1",
         )?;
@@ -1371,10 +1370,7 @@ impl Db {
                ) AS rank
                FROM source_progress latest
                WHERE latest.continue_visible = 1
-                 AND (
-                   latest.position_sec > 0
-                   OR (latest.watched = 1 AND latest.duration_sec > 0)
-                 )
+                 AND (latest.position_sec > 0 OR latest.watched = 1)
              ) sp
              JOIN source_library sl
                ON sl.extension_id = sp.extension_id AND sl.show_id = sp.show_id
@@ -3787,8 +3783,8 @@ mod tests {
         assert_eq!(progress[0].position_sec, 600.0);
         assert_eq!(progress[2].position_sec, 720.0);
         assert_eq!(db.source_library_list().unwrap()[0].watched_count, 3);
-        // A watched row with a real duration is rewatch-eligible. Zero-duration
-        // mark-all rows, such as the Sasaki case, stay out.
+        // Watched rows are Continue-eligible, so the shelf keeps one card per
+        // show with the newest episode as the resume target.
         let continue_items = db.source_continue(10).unwrap();
         assert_eq!(continue_items.len(), 1);
         assert_eq!(continue_items[0].episode_number, 3);
@@ -3815,7 +3811,7 @@ mod tests {
     }
 
     #[test]
-    fn zero_duration_mark_all_stays_out_of_continue() {
+    fn zero_duration_mark_all_returns_to_continue() {
         let db = Db::new(":memory:").unwrap();
         let package = crate::ext_host::sample_package().unwrap();
         db.install_js_extension(&package.manifest, &package.code, ExtensionTrust::Builtin)
@@ -3848,7 +3844,12 @@ mod tests {
         db.source_progress_mark_all(&package.manifest.id, "show-1", &marks, true)
             .unwrap();
         assert_eq!(db.source_library_list().unwrap()[0].watched_count, 2);
-        assert!(db.source_continue(10).unwrap().is_empty());
+        // Zero-duration manual marks are Continue-eligible again. One card per
+        // show, with the newest episode as the resume target.
+        let continue_items = db.source_continue(10).unwrap();
+        assert_eq!(continue_items.len(), 1);
+        assert_eq!(continue_items[0].episode_number, 2);
+        assert!(continue_items[0].watched);
     }
 
     #[test]
@@ -4104,7 +4105,7 @@ mod tests {
         let library = db.list_library().unwrap();
         assert_eq!(library.len(), 1);
         assert_eq!(library[0].watched_count, 2);
-        assert!(db.continue_watching(10).unwrap().is_empty());
+        assert_eq!(db.continue_watching(10).unwrap().len(), 1);
 
         let source_history = db.source_history(10).unwrap();
         assert_eq!(source_history.len(), 1);
@@ -4189,7 +4190,7 @@ mod tests {
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].episode, 2);
         assert_eq!(db.watched_list(media.id).unwrap(), vec![1, 2]);
-        assert!(db.continue_watching(10).unwrap().is_empty());
+        assert_eq!(db.continue_watching(10).unwrap().len(), 1);
 
         let source_history = db.source_history(10).unwrap();
         assert_eq!(source_history.len(), 2);
@@ -4395,12 +4396,14 @@ mod tests {
         let watched = db.set_watched(&media, 3, true).unwrap();
         assert_eq!(watched, vec![3]);
         assert_eq!(db.list_library().unwrap()[0].watched_count, 1);
-        // A manual mark is not playback progress.
-        assert!(db.continue_watching(10).unwrap().is_empty());
+        // A manual mark is Continue Watching progress.
+        let items = db.continue_watching(10).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].episode, 3);
 
         let all = db.mark_all_watched(&media, 5, true).unwrap();
         assert_eq!(all, vec![1, 2, 3, 4, 5]);
-        assert!(db.continue_watching(10).unwrap().is_empty());
+        assert_eq!(db.continue_watching(10).unwrap()[0].episode, 5);
 
         let history = db.history_list(10).unwrap();
         assert_eq!(history.len(), 2);
@@ -4409,12 +4412,12 @@ mod tests {
 
         db.set_library_status(15125, "completed").unwrap();
         assert_eq!(db.list_library().unwrap()[0].status, "completed");
-        assert!(db.continue_watching(10).unwrap().is_empty());
+        assert_eq!(db.continue_watching(10).unwrap()[0].episode, 5);
         assert!(db.set_library_status(15125, "bogus").is_err());
         db.set_library_status(15125, "watching").unwrap();
 
         db.set_watched(&media, 5, false).unwrap();
-        assert!(db.continue_watching(10).unwrap().is_empty());
+        assert_eq!(db.continue_watching(10).unwrap()[0].episode, 4);
 
         let cleared = db.mark_all_watched(&media, 28, false).unwrap();
         assert!(cleared.is_empty());
@@ -4422,36 +4425,18 @@ mod tests {
     }
 
     #[test]
-    fn continue_watching_requires_playback_position() {
+    fn continue_watching_includes_manual_marks() {
         let db = Db::new(":memory:").unwrap();
         let media = sample_media();
         db.add_to_library(&media, "watching").unwrap();
+        // A manual watched mark is Continue Watching progress.
         db.set_watched(&media, 3, true).unwrap();
-        assert!(db.continue_watching(10).unwrap().is_empty());
-
-        {
-            let conn = db.conn.lock().unwrap();
-            conn.execute(
-                "UPDATE progress SET position_sec = 30, duration_sec = 600
-                 WHERE anilist_id = ?1",
-                params![media.id],
-            )
-            .unwrap();
-        }
         let items = db.continue_watching(10).unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].episode, 3);
-        assert_eq!(items[0].position_sec, 30);
 
-        {
-            let conn = db.conn.lock().unwrap();
-            conn.execute(
-                "UPDATE progress SET position_sec = 0, duration_sec = 0
-                 WHERE anilist_id = ?1",
-                params![media.id],
-            )
-            .unwrap();
-        }
+        // Clearing the mark removes the row again.
+        db.set_watched(&media, 3, false).unwrap();
         assert!(db.continue_watching(10).unwrap().is_empty());
     }
 

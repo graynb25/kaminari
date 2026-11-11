@@ -154,6 +154,14 @@ Key custody. The signing key and password moved from plaintext `%APPDATA%\kamina
 
 What remains. Authenticode signing and the final legal and counsel review are deferred by the maintainer. The L-09 data-at-rest work is complete in the local 0.28.1 candidate, which uses schema version 3.
 
+## 2026-11-11 Continue Watching duration revert
+
+Context. 0.28.4 restored watched rows only when they had a real playback duration. That was still too strict: it hid manually marked shows such as Fullmetal Alchemist: Brotherhood, which the owner marked watched and expects in Continue Watching. The wrong Sasaki Season 2 card came from an old duplicate source-to-AniList link, not from manual marks in general, so filtering out all manual marks was the wrong fix.
+
+What we shipped. Reverted the duration filter. Source Continue now includes `continue_visible = 1 AND (position_sec > 0 OR watched = 1)`, and the AniList progress query covers watching and completed rows with no position requirement. The 0.28.3 source link timing and startup duplicate-link repair stay unchanged. The wrong Season 2 progress is removed from the local database separately.
+
+What we measured. 219 Rust tests and 123 frontend tests pass, plus fmt, clippy with warnings denied, frontend check, build and the style check. `continue_watching_includes_manual_marks` and `zero_duration_mark_all_returns_to_continue` cover the restored behavior.
+
 ## 2026-11-11 Continue Watching rewatch correction
 
 Context. 0.28.3 required source Continue rows to be unwatched with `position_sec > 0`. That removed real rewatch rows whose playback had completed, including Reincarnated as a Sword, and left the shelf empty for users who had finished episodes.
