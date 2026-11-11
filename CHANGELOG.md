@@ -4,6 +4,11 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.28.5 - 2026-11-11
+
+- Continue Watching: revert the 0.28.4 duration filter as too strict. Manual watched marks return to the shelf, including zero-duration mark-all rows. Source link timing and the duplicate AniList link repair from 0.28.3 stay unchanged
+- Version: bump to 0.28.5
+
 ## 0.28.4 - 2026-11-11
 
 - Continue Watching: restore watched rows that have a real playback duration. Zero-duration manual mark-all rows stay out. This fixes 0.28.3 hiding actual progress such as Reincarnated as a Sword
