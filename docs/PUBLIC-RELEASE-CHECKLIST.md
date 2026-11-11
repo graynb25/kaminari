@@ -1,12 +1,13 @@
 # Public release checklist
 
-Status: the repository is public as of 2026-11-10. `v0.27.0` is the current published signed release. The Phase 1 and Phase 2 hardening batches are integrated on a local branch as 0.28.0 and are not yet published. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled.
+Status: the repository is public as of 2026-11-10. `v0.27.0` is the current published signed release. The Phase 1 and Phase 2 hardening batches are integrated on a local branch as 0.28.0 and are being prepared for publication. Branch protection, secret scanning, push protection, Dependabot and private vulnerability reporting are enabled. Legal review and Authenticode signing are deferred by the maintainer. The clean Windows VM pass remains open because Windows Sandbox is not installed and Hyper-V is disabled.
 
 ## Before public
 
 - [x] Scan the full git history with Gitleaks. The 8.30.1 run on 2026-11-10 scanned 114 commits. Two findings were verified as fake example tokens in a test and a proxy doc. The current files use placeholders and the two historical commits are narrowly allowlisted in `.gitleaks.toml`.
 - [x] Add a private security advisory link and a public takedown issue template in `.github/ISSUE_TEMPLATE/`.
 - [x] Keep the update private key and password outside the repository.
+- [x] Move the signing key and password out of plaintext app data into a DPAPI-encrypted vault, with a loader and an export path for offline media.
 - [x] Keep `VERSION`, the installer and the portable zip reproducible from the repository.
 - [x] Generate `latest.json` from the signed installer with `pnpm release:manifest`, reject a UTF-8 BOM and verify the signed version.
 - [x] Remove the tag-triggered release workflow. It cannot sign or ship the local libmpv payload. Releases are built and uploaded from the maintainer machine.

@@ -168,7 +168,7 @@ The portable zip has no installer, so Windows does not know about `kaminari://` 
 
 ## Publishing checklist
 
-1. Move the signing key and password out of plaintext `%APPDATA%\kaminari-signing` storage and sign from the offline key store.
+1. Keep the signing key and password in offline or OS-encrypted storage, never in plaintext app data. This checkout uses a DPAPI-encrypted vault and a local loader; copy the vault to offline media and keep a separate recovery copy.
 2. Build from a clean checkout of the tagged commit. Confirm `VERSION`, `package.json`, `src-tauri/Cargo.toml` and the generated `latest.json` all carry the same version.
 3. Run the release checks: `pnpm check`, `pnpm test`, `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.
 4. Verify `latest.json` against the `.sig`, then generate `SHA256SUMS.txt` for the installer, signature, manifest and portable zip.
