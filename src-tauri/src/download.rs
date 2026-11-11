@@ -28,6 +28,7 @@ const MAX_HLS_DEPTH: u8 = 3;
 const MAX_FILE_NAME_CHARS: usize = 140;
 const MAX_COLLISION_TRIES: usize = 1000;
 const MAX_DOWNLOADS: usize = 100;
+const MAX_RUNNING_DOWNLOADS: usize = 8;
 const MAX_DOWNLOAD_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 const HEADER_TIMEOUT: Duration = Duration::from_secs(30);
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(150);
@@ -135,6 +136,15 @@ impl DownloadState {
             .inner
             .lock()
             .map_err(|_| "downloads are unavailable".to_string())?;
+        let running = map
+            .values()
+            .filter(|record| record.progress.state == DownloadStatus::Running)
+            .count();
+        if running >= MAX_RUNNING_DOWNLOADS {
+            return Err(format!(
+                "Too many downloads are running. The limit is {MAX_RUNNING_DOWNLOADS}."
+            ));
+        }
         if map.len() >= MAX_DOWNLOADS {
             let finished = map
                 .iter()
@@ -539,16 +549,17 @@ async fn execute(
         direct_file_name(&prepared.file_name, &prepared.direct_url, &prepared.kind)?
     };
 
-    let (target, part) = unique_destination(&prepared.folder, &file_name)?;
+    let (target, part, part_file) = reserve_destination(&prepared.folder, &file_name)?;
     let result = if let Some(plan) = plan.as_ref() {
-        perform_hls(&context, plan, &part).await
+        perform_hls(&context, plan, part_file).await
     } else {
-        perform_direct(&context, &part).await
+        perform_direct(&context, part_file).await
     };
 
     match result {
         Ok(0) => {
             let _ = tokio::fs::remove_file(&part).await;
+            let _ = tokio::fs::remove_file(&target).await;
             Err(DownloadError::Message(
                 "The server returned an empty file.".to_string(),
             ))
@@ -556,10 +567,12 @@ async fn execute(
         Ok(received) => {
             if cancel.is_cancelled() {
                 let _ = tokio::fs::remove_file(&part).await;
+                let _ = tokio::fs::remove_file(&target).await;
                 return Err(DownloadError::Cancelled);
             }
             if tokio::fs::rename(&part, &target).await.is_err() {
                 let _ = tokio::fs::remove_file(&part).await;
+                let _ = tokio::fs::remove_file(&target).await;
                 return Err(DownloadError::Message(
                     "The finished file could not be moved into place.".to_string(),
                 ));
@@ -568,6 +581,7 @@ async fn execute(
         }
         Err(error) => {
             let _ = tokio::fs::remove_file(&part).await;
+            let _ = tokio::fs::remove_file(&target).await;
             Err(error)
         }
     }
@@ -584,7 +598,10 @@ fn build_client(proxy: &ProxyStore) -> Result<SafeFetch, String> {
     .map_err(|_| "The download client could not start.".to_string())
 }
 
-async fn perform_direct(context: &DownloadContext<'_>, part: &Path) -> Result<u64, DownloadError> {
+async fn perform_direct(
+    context: &DownloadContext<'_>,
+    part_file: std::fs::File,
+) -> Result<u64, DownloadError> {
     let response = send_get(context, &context.source.start_url).await?;
     let total = response.content_length();
     if total.is_some_and(|bytes| bytes > MAX_DOWNLOAD_BYTES) {
@@ -592,7 +609,7 @@ async fn perform_direct(context: &DownloadContext<'_>, part: &Path) -> Result<u6
             "The download is larger than the 20 GB limit.".to_string(),
         ));
     }
-    let mut file = create_part_file(part).await?;
+    let mut file = tokio::fs::File::from_std(part_file);
     let mut sink = ProgressSink::new(context.app, context.state, context.id);
     sink.publish(DownloadStatus::Running, 0, total, None, None);
     let received = write_response(&mut file, response, 0, total, context.cancel, &mut sink).await?;
@@ -603,9 +620,9 @@ async fn perform_direct(context: &DownloadContext<'_>, part: &Path) -> Result<u6
 async fn perform_hls(
     context: &DownloadContext<'_>,
     plan: &HlsPlan,
-    part: &Path,
+    part_file: std::fs::File,
 ) -> Result<u64, DownloadError> {
-    let mut file = create_part_file(part).await?;
+    let mut file = tokio::fs::File::from_std(part_file);
     let mut sink = ProgressSink::new(context.app, context.state, context.id);
     sink.publish(DownloadStatus::Running, 0, None, None, None);
     let mut received = 0u64;
@@ -640,12 +657,6 @@ async fn perform_hls(
 
     flush_file(&mut file).await?;
     Ok(received)
-}
-
-async fn create_part_file(path: &Path) -> Result<tokio::fs::File, DownloadError> {
-    tokio::fs::File::create(path)
-        .await
-        .map_err(|_| DownloadError::Message("The download file could not be created.".to_string()))
 }
 
 async fn flush_file(file: &mut tokio::fs::File) -> Result<(), DownloadError> {
@@ -1046,7 +1057,24 @@ fn sanitize_file_name(input: &str) -> Result<String, String> {
     if cleaned.is_empty() {
         return Err("The file name has no usable characters.".to_string());
     }
+    if is_windows_reserved_name(&cleaned) {
+        return Err("The file name is reserved by Windows. Choose another title.".to_string());
+    }
     Ok(truncate_file_name(&cleaned))
+}
+
+fn is_windows_reserved_name(name: &str) -> bool {
+    let stem = name
+        .split('.')
+        .next()
+        .unwrap_or(name)
+        .trim_end_matches([' ', '.'])
+        .to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.is_ascii()
+            && stem.len() == 4
+            && matches!(&stem[..3], "COM" | "LPT")
+            && matches!(stem.as_bytes()[3], b'1'..=b'9'))
 }
 
 fn is_media_extension(value: &str) -> bool {
@@ -1144,7 +1172,13 @@ fn url_extension(url: &str) -> Option<&'static str> {
     }
 }
 
-fn unique_destination(folder: &Path, file_name: &str) -> Result<(PathBuf, PathBuf), String> {
+/// Claims a final name and a unique `.part` file before any network work.
+/// `create_new` means two concurrent downloads cannot pick or truncate the same
+/// target or part file. The empty target is removed if the download fails.
+fn reserve_destination(
+    folder: &Path,
+    file_name: &str,
+) -> Result<(PathBuf, PathBuf, std::fs::File), String> {
     let path = Path::new(file_name);
     let extension = path
         .extension()
@@ -1166,13 +1200,52 @@ fn unique_destination(folder: &Path, file_name: &str) -> Result<(PathBuf, PathBu
             (_, None) => format!("{stem} ({index})"),
         };
         let target = folder.join(&candidate);
-        let part = folder.join(format!("{candidate}.part"));
-        if !target.exists() && !part.exists() {
-            return Ok((target, part));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&target)
+        {
+            Ok(file) => drop(file),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => {
+                return Err(format!("The download file could not be reserved: {err}"));
+            }
+        }
+
+        match create_part_file(folder, &candidate) {
+            Ok((part, file)) => return Ok((target, part, file)),
+            Err(err) => {
+                let _ = std::fs::remove_file(&target);
+                return Err(err);
+            }
         }
     }
 
     Err("No free file name was found in the downloads folder.".to_string())
+}
+
+fn create_part_file(folder: &Path, candidate: &str) -> Result<(PathBuf, std::fs::File), String> {
+    for _ in 0..8 {
+        let part = folder.join(format!("{candidate}.{}.part", random_suffix()?));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&part)
+        {
+            Ok(file) => return Ok((part, file)),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => {
+                return Err(format!("The download file could not be created: {err}"));
+            }
+        }
+    }
+    Err("Could not create a unique partial download file.".to_string())
+}
+
+fn random_suffix() -> Result<String, String> {
+    let mut bytes = [0u8; 8];
+    getrandom::fill(&mut bytes).map_err(|err| format!("random source failed: {err}"))?;
+    Ok(hex::encode(bytes))
 }
 
 fn new_download_id() -> Result<String, String> {
@@ -1244,24 +1317,87 @@ mod tests {
         let folder = test_folder("collision");
         std::fs::write(folder.join("Show 01.mp4"), b"old").unwrap();
 
-        let (target, part) = unique_destination(&folder, "Show 01.mp4").unwrap();
+        let (target, part, part_file) = reserve_destination(&folder, "Show 01.mp4").unwrap();
         assert_eq!(
             target.file_name().unwrap().to_string_lossy(),
             "Show 01 (1).mp4"
         );
-        assert_eq!(
-            part.file_name().unwrap().to_string_lossy(),
-            "Show 01 (1).mp4.part"
-        );
-
+        let part_name = part.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(part_name.starts_with("Show 01 (1).mp4."));
+        assert!(part_name.ends_with(".part"));
+        drop(part_file);
         std::fs::write(folder.join("Show 01 (1).mp4"), b"old").unwrap();
-        let (target, _) = unique_destination(&folder, "Show 01.mp4").unwrap();
+        let (target, _, _) = reserve_destination(&folder, "Show 01.mp4").unwrap();
         assert_eq!(
             target.file_name().unwrap().to_string_lossy(),
             "Show 01 (2).mp4"
         );
 
         std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn concurrent_reservations_get_distinct_files() {
+        let folder = test_folder("reserve");
+        let (target_a, part_a, file_a) = reserve_destination(&folder, "Show 01.mp4").unwrap();
+        let (target_b, part_b, file_b) = reserve_destination(&folder, "Show 01.mp4").unwrap();
+        assert_ne!(target_a, target_b);
+        assert_ne!(part_a, part_b);
+        assert!(target_a.is_file());
+        assert!(target_b.is_file());
+        assert!(part_a.is_file());
+        assert!(part_b.is_file());
+
+        drop(file_a);
+        drop(file_b);
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn running_downloads_have_a_hard_cap() {
+        let state = DownloadState::default();
+        for index in 0..MAX_RUNNING_DOWNLOADS {
+            state
+                .insert(
+                    &format!("download-{index}"),
+                    CancelToken::default(),
+                    DownloadProgress {
+                        id: format!("download-{index}"),
+                        received: 0,
+                        total: None,
+                        state: DownloadStatus::Running,
+                        path: None,
+                        message: None,
+                    },
+                )
+                .unwrap();
+        }
+        let error = state
+            .insert(
+                "download-over-limit",
+                CancelToken::default(),
+                DownloadProgress {
+                    id: "download-over-limit".to_string(),
+                    received: 0,
+                    total: None,
+                    state: DownloadStatus::Running,
+                    path: None,
+                    message: None,
+                },
+            )
+            .unwrap_err();
+        assert!(error.contains("Too many downloads"));
+    }
+
+    #[test]
+    fn reserved_windows_device_names_are_rejected() {
+        assert!(sanitize_file_name("CON").is_err());
+        assert!(sanitize_file_name("con.mp4").is_err());
+        assert!(sanitize_file_name("NUL .mkv").is_err());
+        assert!(sanitize_file_name("COM1.mp4").is_err());
+        assert!(sanitize_file_name("LPT9").is_err());
+        assert!(sanitize_file_name("CONAN.mp4").is_ok());
+        assert_eq!(sanitize_file_name("Show 01.mp4. ").unwrap(), "Show 01.mp4");
     }
 
     #[test]
@@ -1276,7 +1412,8 @@ mod tests {
     fn collision_keeps_dots_in_the_title() {
         let folder = test_folder("dotted");
         std::fs::write(folder.join("Dr. Stone - Episode 1 - HLS.ts"), b"old").unwrap();
-        let (target, _) = unique_destination(&folder, "Dr. Stone - Episode 1 - HLS.ts").unwrap();
+        let (target, _, _) =
+            reserve_destination(&folder, "Dr. Stone - Episode 1 - HLS.ts").unwrap();
         assert_eq!(
             target.file_name().unwrap().to_string_lossy(),
             "Dr. Stone - Episode 1 - HLS (1).ts"

@@ -1410,28 +1410,16 @@ impl Db {
         let target = absolute_path(path)?;
         let target = crate::path_guard::resolve_write_target(&target, "backup target")
             .map_err(AppError::Blocked)?;
-        let parent = target
-            .parent()
-            .ok_or_else(|| AppError::Blocked("backup path has no parent folder".to_string()))?;
-        let name = target
-            .file_name()
-            .map(|value| value.to_string_lossy().into_owned())
-            .ok_or_else(|| AppError::Blocked("backup path has no file name".to_string()))?;
-        let temp = parent.join(format!(".{name}.kaminari-{}.tmp", random_suffix()?));
-        let temp_raw = temp.to_string_lossy().into_owned();
+        let mut temp = crate::atomic_file::TempFile::create(&target)
+            .map_err(|err| AppError::Db(format!("cannot create backup file: {err}")))?;
+        // SQLite accepts a zero-length file as the VACUUM INTO destination.
+        temp.close();
+        let temp_raw = temp.path().to_string_lossy().into_owned();
 
         let conn = self.conn.lock().map_err(|_| db_locked())?;
-        let outcome = (|| -> AppResult<()> {
-            conn.execute("VACUUM INTO ?1", params![temp_raw])?;
-            replace_file(&temp, &target)
-                .map_err(|err| AppError::Db(format!("cannot replace backup: {err}")))?;
-            Ok(())
-        })();
-
-        if outcome.is_err() {
-            let _ = std::fs::remove_file(&temp);
-        }
-        outcome?;
+        conn.execute("VACUUM INTO ?1", params![temp_raw])?;
+        temp.persist(&target)
+            .map_err(|err| AppError::Db(format!("cannot replace backup: {err}")))?;
 
         let bytes = std::fs::metadata(&target)
             .map_err(|err| AppError::Db(format!("cannot read backup size: {err}")))?
@@ -1496,13 +1484,6 @@ fn absolute_path(path: &str) -> AppResult<PathBuf> {
         ));
     }
     Ok(target)
-}
-
-fn random_suffix() -> AppResult<String> {
-    let mut bytes = [0u8; 8];
-    getrandom::fill(&mut bytes)
-        .map_err(|err| AppError::Db(format!("random source failed: {err}")))?;
-    Ok(hex::encode(bytes))
 }
 
 fn validate_backup_file(path: &Path, max_bytes: u64) -> AppResult<()> {
@@ -1750,21 +1731,44 @@ fn apply_migrations(conn: &Connection) -> AppResult<()> {
          WHERE trust NOT IN ('builtin', 'sideloaded')",
         [],
     )?;
-    if !has_column(conn, "source_progress", "continue_visible")? {
-        conn.execute(
+    backfill_continue_visible(conn)?;
+    conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    Ok(())
+}
+
+/// Adds `source_progress.continue_visible` and preserves pre-upgrade Continue
+/// rows in one transaction. The `app_meta` marker makes the repair one-time:
+/// if an older upgrade was interrupted after `ALTER TABLE` but before the
+/// backfill, a later startup still repairs the hidden rows. Once the marker is
+/// present, a row the user deliberately hid stays hidden.
+fn backfill_continue_visible(conn: &Connection) -> AppResult<()> {
+    const BACKFILL_KEY: &str = "source_progress_continue_visible_backfilled";
+    let transaction = conn.unchecked_transaction()?;
+    let marked: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM app_meta WHERE key = ?1 AND value = '1')",
+        params![BACKFILL_KEY],
+        |row| row.get(0),
+    )?;
+    if marked {
+        return Ok(());
+    }
+    if !has_column(&transaction, "source_progress", "continue_visible")? {
+        transaction.execute(
             "ALTER TABLE source_progress
              ADD COLUMN continue_visible INTEGER NOT NULL DEFAULT 0",
             [],
         )?;
-        // Preserve the pre-upgrade Continue shelf: only rows that were actively
-        // in progress were visible before this column existed.
-        conn.execute(
-            "UPDATE source_progress SET continue_visible = 1
-             WHERE watched = 0 AND position_sec > 0",
-            [],
-        )?;
     }
-    conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    transaction.execute(
+        "UPDATE source_progress SET continue_visible = 1
+         WHERE watched = 0 AND position_sec > 0 AND continue_visible = 0",
+        [],
+    )?;
+    transaction.execute(
+        "INSERT OR REPLACE INTO app_meta(key, value) VALUES (?1, '1')",
+        params![BACKFILL_KEY],
+    )?;
+    transaction.commit()?;
     Ok(())
 }
 
@@ -3285,6 +3289,86 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM source_library", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn continue_visible_backfill_is_marked_and_repairs_interrupted_upgrade() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(include_str!("../migrations/0001_init.sql"))
+            .unwrap();
+        conn.execute_batch(
+            "CREATE TABLE source_progress(
+                extension_id TEXT NOT NULL,
+                show_id TEXT NOT NULL,
+                episode_id TEXT NOT NULL,
+                episode_number INTEGER NOT NULL,
+                episode_title TEXT,
+                position_sec REAL NOT NULL DEFAULT 0,
+                duration_sec REAL NOT NULL DEFAULT 0,
+                watched INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY(extension_id, show_id, episode_id)
+            );
+            INSERT INTO source_progress(
+                extension_id, show_id, episode_id, episode_number,
+                position_sec, duration_sec, watched, updated_at
+            ) VALUES ('ext.one', 'show-1', 'ep-1', 1, 90.0, 600.0, 0, 1);",
+        )
+        .unwrap();
+
+        apply_migrations(&conn).unwrap();
+        assert!(has_column(&conn, "source_progress", "continue_visible").unwrap());
+        let visible: i64 = conn
+            .query_row(
+                "SELECT continue_visible FROM source_progress WHERE episode_id = 'ep-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(visible, 1);
+        let marker: String = conn
+            .query_row(
+                "SELECT value FROM app_meta
+                 WHERE key = 'source_progress_continue_visible_backfilled'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(marker, "1");
+
+        // A row the user hides after the migration stays hidden on restart.
+        conn.execute(
+            "UPDATE source_progress SET continue_visible = 0 WHERE episode_id = 'ep-1'",
+            [],
+        )
+        .unwrap();
+        apply_migrations(&conn).unwrap();
+        let visible: i64 = conn
+            .query_row(
+                "SELECT continue_visible FROM source_progress WHERE episode_id = 'ep-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(visible, 0);
+
+        // Simulate an upgrade interrupted after ALTER TABLE but before the
+        // backfill: the column exists, the marker does not, and the row is 0.
+        conn.execute(
+            "DELETE FROM app_meta
+             WHERE key = 'source_progress_continue_visible_backfilled'",
+            [],
+        )
+        .unwrap();
+        apply_migrations(&conn).unwrap();
+        let visible: i64 = conn
+            .query_row(
+                "SELECT continue_visible FROM source_progress WHERE episode_id = 'ep-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(visible, 1);
     }
 
     #[test]

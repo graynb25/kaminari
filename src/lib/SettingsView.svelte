@@ -7,7 +7,7 @@
   import Icon from "./Icon.svelte";
   import PageHeader from "./PageHeader.svelte";
   import ProgressBar from "./ProgressBar.svelte";
-  import { playerStatus, proxyStatus } from "./api";
+  import { clearWebviewData, playerStatus, proxyStatus } from "./api";
   import {
     anilistAuthLogout,
     anilistAuthStart,
@@ -84,6 +84,9 @@
   let dataStatus = $state("");
   let dataStatusTone = $state<"success" | "error">("success");
   let restartNeeded = $state(false);
+  let webviewBusy = $state(false);
+  let webviewStatus = $state("");
+  let webviewStatusTone = $state<"success" | "error">("success");
   let anilistAuth = $state<AniListAuthStatus | null>(null);
   let anilistOAuth = $state<AniListOAuthStatus | null>(null);
   let anilistBusy = $state(false);
@@ -291,6 +294,28 @@
       updatePhase = "error";
       updateSoftError = false;
       updateMessage = `Restart failed. ${failureText(err)}`;
+    }
+  }
+
+  async function clearWebviewDataAction() {
+    if (webviewBusy) return;
+    const approved = await confirm(
+      "Clear the WebView cache, cookies and local storage? This removes cover and media cache, recent searches and the saved Incognito setting. Library data in SQLite is not affected.",
+      { title: "Clear WebView data", kind: "warning" },
+    );
+    if (!approved) return;
+    webviewBusy = true;
+    webviewStatus = "";
+    webviewStatusTone = "success";
+    try {
+      await clearWebviewData();
+      webviewStatus =
+        "WebView data cleared. Restart Kaminari to start with the cleared cache and settings.";
+    } catch (err) {
+      webviewStatusTone = "error";
+      webviewStatus = errorText(err);
+    } finally {
+      webviewBusy = false;
     }
   }
 
@@ -1015,7 +1040,8 @@
                   <p class="text-sm" style="color: var(--paper-50);">Incognito mode</p>
                   <p class="text-xs mt-0.5" style="color: var(--paper-400);">
                     Playback is not written to history, progress, Continue Watching or AniList.
-                    Library changes still work.
+                    New searches are not saved and automatic AniList sync pauses. Library changes
+                    still work.
                   </p>
                 </div>
                 <button
@@ -1032,8 +1058,38 @@
               </div>
               <p class="text-xs mt-2 leading-relaxed" style="color: var(--paper-450);">
                 Incognito is local to this device. Turn it off here when you want playback to count
-                again. The player shows an Incognito badge while it is active.
+                again. The player shows an Incognito badge while it is active. It does not change
+                the WebView profile, so images and stream fragments can still be cached.
               </p>
+              <div
+                class="flex flex-wrap items-center justify-between gap-3 py-2.5 mt-3"
+                style="border-top: 1px solid var(--line);"
+              >
+                <div class="min-w-0">
+                  <p class="text-sm" style="color: var(--paper-50);">WebView data</p>
+                  <p class="text-xs mt-0.5" style="color: var(--paper-400);">
+                    Clear the embedded browser cache, cookies and local storage, including recent
+                    searches. SQLite library data stays.
+                  </p>
+                </div>
+                <button
+                  class="btn-ghost px-3 py-2 text-xs shrink-0"
+                  disabled={webviewBusy}
+                  onclick={() => void clearWebviewDataAction()}
+                >
+                  <Icon name="trash" size={14} />
+                  {webviewBusy ? "Clearing" : "Clear WebView data"}
+                </button>
+              </div>
+              {#if webviewStatus}
+                <p
+                  role="status"
+                  class="text-xs mt-1"
+                  style="color: {webviewStatusTone === 'error' ? 'var(--danger, #f87171)' : 'var(--paper-400)'};"
+                >
+                  {webviewStatus}
+                </p>
+              {/if}
               <div
                 class="flex flex-wrap items-center justify-between gap-3 py-2.5 mt-3"
                 style="border-top: 1px solid var(--line);"

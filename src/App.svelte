@@ -38,6 +38,7 @@
     historyRemove,
     listLibrary,
     removeFromLibrary,
+    setIncognitoMode,
     setLibraryStatus,
     sourceLibraryList,
     sourceContinue,
@@ -500,10 +501,14 @@
   function toggleIncognito(enabled: boolean) {
     incognito = enabled;
     setIncognitoEnabled(enabled);
+    void setIncognitoMode(enabled).catch(() => {
+      // The local flag still controls playback; the backend starts the next
+      // sync tick once the command is available again.
+    });
     notify(
       enabled
-        ? "Incognito mode on. Playback will not be saved."
-        : "Incognito mode off. Playback will be saved again.",
+        ? "Incognito mode on. Playback and new searches will not be saved, and background AniList sync is paused."
+        : "Incognito mode off. Playback and searches will be saved again.",
       "info",
     );
   }
@@ -526,6 +531,9 @@
       await loadBoot();
       onboardingOpen = shouldShowOnboarding();
       incognito = incognitoEnabled();
+      void setIncognitoMode(incognito).catch(() => {
+        // A missing backend flag only affects the automatic sync tick.
+      });
       await refreshLibrary();
       await refreshContinue();
       await refreshHistory();
@@ -955,6 +963,7 @@
 
 <SearchPalette
   open={paletteOpen}
+  incognito={incognito}
   library={library}
   sourceLibrary={sourceLibraryItems}
   onClose={closePalette}

@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -177,6 +177,28 @@ impl AniListSyncGuard {
 
     fn try_acquire(&self) -> Option<tokio::sync::OwnedMutexGuard<()>> {
         self.sync.clone().try_lock_owned().ok()
+    }
+}
+
+/// Incognito is a frontend setting, but the background sync runs in Rust. The
+/// webview sets this flag on boot and on every toggle so a queued push does not
+/// run while the user expects a private session.
+#[derive(Default)]
+pub struct IncognitoState {
+    enabled: AtomicBool,
+}
+
+impl IncognitoState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set(&self, enabled: bool) {
+        self.enabled.store(enabled, Ordering::SeqCst);
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.load(Ordering::SeqCst)
     }
 }
 
@@ -690,7 +712,16 @@ pub fn anilist_sync_pending(db: State<'_, Db>) -> Result<usize, String> {
     db.pending_anilist_sync_count().map_err(ipc_error)
 }
 
+#[tauri::command]
+pub fn set_incognito(state: State<'_, IncognitoState>, enabled: bool) {
+    state.set(enabled);
+}
+
 pub async fn anilist_sync_tick(app: &AppHandle) {
+    if app.state::<IncognitoState>().is_enabled() {
+        tracing::debug!("anilist: incognito is on, skipping background sync");
+        return;
+    }
     let db = app.state::<Db>();
     match db.pending_anilist_sync_count() {
         Ok(0) => return,
@@ -1511,6 +1542,16 @@ pub async fn settings_read(
 }
 
 #[tauri::command]
+pub async fn clear_webview_data(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "the main window is unavailable".to_string())?;
+    window
+        .clear_all_browsing_data()
+        .map_err(|err| format!("cannot clear WebView data: {err}"))
+}
+
+#[tauri::command]
 pub fn app_restart(app: AppHandle) {
     app.restart();
 }
@@ -1564,45 +1605,8 @@ fn read_settings_file(target: &Path) -> Result<String, String> {
 }
 
 fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), String> {
-    let name = target
-        .file_name()
-        .map(|value| value.to_string_lossy().into_owned())
-        .ok_or_else(|| "settings path has no file name".to_string())?;
-    let mut created = None;
-    for _ in 0..8 {
-        let temp = target.with_file_name(format!(".{name}.kaminari-{}.tmp", random_suffix()?));
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temp)
-        {
-            Ok(file) => {
-                created = Some((temp, file));
-                break;
-            }
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(err) => return Err(format!("cannot write settings file: {err}")),
-        }
-    }
-    let Some((temp, mut file)) = created else {
-        return Err("cannot create a temporary settings file".to_string());
-    };
-    let result = (|| -> std::io::Result<()> {
-        file.write_all(bytes)?;
-        file.sync_all()?;
-        drop(file);
-        replace_file(&temp, target)
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&temp);
-    }
-    result.map_err(|err| format!("cannot write settings file: {err}"))
-}
-
-fn random_suffix() -> Result<String, String> {
-    let mut bytes = [0u8; 8];
-    getrandom::fill(&mut bytes).map_err(|err| format!("random source failed: {err}"))?;
-    Ok(hex::encode(bytes))
+    crate::atomic_file::write_atomic(target, bytes)
+        .map_err(|err| format!("cannot write settings file: {err}"))
 }
 
 #[cfg(test)]
@@ -1616,6 +1620,16 @@ mod tests {
         assert!(guard.try_acquire().is_none());
         drop(held);
         assert!(guard.try_acquire().is_some());
+    }
+
+    #[test]
+    fn incognito_flag_round_trips() {
+        let state = IncognitoState::new();
+        assert!(!state.is_enabled());
+        state.set(true);
+        assert!(state.is_enabled());
+        state.set(false);
+        assert!(!state.is_enabled());
     }
 
     #[test]

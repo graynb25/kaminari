@@ -4,10 +4,17 @@
   import Modal from "./Modal.svelte";
   import { searchAniList } from "./api";
   import { coverOf, displayTitle, metaOf, scoreOutOfTen } from "./format";
+  import { incognitoEnabled } from "./incognito";
+  import {
+    forgetRecentSearches,
+    loadRecentSearches,
+    rememberSearch,
+  } from "./recentSearches";
   import type { LibraryItem, Media, SourceLibraryItem, View } from "./types";
 
   let {
     open,
+    incognito = false,
     library,
     sourceLibrary = [],
     onClose,
@@ -18,6 +25,7 @@
     onOpenShortcuts,
   }: {
     open: boolean;
+    incognito?: boolean;
     library: LibraryItem[];
     sourceLibrary?: SourceLibraryItem[];
     onClose: () => void;
@@ -28,7 +36,6 @@
     onOpenShortcuts: () => void;
   } = $props();
 
-  const RECENT_KEY = "kaminari.recentSearches";
   const ACTIONS = [
     { id: "browse", label: "Browse trending", hint: "1", icon: "grid", view: "browse" as View },
     { id: "library", label: "Go to Library", hint: "2", icon: "library", view: "library" as View },
@@ -45,7 +52,13 @@
   let error = $state<string | null>(null);
   let rateLimited = $state(false);
   let requestId = $state(0);
-  let recent = $state<string[]>(loadRecent());
+  const initialRecent = loadRecentSearches();
+  let recent = $state<string[]>(initialRecent);
+  // The last list that was written to storage. Incognito entries live only in
+  // `recent` and are dropped when the mode is turned off, so a later normal
+  // search can never persist them.
+  let persistedRecent = initialRecent;
+  let hasPrivateRecent = $state(false);
   let active = $state(0);
   let dialog: HTMLDivElement | null = $state(null);
 
@@ -106,33 +119,22 @@
 
   const flatRows = $derived(groups.flatMap((group) => group.rows));
 
-  function loadRecent(): string[] {
-    try {
-      const raw = localStorage.getItem(RECENT_KEY);
-      const parsed: unknown = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string").slice(0, 8) : [];
-    } catch {
-      return [];
-    }
-  }
-
   function saveRecent(value: string) {
-    const next = [value, ...recent.filter((entry) => entry !== value)].slice(0, 8);
-    recent = next;
-    try {
-      localStorage.setItem(RECENT_KEY, JSON.stringify(next));
-    } catch {
-      // Private mode or blocked storage. Recent list just stays in memory.
+    if (incognito || incognitoEnabled()) {
+      recent = rememberSearch(value, recent, false);
+      hasPrivateRecent = true;
+      return;
     }
+    const next = rememberSearch(value, persistedRecent, true);
+    persistedRecent = next;
+    recent = next;
   }
 
   function clearRecent() {
     recent = [];
-    try {
-      localStorage.removeItem(RECENT_KEY);
-    } catch {
-      // Nothing to do.
-    }
+    persistedRecent = [];
+    hasPrivateRecent = false;
+    forgetRecentSearches();
   }
 
   function reset() {
@@ -147,6 +149,14 @@
   $effect(() => {
     if (open) {
       reset();
+    }
+  });
+
+  // Private terms never survive turning Incognito off.
+  $effect(() => {
+    if (!incognito && hasPrivateRecent) {
+      recent = persistedRecent;
+      hasPrivateRecent = false;
     }
   });
 
@@ -309,6 +319,11 @@
           </button>
         {/each}
       </div>
+      {#if incognito}
+        <p class="px-3 pb-2 text-[11px]" style="color: var(--paper-500);">
+          Incognito is on. New searches stay in this window and are not saved.
+        </p>
+      {/if}
     {:else}
       <p class="px-3 py-3 text-sm" style="color: var(--paper-500);">
         Type two or more characters. Library matches show first, AniList next.

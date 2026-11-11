@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod anilist;
+mod atomic_file;
 mod commands;
 mod db;
 mod download;
@@ -59,6 +60,7 @@ fn main() {
         .manage(path_guard::PathAuthority::new())
         .manage(commands::ExtensionInstallState::new())
         .manage(commands::AniListSyncGuard::new())
+        .manage(commands::IncognitoState::new())
         .setup(|app| {
             let data_dir = match app.path().app_data_dir() {
                 Ok(dir) => dir,
@@ -145,6 +147,7 @@ fn main() {
             commands::anilist_sync_pull,
             commands::anilist_sync_push,
             commands::anilist_sync_pending,
+            commands::set_incognito,
             commands::library_list,
             commands::library_add,
             commands::library_remove,
@@ -217,6 +220,7 @@ fn main() {
             commands::settings_export,
             commands::settings_import_pick,
             commands::settings_read,
+            commands::clear_webview_data,
             commands::app_restart,
             download::download_start,
             download::download_cancel,

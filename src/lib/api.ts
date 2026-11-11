@@ -34,6 +34,14 @@ export function bootSnapshot(): Promise<Boot> {
   return invoke<Boot>("boot_snapshot");
 }
 
+export function setIncognitoMode(enabled: boolean): Promise<void> {
+  return invoke<void>("set_incognito", { enabled });
+}
+
+export function clearWebviewData(): Promise<void> {
+  return invoke<void>("clear_webview_data");
+}
+
 export function trending(page = 1): Promise<Media[]> {
   return invoke<Media[]>("anilist_trending", { page });
 }

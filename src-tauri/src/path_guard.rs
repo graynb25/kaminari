@@ -166,7 +166,7 @@ pub fn resolve_write_target(path: &Path, label: &str) -> Result<PathBuf, String>
     Ok(simplify(target))
 }
 
-fn is_link_or_reparse(metadata: &std::fs::Metadata) -> bool {
+pub(crate) fn is_link_or_reparse(metadata: &std::fs::Metadata) -> bool {
     if metadata.file_type().is_symlink() {
         return true;
     }
