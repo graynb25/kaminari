@@ -154,6 +154,16 @@ Key custody. The signing key and password moved from plaintext `%APPDATA%\kamina
 
 What remains. Authenticode signing and the final legal and counsel review are deferred by the maintainer. The L-09 data-at-rest work is complete in the local 0.28.1 candidate, which uses schema version 3.
 
+## 2026-11-11 Source link and Continue Watching fix
+
+Context. Opening a source result from AniList Watch created a source library row before playback. Two Sasaki source rows were linked to AniList 176314, which is Season 2. Marking Season 1 all watched queued progress for Season 2, and the linked row appeared in Continue Watching even though Season 2 had no playback.
+
+What we shipped. Opening a result no longer saves it. The source row and durable AniList link are written when playback starts or an episode is marked watched; the Library button still saves explicitly. `source_library_add` now keeps one source show per AniList id per extension, and startup clears legacy duplicate links while keeping the newest row. Continue Watching now requires a real playback position: source rows must be unwatched with `position_sec > 0`, and AniList progress rows must have `position_sec > 0`. Manual watched marks remain in Library and History.
+
+What we measured. The combined branch passes 218 Rust tests and 123 frontend tests, plus fmt, clippy, frontend check, build, style and `cargo audit --no-yanked`. On the real database, startup cleared the Season 1 duplicate link and kept Season 2; both Continue queries returned no Sasaki row and the Home shelf reported "Nothing in progress yet." A live Frieren Watch test stayed unsaved on open and created the source row and progress only after playback started.
+
+What remains. Existing local watched marks are not deleted. If the old duplicate link already pushed Season 2 progress to AniList, correct that entry on AniList; the app no longer has a pending queue row for it.
+
 ## 2026-11-11 Data-at-rest hardening
 
 Context. L-09 left two decisions: Windows code signing and whether Kaminari should encrypt local data. Code signing is deferred because no trusted certificate is available. The data-at-rest work had to protect the most sensitive local values without regressing the bundled SQLite 3.54.1 security fix.
