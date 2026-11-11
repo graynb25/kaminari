@@ -9,7 +9,6 @@ mod db;
 mod download;
 mod error;
 mod ext_host;
-mod fsutil;
 mod mangayomi;
 mod mpv_embed;
 mod path_guard;

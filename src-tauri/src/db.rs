@@ -13,7 +13,6 @@ use sha2::{Digest, Sha256};
 use crate::anilist::{AniListListEntry, CoverImage, Media, MediaTitle};
 use crate::error::{AppError, AppResult};
 use crate::ext_host::{ExtStorage, ExtensionTrust, Manifest};
-use crate::fsutil::replace_file;
 #[cfg(debug_assertions)]
 use crate::registry::LegacyExtension;
 

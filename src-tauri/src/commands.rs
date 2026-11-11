@@ -25,7 +25,6 @@ use crate::db::{
 };
 use crate::error::AppError;
 use crate::ext_host::{self, ExtPackage, ExtStorage, ExtensionTrust};
-use crate::fsutil::replace_file;
 use crate::mangayomi;
 use crate::path_guard::{PathAuthority, PathOperation};
 use crate::player::{self, PlaybackInfo, PlaybackRequest, PlayerState, PlayerStatus};
