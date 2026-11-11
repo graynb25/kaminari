@@ -31,7 +31,7 @@ Kaminari does not encrypt the whole SQLite database. Library entries, watched ma
 
 Extension storage values (the `js_storage.value` column used by `storage.get` and `storage.set`) are encrypted with Windows Data Protection API (DPAPI) in the current-user scope before they are written. The extension API still sees plaintext: reads decrypt and writes encrypt. Existing plaintext rows are migrated when the database opens or when an extension first reads the value. Values that cannot be decrypted are treated as missing instead of being returned as ciphertext or crashing the app. Storage key names, timestamps and the rest of the row remain plaintext.
 
-DPAPI binds encrypted extension values to the Windows user and device. A backup keeps those values encrypted, so a backup restored under a different Windows account or on a different device may have extension values that cannot be read. Everything else in a backup is plaintext.
+DPAPI binds encrypted extension values to the Windows user and device. A backup keeps those values encrypted, so a backup restored under a different Windows account or on a different device may have extension values that cannot be read. Everything else in a backup is plaintext. A Kaminari build without DPAPI support reads the stored prefix as an ordinary value, so downgrading can make extension storage appear missing. Keep a backup before downgrading.
 
 Full-disk encryption remains the protection for the database, the WebView profile and anything else Kaminari stores. Extension storage encryption is an additional layer for the values most likely to contain tokens or source credentials, not a replacement for disk encryption.
 

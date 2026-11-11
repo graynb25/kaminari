@@ -140,6 +140,16 @@ Key custody. The signing key and password moved from plaintext `%APPDATA%\kamina
 
 What remains. Authenticode signing and the final legal and counsel review are deferred by the maintainer. The L-09 data-at-rest decision is in progress in a separate session.
 
+## 2026-11-11 Data-at-rest hardening
+
+Context. L-09 left two decisions: Windows code signing and whether Kaminari should encrypt local data. Code signing is deferred because no trusted certificate is available. The data-at-rest work had to protect the most sensitive local values without regressing the bundled SQLite 3.54.1 security fix.
+
+What we shipped. `js_storage.value` is encrypted with Windows DPAPI in the current-user scope and stored as `dpapi:v1:<base64>`. The extension API still reads and writes plaintext. Existing plaintext rows migrate when the database opens or when an extension first reads one. Malformed or foreign ciphertext is logged and treated as missing; it is never returned as ciphertext or encrypted twice. Settings > Privacy > Data at rest explains that library, history and source rows remain plaintext and rely on Windows disk encryption. It also offers Clear all local data, which deletes the database and sidecars, safety and quarantine copies, legacy `.bak` copies, a local settings file and the WebView profile, then asks for a restart. A startup marker finishes any file that was still open.
+
+What we measured. The combined branch passes 205 Rust tests and 114 frontend tests, plus fmt, clippy, frontend check, build, style and `cargo audit --no-yanked` with no vulnerabilities. Tests cover DPAPI round trips, empty values, malformed ciphertext, plaintext migration, the 1 MB quota, the clear marker, sidecars, safety and quarantine copies, and the legacy `.bak` copy.
+
+What remains. SQLCipher was rejected because it would replace the bundled SQLite build that carries the RUSTSEC-2026-0459 fix, and it would complicate backups and portable use. The library and history stay plaintext. Extension storage encryption is one-way: a build without DPAPI support reads the prefix as an ordinary value, so a downgrade can make extension storage appear missing. Release notes must call that out, and a future release should decide whether to bump the schema. Code signing remains deferred.
+
 ## 2026-11-11 Phase 2 local hardening
 
 Context. Phase 2 covered the remaining low findings from the production review except code signing and the data-at-rest decision. The work was split across two local sessions, one for privacy and file writes and one for frontend CSP, code cleanup and startup recovery.

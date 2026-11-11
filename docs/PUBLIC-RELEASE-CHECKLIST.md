@@ -62,7 +62,7 @@ The repository is public. Current state:
 - [x] L-06: CSP `worker-src`, Svelte warnings and shared normalization helpers.
 - [x] L-07: dev harnesses and unused wrappers removed; legacy registry and source commands are debug-only.
 - [x] L-08: native startup recovery dialog and corrected logging documentation.
-- [x] L-09 data at rest: extension storage values are DPAPI-encrypted with transparent reads/writes and plaintext migration; Settings > Privacy > Data at rest explains the split and offers Clear all local data. SQLCipher was rejected because it would regress the bundled SQLite 3.54.1 fix; library and history remain plaintext and rely on BitLocker/Device Encryption.
+- [x] L-09 data at rest: extension storage values are DPAPI-encrypted with transparent reads/writes and plaintext migration; Settings > Privacy > Data at rest explains the split and offers Clear all local data. SQLCipher was rejected because it would regress the bundled SQLite 3.54.1 fix; library and history remain plaintext and rely on BitLocker/Device Encryption. Extension-storage encryption is a one-way format: a build without DPAPI support reads the ciphertext as an ordinary value, so release notes must call out the downgrade limitation and a future release should decide whether to bump the schema.
 - [ ] L-09 code signing: Windows Authenticode signing and published hashes. Deferred by the owner; the unsigned installer still triggers SmartScreen.
 - [x] Clean Windows Sandbox install, update and rollback pass. Completed on 2026-11-11 with a 0.27.0 install, 0.28.0 upgrade, 0.27.0 rollback and final 0.28.0; the marker and database survived each step.
 - [ ] Final legal review and counsel sign-off. Deferred by the maintainer; counsel review has not happened.

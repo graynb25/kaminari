@@ -1179,7 +1179,8 @@
                   without app-level encryption. They rely on Windows disk encryption such as BitLocker
                   or Device Encryption and your Windows account. Extension storage values are encrypted
                   with Windows DPAPI for your Windows account before they are written; reads decrypt
-                  them transparently.
+                  them transparently. Older Kaminari builds without DPAPI support cannot read those
+                  values, so a downgrade may leave source storage missing.
                 </p>
                 <div class="flex flex-wrap items-center gap-2 mt-3">
                   <button

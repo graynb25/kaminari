@@ -1767,11 +1767,13 @@ pub(crate) fn remove_database_copies(db_path: &Path) -> bool {
     let safety = format!("{name}.safety-");
     let quarantine = format!("{name}.quarantine-");
     let restore = format!(".{name}.restore-");
+    let legacy_backup = format!("{name}.bak");
     let mut all_removed = true;
     for entry in entries.flatten() {
         let file_name = entry.file_name();
         let file_name = file_name.to_string_lossy();
-        if !file_name.starts_with(&safety)
+        if file_name != legacy_backup
+            && !file_name.starts_with(&safety)
             && !file_name.starts_with(&quarantine)
             && !file_name.starts_with(&restore)
         {
@@ -2834,7 +2836,9 @@ mod tests {
         ExtStorage::set(&db, &package.manifest.id, "token", "still-secret").unwrap();
         let safety = dir.join("kaminari.db.safety-1.db");
         let quarantine = dir.join("kaminari.db.quarantine-1");
+        let legacy_backup = dir.join("kaminari.db.bak");
         std::fs::write(&safety, b"older library").unwrap();
+        std::fs::write(&legacy_backup, b"older library").unwrap();
         std::fs::create_dir_all(&quarantine).unwrap();
         std::fs::write(quarantine.join("kaminari.db"), b"older library").unwrap();
 
@@ -2844,6 +2848,7 @@ mod tests {
         assert!(!sidecar_path(&path, "-shm").exists());
         assert!(!dir.join(CLEAR_DATA_MARKER).exists());
         assert!(!safety.exists());
+        assert!(!legacy_backup.exists());
         assert!(!quarantine.exists());
         assert!(db.list_js_extensions().unwrap().is_empty());
 

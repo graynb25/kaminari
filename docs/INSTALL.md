@@ -68,14 +68,14 @@ Some sources expose settings. Open the source card menu and choose Settings. Com
 - Remote subtitles are proxied with the stream headers. Inline subtitles become WebView tracks.
 - History has a time range filter, per-row delete and Clear history. Clearing history also clears Continue Watching. Library entries and watched marks stay.
 - Downloads keep a file from a stream when you have the right to keep it. Choose a downloads folder in Settings. Plain HTTP, private addresses and local network hosts are blocked for registry, source and download fetches.
-- Backups restore the library and watch progress. Restored extensions are left disabled until you review them in Sources and enable the ones you trust. Keep the timestamped safety copy next to your library until you are sure the restore is correct. Backups made by 0.28 or later are not accepted by older builds.
+- Backups restore the library and watch progress. Restored extensions are left disabled until you review them in Sources and enable the ones you trust. Keep the timestamped safety copy next to your library until you are sure the restore is correct. Backups made by 0.28.0 or later use schema 2 and are rejected by 0.27 and older. A backup made by a build with DPAPI extension storage may be accepted by 0.28.0, but its encrypted extension values will be unreadable there.
 - NSFW sources are hidden by default. Enable Show NSFW sources in Settings, Privacy to see them in Sources and source search.
 
 ## Data at rest
 
 Kaminari does not encrypt its whole SQLite database. The library, watched marks, playback progress, history, source library, source progress and source history are plaintext rows. They rely on your Windows account and on Windows disk encryption such as BitLocker or Device Encryption. Turn on full-disk encryption if the device or its backups may be accessible to someone else.
 
-Extension storage is different: the values an extension reads and writes through `storage.get` and `storage.set` are encrypted with Windows DPAPI for your Windows account before they are saved. The extension still sees normal text, and old plaintext values are migrated automatically. The encrypted values are tied to this Windows user and device, so a backup restored under another account may not be able to read them.
+Extension storage is different: the values an extension reads and writes through `storage.get` and `storage.set` are encrypted with Windows DPAPI for your Windows account before they are saved. The extension still sees normal text, and old plaintext values are migrated automatically. The encrypted values are tied to this Windows user and device, so a backup restored under another account may not be able to read them. A build without DPAPI support cannot read them either, so keep a backup before downgrading; extension storage may appear missing afterward.
 
 Settings > Privacy > Data at rest explains this split and has **Clear all local data**. It deletes the SQLite database and its WAL/SHM files, Kaminari's safety and quarantine copies, a local settings file if present, and the WebView cache, cookies and local storage, then asks you to restart. Downloaded videos, exported backups and the AniList token in Windows Credential Manager are not deleted.
 
