@@ -1,32 +1,23 @@
-<script module lang="ts">
-  // Modal instances stack, so the lock is a shared count. The first one keeps
-  // the value that was already on the body and the last one puts it back.
-  let overlayLocks = 0;
-  let previousOverlay: string | undefined;
-
-  function acquireOverlay(name: string) {
-    if (overlayLocks === 0) previousOverlay = document.body.dataset.overlay;
-    overlayLocks += 1;
-    document.body.dataset.overlay = name;
-  }
-
-  function releaseOverlay() {
-    overlayLocks = Math.max(0, overlayLocks - 1);
-    if (overlayLocks > 0) return;
-    if (previousOverlay) document.body.dataset.overlay = previousOverlay;
-    else delete document.body.dataset.overlay;
-    previousOverlay = undefined;
-  }
-</script>
-
 <script lang="ts">
+  import { untrack } from "svelte";
   import type { Snippet } from "svelte";
+  import {
+    acquireOverlay,
+    focusableElements,
+    isolateBackground,
+    isTopLayer,
+    popLayer,
+    pushLayer,
+    releaseOverlay,
+    trapTabKey,
+  } from "./a11y";
 
   type Size = "sm" | "md" | "lg" | "xl";
 
   let {
     open = true,
     label,
+    labelledBy,
     size = "md",
     placement = "center",
     maxHeight = "86vh",
@@ -46,6 +37,7 @@
   }: {
     open?: boolean;
     label: string;
+    labelledBy?: string;
     size?: Size;
     placement?: "center" | "top";
     maxHeight?: string | null;
@@ -66,65 +58,62 @@
 
   const widths: Record<Size, number> = { sm: 680, md: 720, lg: 860, xl: 980 };
 
+  let overlayEl = $state<HTMLDivElement | null>(null);
+
   function close() {
     onClose();
   }
 
-  function focusable(): HTMLElement[] {
-    if (!panel) return [];
-    return [
-      ...panel.querySelectorAll<HTMLElement>(
-        "button, [href], input, select, textarea, [tabindex='0']",
-      ),
-    ].filter((el) => el.tabIndex >= 0 && el.offsetParent !== null);
-  }
-
-  function trapTab(event: KeyboardEvent) {
-    if (event.key !== "Tab" || !panel) return;
-    const items = focusable();
-    if (items.length === 0) {
-      event.preventDefault();
-      panel.focus();
-      return;
-    }
-    const first = items[0];
-    const last = items[items.length - 1];
-    const active = document.activeElement;
-    if (!panel.contains(active)) {
-      event.preventDefault();
-      (event.shiftKey ? last : first).focus();
-    } else if (event.shiftKey && active === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-
-  let previousFocus: HTMLElement | null = null;
-
   $effect(() => {
     if (!open) return;
-    previousFocus = document.activeElement as HTMLElement | null;
+    const root = untrack(() => overlayEl);
+    const panelEl = untrack(() => panel);
+    if (!root || !panelEl) return;
+
+    const layer = {};
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     acquireOverlay(overlayName);
+    pushLayer(layer);
+    // Focus the panel first so the dialog is announced before the background
+    // becomes inert. The autofocus target follows on the next frame.
+    panelEl.focus({ preventScroll: true });
+    const restoreBackground = isolateBackground(root);
     const frame = requestAnimationFrame(() => {
+      if (!isTopLayer(layer) || !panelEl.isConnected) return;
       const target =
-        panel?.querySelector<HTMLElement>("[data-autofocus]") ?? focusable()[0] ?? panel;
-      target?.focus();
+        panelEl.querySelector<HTMLElement>("[data-autofocus]") ??
+        focusableElements(panelEl)[0] ??
+        panelEl;
+      target.focus({ preventScroll: true });
     });
+
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      close();
+      if (!isTopLayer(layer)) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        close();
+        return;
+      }
+      trapTabKey(event, panelEl);
     };
-    window.addEventListener("keydown", onKey);
+    const onFocusIn = (event: FocusEvent) => {
+      if (!isTopLayer(layer) || !panelEl.isConnected) return;
+      const target = event.target;
+      if (target instanceof Node && panelEl.contains(target)) return;
+      panelEl.focus({ preventScroll: true });
+    };
+
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("focusin", onFocusIn, true);
     return () => {
       cancelAnimationFrame(frame);
-      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("focusin", onFocusIn, true);
+      restoreBackground();
+      popLayer(layer);
       releaseOverlay();
-      previousFocus?.focus?.();
-      previousFocus = null;
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
     };
   });
 
@@ -138,6 +127,7 @@
 
 {#if open}
   <div
+    bind:this={overlayEl}
     class="fixed inset-0 flex justify-center overlay-backdrop overlay-in {placement === 'top'
       ? 'items-start px-4 pt-[12vh]'
       : 'items-center p-4'}"
@@ -157,8 +147,8 @@
       style={panelStyle}
       role="dialog"
       aria-modal="true"
-      aria-label={label}
-      onkeydown={trapTab}
+      aria-labelledby={labelledBy}
+      aria-label={labelledBy ? undefined : label}
     >
       {#if header}
         <div class="modal-head {headerClass}">{@render header()}</div>

@@ -8,6 +8,15 @@
   import PlayerView from "./PlayerView.svelte";
   import ProgressBar from "./ProgressBar.svelte";
   import {
+    acquireOverlay,
+    isolateBackground,
+    isTopLayer,
+    popLayer,
+    pushLayer,
+    releaseOverlay,
+    trapTabKey,
+  } from "./a11y";
+  import {
     downloadCancel,
     downloadConsentAccepted,
     downloadFileName,
@@ -115,6 +124,8 @@
   let dialog: HTMLDivElement | null = $state(null);
   let closeButton: HTMLButtonElement | null = $state(null);
   let previousFocus: HTMLElement | null = null;
+  let restoreBackground: (() => void) | null = null;
+  const layer = {};
   let autoPlayed = false;
   let playbackEpisodeId: string | null = null;
   let progressSave: Promise<void> = Promise.resolve();
@@ -139,8 +150,12 @@
 
   onMount(() => {
     previousFocus = document.activeElement as HTMLElement | null;
-    document.body.dataset.overlay = "source";
+    acquireOverlay("source");
+    pushLayer(layer);
+    dialog?.focus({ preventScroll: true });
+    if (dialog) restoreBackground = isolateBackground(dialog);
     requestAnimationFrame(() => {
+      if (!isTopLayer(layer)) return;
       if (searchInput?.offsetParent) searchInput.focus();
       else closeButton?.focus();
     });
@@ -155,10 +170,12 @@
         await runSearch();
       }
     })();
-    searchInput?.focus();
 
     return () => {
-      delete document.body.dataset.overlay;
+      restoreBackground?.();
+      restoreBackground = null;
+      popLayer(layer);
+      releaseOverlay();
       requestAnimationFrame(() => {
         if (previousFocus?.isConnected) {
           previousFocus.focus();
@@ -173,6 +190,19 @@
         target?.focus();
       });
     };
+  });
+
+  $effect(() => {
+    const layerRoot = dialog;
+    if (!layerRoot) return;
+    const onFocusIn = (event: FocusEvent) => {
+      if (!isTopLayer(layer)) return;
+      const target = event.target;
+      if (target instanceof Node && layerRoot.contains(target)) return;
+      layerRoot.focus({ preventScroll: true });
+    };
+    document.addEventListener("focusin", onFocusIn, true);
+    return () => document.removeEventListener("focusin", onFocusIn, true);
   });
 
   onMount(() => {
@@ -200,9 +230,11 @@
   });
 
   $effect(() => {
+    if (!isTopLayer(layer) || activePlayback) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || activePlayback) return;
+      if (event.key !== "Escape" || !isTopLayer(layer) || activePlayback) return;
       event.preventDefault();
+      event.stopImmediatePropagation();
       onClose();
     };
     window.addEventListener("keydown", onKey);
@@ -210,20 +242,7 @@
   });
 
   function trapTab(event: KeyboardEvent) {
-    if (event.key !== "Tab" || !dialog) return;
-    const items = [...dialog.querySelectorAll("button, input, select")].filter(
-      (el) => (el as HTMLElement).tabIndex >= 0,
-    ) as HTMLElement[];
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
+    if (dialog && isTopLayer(layer)) trapTabKey(event, dialog);
   }
 
   async function runSearch() {
@@ -917,7 +936,7 @@
   style="background: radial-gradient(900px 500px at 20% -10%, var(--accent-wash), transparent 60%), var(--void-950);"
   role="dialog"
   aria-modal="true"
-  aria-label="{extension.name} source browser"
+  aria-labelledby="source-browser-title"
   tabindex={-1}
   onkeydown={trapTab}
 >
@@ -927,7 +946,7 @@
     </button>
     <div class="source-tile" style="width: 34px; height: 34px; font-size: 10px;" aria-hidden="true">JS</div>
     <div class="min-w-0">
-      <p class="text-sm font-semibold truncate">{extension.name}</p>
+      <p id="source-browser-title" class="text-sm font-semibold truncate">{extension.name}</p>
       <p class="text-[10px] truncate" style="color: var(--paper-450); font-family: var(--font-mono);">
         {extension.id}
       </p>
@@ -1086,6 +1105,7 @@
         </div>
 
         {#if showLoading}
+          <p class="sr-only" role="status" aria-live="polite">Loading episodes</p>
           <div class="space-y-2">
             {#each Array(4) as _}
               <div class="surface p-3 flex items-center gap-3">
@@ -1188,6 +1208,7 @@
                   </div>
                 </div>
                 {#if resolving === episode.id}
+                  <p class="sr-only" role="status" aria-live="polite">Resolving episode {episode.number}</p>
                   <div class="px-3 pb-3">
                     <ProgressBar label="Resolving episode" indeterminate size="xs" />
                   </div>
@@ -1294,6 +1315,7 @@
         </div>
 
         {#if loading}
+          <p class="sr-only" role="status" aria-live="polite">Searching source</p>
           <ProgressBar label="Searching source" indeterminate class="mb-4" />
           <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
             {#each Array(12) as _}
@@ -1306,6 +1328,7 @@
         {:else if error}
           <EmptyState
             compact
+            role="alert"
             icon="search"
             title={error.startsWith("No results") ? "No matches in this source" : "Source search failed"}
             body={error}

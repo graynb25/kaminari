@@ -4,6 +4,16 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.28.2 - 2026-11-11
+
+- Diagnostics: add a redacted JSON export from Settings, Updates and diagnostics. It contains app and OS versions, schema version, row counts and coarse feature flags, never titles, URLs, paths, tokens, extension IDs or settings values
+- Data: add Keep history for 30, 90, 365 days or Forever. Only AniList and source history older than the cutoff are removed; watched marks, library, progress, Continue Watching and extension storage stay
+- Data: keep only the newest three `kaminari.db.safety-*` copies on startup and after a restore
+- Accessibility: one shared modal focus layer with background isolation, Tab containment, Escape and focus return; dialogs are named by their visible headings
+- Accessibility: keyboard paths for the search palette, history range menu and quality menus; live status and error announcements; slider value text; reduced-motion delays and contrast token fixes
+- Accessibility: Settings failure statuses use alert roles, and the clear-data dialog and Incognito setting are named from their visible headings
+- Version: bump to 0.28.2
+
 ## 0.28.1 - 2026-11-11
 
 - Security: extension storage values are encrypted at rest with Windows DPAPI in the current-user scope and stored as `dpapi:v1:<base64>`. Reads decrypt, writes encrypt, and legacy plaintext rows migrate automatically. Malformed or foreign values are treated as missing instead of being returned as ciphertext or encrypted twice

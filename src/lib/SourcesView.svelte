@@ -637,6 +637,7 @@
     size="md"
     overlayName="extension-update"
     label="Review extension update"
+    labelledBy="extension-update-title"
     onClose={cancelReplacement}
     headerClass="px-5 py-4"
     bodyClass="px-5 py-5"
@@ -651,7 +652,7 @@
           <Icon name="shield" size={17} />
         </span>
         <div class="min-w-0 flex-1">
-          <h2 class="text-base font-semibold">Review extension update</h2>
+          <h2 id="extension-update-title" class="text-base font-semibold">Review extension update</h2>
           <p class="text-[11px]" style="color: var(--text-4);">
             The installed package would be replaced.
           </p>

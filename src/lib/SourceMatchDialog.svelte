@@ -38,6 +38,10 @@
   let hiddenNsfw = $state(0);
   let disposed = false;
 
+  const resultCount = $derived(
+    groups.reduce((total, group) => total + group.items.length, 0),
+  );
+
   // Seed the search box from the selected title. A later media change (for
   // example a refreshed AniList row) updates it; typing only changes query.
   $effect.pre(() => {
@@ -113,6 +117,7 @@
   maxHeight="88vh"
   overlayName="source-match"
   label="Find {displayTitle(media)} in a source"
+  labelledBy="source-match-title"
   onClose={onClose}
   headerClass="flex items-center gap-3 px-5 py-4"
   bodyClass="px-5 py-4"
@@ -125,7 +130,7 @@
       <Icon name="play" size={17} />
     </span>
     <div class="min-w-0 flex-1">
-      <h2 class="text-base font-semibold">Find a source</h2>
+      <h2 id="source-match-title" class="text-base font-semibold">Find a source</h2>
       <p class="text-[11px] truncate" style="color: var(--text-4);">{displayTitle(media)}</p>
     </div>
     <button class="btn-ghost px-3 py-1.5 text-xs" onclick={onClose}>
@@ -136,6 +141,7 @@
 
   <form
     class="flex flex-col sm:flex-row gap-2 mb-4"
+    aria-busy={loading}
     onsubmit={(event) => {
       event.preventDefault();
       void search();
@@ -160,6 +166,16 @@
       {loading ? "Searching" : "Search sources"}
     </button>
   </form>
+
+  <p class="sr-only" role="status" aria-live="polite">
+    {loading
+      ? "Searching installed sources"
+      : error
+        ? ""
+        : groups.length > 0
+          ? `${resultCount} results from ${groups.length} sources`
+          : ""}
+  </p>
 
   {#if error}
     <Callout tone="danger" class="mb-4">{error}</Callout>

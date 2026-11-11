@@ -15,6 +15,13 @@
   } from "./api";
   import { playbackUrl } from "./streamProxy";
   import PlayerQualityMenu from "./PlayerQualityMenu.svelte";
+  import {
+    isolateBackground,
+    isTopLayer,
+    popLayer,
+    pushLayer,
+    trapTabKey,
+  } from "./a11y";
   import type { JsStream } from "./types";
 
   let {
@@ -86,6 +93,10 @@
   let frameTimer: number | null = null;
   let lastReport = 0;
   let previousFocus: HTMLElement | null = null;
+  let restoreBackground: (() => void) | null = null;
+  let retryButton: HTMLButtonElement | null = $state(null);
+  let replayButton: HTMLButtonElement | null = $state(null);
+  const layer = {};
   let unlisten: UnlistenFn | null = null;
   let disposed = false;
 
@@ -105,9 +116,20 @@
     const element = shell;
     previousFocus = document.activeElement as HTMLElement | null;
     document.body.dataset.playerOpen = "true";
-    element?.focus();
+    pushLayer(layer);
+    element?.focus({ preventScroll: true });
+    if (element) restoreBackground = isolateBackground(element);
+
+    const onFocusIn = (event: FocusEvent) => {
+      if (!isTopLayer(layer) || !element?.isConnected) return;
+      const target = event.target;
+      if (target instanceof Node && element.contains(target)) return;
+      element.focus({ preventScroll: true });
+    };
+    document.addEventListener("focusin", onFocusIn, true);
 
     const onKey = (event: KeyboardEvent) => {
+      if (!isTopLayer(layer)) return;
       if (event.key === "Escape") {
         event.preventDefault();
         if (qualityMenuOpen) {
@@ -175,6 +197,10 @@
     return () => {
       disposed = true;
       window.removeEventListener("keydown", onKey);
+      document.removeEventListener("focusin", onFocusIn, true);
+      restoreBackground?.();
+      restoreBackground = null;
+      popLayer(layer);
       delete document.body.dataset.playerOpen;
       previousFocus?.focus?.();
       reportProgress(true);
@@ -454,18 +480,6 @@
     }
   }
 
-  function showControls() {
-    controlsVisible = true;
-    scheduleHide();
-  }
-
-  function scheduleHide() {
-    if (hideTimer !== null) window.clearTimeout(hideTimer);
-    hideTimer = window.setTimeout(() => {
-      if (playing) controlsVisible = false;
-    }, 2500);
-  }
-
   function onVideoClick() {
     if (clickTimer !== null) {
       window.clearTimeout(clickTimer);
@@ -501,20 +515,30 @@
   }
 
   function trapTab(event: KeyboardEvent) {
-    if (event.key !== "Tab" || !shell) return;
-    const items = [...shell.querySelectorAll("button, input, select")].filter(
-      (el) => (el as HTMLElement).tabIndex >= 0 && !(el as HTMLButtonElement).disabled,
-    ) as HTMLElement[];
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
+    if (shell && isTopLayer(layer)) trapTabKey(event, shell);
+  }
+
+  function controlsHaveFocus(): boolean {
+    const active = document.activeElement as HTMLElement | null;
+    if (!active || !shell?.contains(active) || active === shell) return false;
+    return active.matches("button, input, select, textarea, a[href], [tabindex='0']");
+  }
+
+  function showControls() {
+    controlsVisible = true;
+    scheduleHide();
+  }
+
+  function scheduleHide() {
+    if (hideTimer !== null) window.clearTimeout(hideTimer);
+    hideTimer = window.setTimeout(() => {
+      if (playing && !controlsHaveFocus()) controlsVisible = false;
+    }, 2500);
+  }
+
+  function toggleDiagnostics() {
+    diagnostics = !diagnostics;
+    if (diagnostics) void refreshDiagnostics();
   }
 
   async function copyDiagnostics() {
@@ -542,6 +566,13 @@
   }
 
   const seekPercent = $derived(duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0);
+
+  $effect(() => {
+    let frame = 0;
+    if (error) frame = requestAnimationFrame(() => retryButton?.focus());
+    else if (ended) frame = requestAnimationFrame(() => replayButton?.focus());
+    return () => cancelAnimationFrame(frame);
+  });
 </script>
 
 <div
@@ -549,7 +580,8 @@
   class="player-shell mpv-shell fixed inset-0 z-50 flex flex-col"
   role="dialog"
   aria-modal="true"
-  aria-label="Video player"
+  aria-labelledby="mpv-player-title"
+  aria-describedby={subtitle ? "mpv-player-subtitle" : undefined}
   tabindex={-1}
   data-first-frame={firstFrameMs ?? ""}
   data-hwdec={hwdec}
@@ -578,9 +610,9 @@
       Back
     </button>
     <div class="player-glass rounded-xl px-3.5 py-2 min-w-0 max-w-[52vw]">
-      <p class="text-sm font-semibold truncate">{title}</p>
+      <p id="mpv-player-title" class="text-sm font-semibold truncate">{title}</p>
       {#if subtitle}
-        <p class="text-[11px] truncate mt-0.5" style="color: var(--paper-300);">{subtitle}</p>
+        <p id="mpv-player-subtitle" class="text-[11px] truncate mt-0.5" style="color: var(--paper-300);">{subtitle}</p>
       {/if}
     </div>
     <div class="ml-auto flex items-center gap-2">
@@ -597,7 +629,7 @@
           Headers
         </span>
       {/if}
-      <button class="player-glass rounded-xl px-3 py-2 text-xs flex items-center gap-1.5" onclick={onOpenExternal}>
+      <button class="player-glass rounded-xl px-3 py-2 text-xs flex items-center gap-1.5" onclick={onOpenExternal} aria-label="Open in mpv">
         <Icon name="external" size={14} />
         <span class="hidden sm:inline">Open in mpv</span>
       </button>
@@ -606,14 +638,14 @@
 
   {#if error}
     <div class="absolute inset-0 grid place-items-center p-6 z-20" style="background: rgb(0 0 0 / 0.72);">
-      <div class="player-glass max-w-md p-5 rounded-2xl">
+      <div class="player-glass max-w-md p-5 rounded-2xl" role="alert" aria-labelledby="mpv-player-error-title">
         <span class="w-10 h-10 grid place-items-center rounded-xl" style="background: var(--danger-wash); color: var(--danger);">
           <Icon name="alert" size={20} />
         </span>
-        <h2 class="text-lg font-semibold mt-3">Playback stopped</h2>
+        <h2 id="mpv-player-error-title" class="text-lg font-semibold mt-3">Playback stopped</h2>
         <p class="text-sm mt-2 leading-relaxed" style="color: var(--paper-300);">{error}</p>
         <div class="flex flex-wrap gap-2 mt-4">
-          <button class="btn-primary px-3.5 py-2 text-sm" onclick={() => void start()}>
+          <button bind:this={retryButton} class="btn-primary px-3.5 py-2 text-sm" onclick={() => void start()}>
             <Icon name="refresh" size={14} />
             Retry
           </button>
@@ -629,6 +661,7 @@
       </div>
     </div>
   {:else if ended}
+    <p class="sr-only" role="status" aria-live="polite">Playback finished</p>
     <div class="absolute inset-0 grid place-items-center p-6 z-20" style="background: rgb(0 0 0 / 0.62);">
       <div class="player-glass max-w-sm w-full p-5 rounded-2xl text-center">
         <span class="w-12 h-12 grid place-items-center rounded-full mx-auto" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
@@ -638,7 +671,7 @@
         <h2 class="text-xl font-semibold mt-1">Playback finished</h2>
         <p class="text-sm mt-2" style="color: var(--paper-300);">{title}</p>
         <div class="flex justify-center gap-2 mt-5">
-          <button class="btn-primary px-4 py-2 text-sm" onclick={togglePlay}>
+          <button bind:this={replayButton} class="btn-primary px-4 py-2 text-sm" onclick={togglePlay}>
             <Icon name="refresh" size={14} />
             Replay
           </button>
@@ -647,6 +680,7 @@
       </div>
     </div>
   {:else if buffering}
+    <p class="sr-only" role="status" aria-live="polite">Buffering</p>
     <div class="absolute inset-0 grid place-items-center pointer-events-none z-20">
       <div class="player-glass px-5 py-4 rounded-2xl flex flex-col items-center gap-2.5">
         <span class="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style="border-color: var(--volt-400); border-top-color: transparent;"></span>
@@ -710,6 +744,7 @@
           class="seek-volt flex-1"
           style="--seek-progress: {seekPercent}%; --seek-buffer: 0%;"
           aria-label="Seek"
+          aria-valuetext={formatTime(currentTime)}
         />
         <span class="text-[11px] mono w-12 shrink-0" style="color: var(--paper-300);">{formatTime(duration)}</span>
       </div>
@@ -740,6 +775,7 @@
             class="range-volt w-20 hidden sm:block"
             style="--range-progress: {volume * 100}%;"
             aria-label="Volume"
+            aria-valuetext="{Math.round(volume * 100)} percent"
           />
         </div>
         <div class="ml-auto flex items-center gap-1">
@@ -749,6 +785,7 @@
                 class="player-control {qualityMenuOpen ? 'is-on' : ''}"
                 onclick={() => (qualityMenuOpen = !qualityMenuOpen)}
                 aria-label="Stream quality"
+                aria-haspopup="dialog"
                 aria-expanded={qualityMenuOpen}
                 title="Stream quality"
                 data-quality-toggle
@@ -784,10 +821,10 @@
               <Icon name="captions" size={17} />
             </button>
           {/if}
-          <button class="player-control {diagnostics ? 'is-on' : ''}" onclick={() => { diagnostics = !diagnostics; if (diagnostics) void refreshDiagnostics(); }} aria-label="Diagnostics" title="Diagnostics (D)">
+          <button class="player-control {diagnostics ? 'is-on' : ''}" onclick={toggleDiagnostics} aria-label="Diagnostics" aria-pressed={diagnostics} title="Diagnostics (D)">
             <Icon name="bug" size={17} />
           </button>
-          <button class="player-control" onclick={() => void toggleFullscreen()} aria-label="Fullscreen" title="Fullscreen (F)">
+          <button class="player-control" onclick={() => void toggleFullscreen()} aria-label="Fullscreen" aria-pressed={fullscreen} title="Fullscreen (F)">
             <Icon name="fullscreen" size={17} />
           </button>
         </div>
@@ -795,7 +832,7 @@
     </div>
   </div>
 
-  <p class="sr-only" aria-live="polite">{playing ? "Playing" : "Paused"} at {formatTime(currentTime)}</p>
+  <p class="sr-only" role="status" aria-live="polite">{playing ? "Playing" : "Paused"}</p>
 </div>
 
 <style>

@@ -6,6 +6,7 @@ mod anilist;
 mod atomic_file;
 mod commands;
 mod db;
+mod diagnostics;
 mod download;
 mod error;
 mod ext_host;
@@ -159,6 +160,7 @@ fn main() {
             commands::history_list,
             commands::history_clear,
             commands::history_remove,
+            commands::history_retention_apply,
             // Legacy Aniyomi registry/source commands stay available to
             // development builds and tests but are not reachable from the
             // release webview. The metadata code remains for future runtime
@@ -216,6 +218,8 @@ fn main() {
             commands::backup_export,
             commands::backup_restore_pick,
             commands::backup_restore,
+            commands::diagnostics_export_pick,
+            commands::diagnostics_export,
             commands::settings_export_pick,
             commands::settings_export,
             commands::settings_import_pick,

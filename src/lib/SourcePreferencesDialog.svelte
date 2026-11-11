@@ -95,6 +95,7 @@
   maxHeight="86vh"
   overlayName="source-preferences"
   label="{extension.name} settings"
+  labelledBy="source-preferences-title"
   onClose={onClose}
   headerClass="flex items-center gap-3 px-5 py-4"
   bodyClass="px-5 py-4"
@@ -107,7 +108,7 @@
       <Icon name="settings" size={17} />
     </span>
     <div class="min-w-0 flex-1">
-      <h2 class="text-base font-semibold">Source settings</h2>
+      <h2 id="source-preferences-title" class="text-base font-semibold">Source settings</h2>
       <p class="text-[11px] truncate" style="color: var(--text-4);">{extension.name}</p>
     </div>
     <button class="btn-ghost px-3 py-1.5 text-xs" onclick={onClose}>Close</button>
@@ -116,6 +117,10 @@
   <p class="text-xs mb-4 leading-relaxed" style="color: var(--paper-450);">
     These controls are provided by the source. Changes apply the next time it loads a show.
     Enabling extra requests, such as episode thumbnails, can make a detail page slower.
+  </p>
+
+  <p class="sr-only" role="status" aria-live="polite">
+    {loading ? "Reading source settings" : busyKey ? "Saving source setting" : ""}
   </p>
 
   {#if error}
@@ -148,6 +153,12 @@
               <button
                 class="chip text-[10px] px-2 py-1 shrink-0"
                 aria-pressed={switchValue(item)}
+                aria-busy={busyKey === item.key}
+                aria-label="{toggle.title ?? item.key}: {busyKey === item.key
+                  ? 'saving'
+                  : switchValue(item)
+                    ? 'on'
+                    : 'off'}"
                 disabled={busyKey === item.key}
                 onclick={() => void save(item.key, switchValue(item) ? "false" : "true")}
               >
@@ -173,6 +184,7 @@
                 class="h-8 rounded-lg px-2 text-xs outline-none shrink-0"
                 style="background: var(--input-bg); border: 1px solid var(--line); color: var(--text-1);"
                 value={listValue(item)}
+                aria-busy={busyKey === item.key}
                 disabled={busyKey === item.key}
                 onchange={(event) => void save(item.key, (event.currentTarget as HTMLSelectElement).value)}
                 aria-label={list.title ?? item.key}

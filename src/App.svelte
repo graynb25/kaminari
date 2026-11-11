@@ -30,6 +30,7 @@
   import Toasts from "./lib/Toasts.svelte";
   import {
     addToLibrary,
+    applyHistoryRetention,
     bootSnapshot,
     continueWatching,
     detail as fetchDetail,
@@ -52,6 +53,10 @@
   } from "./lib/api";
   import { displayTitle, isRateLimitMessage } from "./lib/format";
   import { mergeContinueRows } from "./lib/continueRows";
+  import {
+    historyRetentionDays,
+    readHistoryRetention,
+  } from "./lib/historyRetention";
   import { onAniListSyncConflict } from "./lib/anilistSync";
   import type {
     Boot,
@@ -118,6 +123,15 @@
   let mainEl = $state<HTMLElement | null>(null);
   let online = $state(typeof navigator !== "undefined" ? navigator.onLine : true);
   let detailRequest = 0;
+  const viewNames: Record<View, string> = {
+    browse: "Browse",
+    library: "Library",
+    history: "History",
+    sources: "Sources",
+    settings: "Settings",
+  };
+  let announcedLocation = "browse";
+  let routeAnnouncement = $state("");
 
   const trendingRail = $derived(rails.trending);
 
@@ -529,6 +543,10 @@
     mainEl?.focus();
     void (async () => {
       await loadBoot();
+      const retentionDays = historyRetentionDays(readHistoryRetention());
+      await applyHistoryRetention(retentionDays).catch(() => {
+        // The window still applies on the next launch or when Settings changes it.
+      });
       onboardingOpen = shouldShowOnboarding();
       incognito = incognitoEnabled();
       void setIncognitoMode(incognito).catch(() => {
@@ -573,6 +591,15 @@
     view;
     detail?.id;
     if (mainEl) mainEl.scrollTop = 0;
+  });
+
+  // Announce route and detail changes for keyboard and screen reader users
+  // without moving focus away from the control they just used.
+  $effect(() => {
+    const location = detail ? `detail-${detail.id}` : view;
+    if (location === announcedLocation) return;
+    announcedLocation = location;
+    routeAnnouncement = detail ? `Details: ${displayTitle(detail)}` : `${viewNames[view]} view`;
   });
 
   // Online and offline banner.
@@ -628,6 +655,7 @@
   <div class="app-grain" aria-hidden="true"></div>
 
   <a href="#content" class="skip-link">Skip to content</a>
+  <p class="sr-only" role="status" aria-live="polite">{routeAnnouncement}</p>
   <TitleBar title={title} online={online} onOpenPalette={openPalette} />
 
   <div class="relative z-10 flex flex-1 min-h-0">
@@ -936,6 +964,9 @@
               onOpenOnboarding={() => (onboardingOpen = true)}
               onDataChanged={() => {
                 void refreshLibrary();
+                void refreshContinue();
+                void refreshHistory();
+                void refreshSourceActivity();
               }}
             />
           {/if}
@@ -1053,5 +1084,10 @@
 
   #content:focus {
     outline: none;
+  }
+
+  #content:focus-visible {
+    outline: 2px solid var(--volt-400);
+    outline-offset: -2px;
   }
 </style>

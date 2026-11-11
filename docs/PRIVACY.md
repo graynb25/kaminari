@@ -19,7 +19,7 @@ If you contact us by email or through the project repository, we receive what yo
 Kaminari stores the following locally:
 
 - **SQLite database:** library entries, watched episodes, playback progress, history, source library entries, installed extension metadata and extension storage. Extension storage values are encrypted before they are written; the rest of the database is plaintext.
-- **WebView local storage:** your theme choice, the Incognito flag and recent searches. While Incognito is on, new searches stay in memory for the open window and are not written to local storage.
+- **WebView local storage:** your theme choice, playback quality, the Incognito flag, recent searches and the history retention window. While Incognito is on, new searches stay in memory for the open window and are not written to local storage.
 - **WebView cache:** images and media fragments cached by the embedded browser.
 - **WebView cookies:** cookies set by sites you access through the app or its extensions, if any.
 
@@ -34,6 +34,14 @@ Extension storage values (the `js_storage.value` column used by `storage.get` an
 DPAPI binds encrypted extension values to the Windows user and device. A backup keeps those values encrypted, so a backup restored under a different Windows account or on a different device may have extension values that cannot be read. Everything else in a backup is plaintext. A Kaminari build without DPAPI support reads the stored prefix as an ordinary value, so downgrading can make extension storage appear missing. Keep a backup before downgrading.
 
 Full-disk encryption remains the protection for the database, the WebView profile and anything else Kaminari stores. Extension storage encryption is an additional layer for the values most likely to contain tokens or source credentials, not a replacement for disk encryption.
+
+### 3.2 Diagnostics export
+
+Settings > Updates and diagnostics has an **Export diagnostics** action. You choose the destination with a native save dialog, and the default name is `kaminari-diagnostics.json`. Kaminari builds the report in Rust and writes it locally. The report is not uploaded by the app.
+
+The report contains the app version, operating system version and architecture, database schema version, row counts for `media`, `library`, `watched`, `history`, `source_library`, `source_progress`, `source_history`, `js_extensions` and `js_storage`, plus coarse feature flags such as debug build, proxy state and whether extension storage encryption is available.
+
+The report does not contain media titles, URLs, host names, file paths, cookies, tokens, extension IDs, source IDs, storage keys or settings values. Row counts are integers, not row contents. A diagnostics export still describes your installation, so review it before sharing it.
 
 ## 4. Network requests
 
@@ -71,7 +79,11 @@ We do not sell or rent personal data. We do not share data with advertisers. The
 
 ## 7. Retention and deletion
 
-Local data stays on your device until you delete it. On Windows, Settings > Privacy > Data at rest has a **Clear all local data** action. It deletes the SQLite database and its WAL/SHM files, Kaminari's safety and quarantine copies, a local settings file if one exists, the WebView cache, cookies and local storage, and then asks you to restart. Downloaded videos, exported backups, and the AniList token in Windows Credential Manager are not deleted. If a file is still open, Kaminari finishes removing it on the next start.
+Local data stays on your device until you delete it. Settings > Data has a **Keep history for** control with 30 days, 90 days, 365 days and Forever. Forever is the default. When you choose a window, Kaminari deletes AniList history and source history entries older than that cutoff on startup and again when you change the setting. The cleanup does not delete watched marks, library rows, playback progress, Continue Watching, source progress, extension storage or any other table. Entries exactly at the cutoff are kept.
+
+Settings > Privacy > Data at rest has a **Clear all local data** action. It deletes the SQLite database and its WAL/SHM files, Kaminari's safety and quarantine copies, a local settings file if one exists, the WebView cache, cookies and local storage, and then asks you to restart. Downloaded videos, exported backups, and the AniList token in Windows Credential Manager are not deleted. If a file is still open, Kaminari finishes removing it on the next start.
+
+A backup restore first writes a timestamped `kaminari.db.safety-<timestamp>.db` copy of the library it is about to replace. Kaminari keeps the newest three safety copies and removes older ones when the database opens and after a successful restore. The live `kaminari.db`, its `-wal`/`-shm` sidecars and `kaminari.db.quarantine-*` recovery folders are never removed by this cleanup.
 
 You can also remove the data manually:
 

@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
+  import { nextFocusIndex } from "./a11y";
   import { streamLabel } from "./quality";
   import type { JsStream } from "./types";
 
@@ -16,12 +18,56 @@
   } = $props();
 
   let root = $state<HTMLDivElement | null>(null);
+  let previousFocus: HTMLElement | null = null;
+  let restoreOnClose = true;
+
+  function close() {
+    onClose();
+  }
+
+  function closeWithoutFocus() {
+    restoreOnClose = false;
+    onClose();
+  }
+
+  function onKeydown(event: KeyboardEvent) {
+    const items = Array.from(root?.querySelectorAll<HTMLButtonElement>(".quality-option") ?? []);
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+      return;
+    }
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    let next: number | null = null;
+    if (event.key === "ArrowDown") next = nextFocusIndex(current, items.length, 1);
+    else if (event.key === "ArrowUp") next = nextFocusIndex(current, items.length, -1);
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = items.length - 1;
+    if (next === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    items[next]?.focus();
+  }
+
+  onMount(() => {
+    previousFocus = document.activeElement as HTMLElement | null;
+    const frame = requestAnimationFrame(() => {
+      const active = root?.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
+      (active ?? root?.querySelector<HTMLButtonElement>(".quality-option"))?.focus();
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (restoreOnClose && previousFocus?.isConnected) previousFocus.focus();
+    };
+  });
 
   $effect(() => {
     const onPointer = (event: PointerEvent) => {
       const target = event.target as Element | null;
       if (target?.closest("[data-quality-toggle]")) return;
-      if (root && !root.contains(event.target as Node)) onClose();
+      if (root && !root.contains(event.target as Node)) closeWithoutFocus();
     };
     document.addEventListener("pointerdown", onPointer);
     return () => document.removeEventListener("pointerdown", onPointer);
@@ -33,6 +79,8 @@
   class="player-quality-menu player-glass"
   role="dialog"
   aria-label="Stream quality"
+  tabindex={-1}
+  onkeydown={onKeydown}
 >
   <div class="flex items-center gap-2.5">
     <span class="quality-icon" aria-hidden="true">
@@ -44,7 +92,7 @@
     </div>
     <button
       class="quality-close"
-      onclick={onClose}
+      onclick={close}
       aria-label="Close stream quality"
       title="Close"
     >

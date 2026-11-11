@@ -21,6 +21,7 @@ pub enum PathOperation {
     BackupExport,
     BackupRestore,
     ExtensionInstall,
+    DiagnosticsExport,
 }
 
 struct Grant {
@@ -48,6 +49,7 @@ impl PathAuthority {
             PathOperation::SettingsExport | PathOperation::BackupExport => {
                 resolve_write_target(path, "selected file")?
             }
+            PathOperation::DiagnosticsExport => resolve_write_target(path, "diagnostics file")?,
         };
         let token = random_token()?;
         let mut grants = self
@@ -85,6 +87,9 @@ impl PathAuthority {
             PathOperation::ExtensionInstall => resolve_read_file(&grant.path, "extension package"),
             PathOperation::SettingsExport | PathOperation::BackupExport => {
                 resolve_write_target(&grant.path, "selected file")
+            }
+            PathOperation::DiagnosticsExport => {
+                resolve_write_target(&grant.path, "diagnostics file")
             }
         }
     }
@@ -255,6 +260,26 @@ mod tests {
         assert!(authority
             .consume("not-a-token", PathOperation::SettingsImport)
             .is_err());
+    }
+
+    #[test]
+    fn diagnostics_export_grants_a_write_target_once() {
+        let dir = temp_dir("diagnostics");
+        let target = dir.join("kaminari-diagnostics.json");
+        let authority = PathAuthority::new();
+        let token = authority
+            .grant(&target, PathOperation::DiagnosticsExport)
+            .unwrap();
+        assert_eq!(
+            authority
+                .consume(&token, PathOperation::DiagnosticsExport)
+                .unwrap(),
+            simplify(std::fs::canonicalize(&dir).unwrap()).join("kaminari-diagnostics.json")
+        );
+        assert!(authority
+            .consume(&token, PathOperation::DiagnosticsExport)
+            .is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

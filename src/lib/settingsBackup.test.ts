@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { parseSettings } from "./settingsBackup";
+import { describe, expect, it, vi } from "vitest";
+import { HISTORY_RETENTION_KEY } from "./historyRetention";
+import { collectSettings, parseSettings } from "./settingsBackup";
 
 function settings(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
@@ -24,6 +25,13 @@ describe("parseSettings", () => {
     expect(data.accent).toBe("ocean");
     expect(data.proxy).toBe(true);
     expect(data.quality).toBe("auto");
+    expect(data.historyRetention).toBe("forever");
+  });
+
+  it("reads a saved retention window and falls back to Forever", () => {
+    expect(parseSettings(settings({ historyRetention: "90" })).historyRetention).toBe("90");
+    expect(parseSettings(settings({ historyRetention: "365" })).historyRetention).toBe("365");
+    expect(parseSettings(settings({ historyRetention: "7" })).historyRetention).toBe("forever");
   });
 
   it("reads a saved quality preference and falls back to auto", () => {
@@ -48,5 +56,17 @@ describe("parseSettings", () => {
   it("falls back to violet for an unknown accent", () => {
     expect(parseSettings(settings({ accent: "teal" })).accent).toBe("violet");
     expect(parseSettings(settings({ accent: 7 })).accent).toBe("violet");
+  });
+
+  it("exports the retention window with the other settings", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => (key === HISTORY_RETENTION_KEY ? "90" : null),
+      setItem: () => {},
+    });
+    try {
+      expect(collectSettings().historyRetention).toBe("90");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

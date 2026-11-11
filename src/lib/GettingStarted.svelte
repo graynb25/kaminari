@@ -36,6 +36,7 @@
   maxHeight="88vh"
   overlayName="getting-started"
   label="Getting started with Kaminari"
+  labelledBy="getting-started-title"
   onClose={onClose}
   headerClass="flex items-center gap-3 px-5 py-4"
   bodyClass="px-5 py-5"
@@ -48,7 +49,7 @@
       <Icon name="sparkles" size={17} />
     </span>
     <div class="min-w-0 flex-1">
-      <h2 class="text-base font-semibold">Getting started</h2>
+      <h2 id="getting-started-title" class="text-base font-semibold">Getting started</h2>
       <p class="text-[11px]" style="color: var(--text-4);">A player, not a catalog.</p>
     </div>
     <button class="btn-ghost px-3 py-1.5 text-xs" onclick={onClose}>

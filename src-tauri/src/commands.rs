@@ -20,8 +20,9 @@ use crate::anilist::{
 use crate::db::InstalledSource;
 use crate::db::{
     validate_source_library_input, validate_source_progress_input, validate_source_progress_marks,
-    ContinueItem, Db, ExtensionInstallPreview, HistoryItem, JsExtensionRow, LibraryItem,
-    SourceContinueItem, SourceHistoryItem, SourceLibraryItem, SourceProgress, SourceProgressMark,
+    ContinueItem, Db, ExtensionInstallPreview, HistoryItem, HistoryRetentionResult, JsExtensionRow,
+    LibraryItem, SourceContinueItem, SourceHistoryItem, SourceLibraryItem, SourceProgress,
+    SourceProgressMark,
 };
 use crate::error::AppError;
 use crate::ext_host::{self, ExtPackage, ExtStorage, ExtensionTrust};
@@ -51,6 +52,12 @@ pub struct BootSnapshot {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupExport {
+    pub bytes: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticsExport {
     pub bytes: u64,
 }
 
@@ -1374,6 +1381,29 @@ pub fn source_progress_mark_all(
 }
 
 #[tauri::command]
+pub async fn history_retention_apply(
+    state: State<'_, Db>,
+    days: Option<u32>,
+) -> Result<HistoryRetentionResult, String> {
+    let days = validate_history_retention_days(days)?;
+    let db = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        db.purge_history_older_than(days).map_err(ipc_error)
+    })
+    .await
+    .map_err(|err| format!("history retention failed: {err}"))?
+}
+
+/// The UI offers 30, 90, 365 or Forever. Reject any other value at the command
+/// boundary so a renderer cannot request an unexpected retention window.
+fn validate_history_retention_days(days: Option<u32>) -> Result<Option<u32>, String> {
+    match days {
+        None | Some(30) | Some(90) | Some(365) => Ok(days),
+        Some(_) => Err("history retention must be 30, 90 or 365 days, or Forever".to_string()),
+    }
+}
+
+#[tauri::command]
 pub fn source_continue(
     state: State<'_, Db>,
     limit: Option<usize>,
@@ -1403,6 +1433,53 @@ pub fn source_history_remove(
     state
         .source_history_remove(&extension_id, &show_id, &episode_id)
         .map_err(ipc_error)
+}
+
+#[tauri::command]
+pub async fn diagnostics_export_pick(
+    app: AppHandle,
+    authority: State<'_, PathAuthority>,
+) -> Result<Option<String>, String> {
+    let Some(path) = run_file_dialog(
+        app,
+        FileDialogMode::Save,
+        "Export diagnostics",
+        &["json"],
+        "kaminari-diagnostics.json",
+    )
+    .await?
+    else {
+        return Ok(None);
+    };
+    authority
+        .grant(&path, PathOperation::DiagnosticsExport)
+        .map(Some)
+}
+
+/// Builds a redacted report in Rust and writes it through the same one-use
+/// path grant and atomic replace as settings and backups.
+#[tauri::command]
+pub async fn diagnostics_export(
+    authority: State<'_, PathAuthority>,
+    state: State<'_, Db>,
+    proxy: State<'_, ProxyStore>,
+    incognito: State<'_, IncognitoState>,
+    token: String,
+) -> Result<DiagnosticsExport, String> {
+    let target = authority.consume(&token, PathOperation::DiagnosticsExport)?;
+    let db = state.inner().clone();
+    let proxy_enabled = proxy.status().enabled;
+    let incognito_enabled = incognito.is_enabled();
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        let report = crate::diagnostics::collect(&db, proxy_enabled, incognito_enabled)?;
+        let json = crate::diagnostics::to_json(&report)?;
+        crate::atomic_file::write_atomic(&target, json.as_bytes())
+            .map_err(|err| format!("cannot write diagnostics file: {err}"))?;
+        Ok::<u64, String>(json.len() as u64)
+    })
+    .await
+    .map_err(|err| format!("diagnostics export failed: {err}"))??;
+    Ok(DiagnosticsExport { bytes })
 }
 
 #[tauri::command]
@@ -1739,5 +1816,19 @@ mod tests {
         // The wrong attempt consumes the pending package; a fresh install is
         // needed, which is the safe failure direction.
         assert!(installs.take("not-the-token").is_err());
+    }
+
+    #[test]
+    fn history_retention_accepts_only_the_offered_windows() {
+        assert_eq!(validate_history_retention_days(None).unwrap(), None);
+        assert_eq!(validate_history_retention_days(Some(30)).unwrap(), Some(30));
+        assert_eq!(validate_history_retention_days(Some(90)).unwrap(), Some(90));
+        assert_eq!(
+            validate_history_retention_days(Some(365)).unwrap(),
+            Some(365)
+        );
+        assert!(validate_history_retention_days(Some(0)).is_err());
+        assert!(validate_history_retention_days(Some(7)).is_err());
+        assert!(validate_history_retention_days(Some(3650)).is_err());
     }
 }

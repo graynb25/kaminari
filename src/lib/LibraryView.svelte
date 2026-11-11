@@ -124,6 +124,7 @@
   </PageHeader>
 
   {#if loading}
+    <p class="sr-only" role="status" aria-live="polite">Refreshing library</p>
     <ProgressBar label="Refreshing library" indeterminate class="mb-4" />
   {/if}
 
@@ -334,7 +335,7 @@
                     <p class="text-[11px]" style="color: var(--paper-450);">Not started</p>
                   {/if}
                 </div>
-                <button class="btn-primary px-3 py-1.5 text-[11px] shrink-0" onclick={() => (item.lastEpisodeId ? onResumeSource(item) : onOpenSource(item))}>
+                <button class="btn-primary px-3 py-1.5 text-[11px] shrink-0" onclick={() => (item.lastEpisodeId ? onResumeSource(item) : onOpenSource(item))} aria-label="{item.lastEpisodeId ? 'Resume' : 'Open'} {item.title}">
                   {item.lastPosition && item.lastDuration && item.lastPosition / item.lastDuration >= 0.95
                     ? "Rewatch"
                     : item.lastPosition
