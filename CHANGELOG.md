@@ -4,6 +4,14 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.28.1 - 2026-11-11
+
+- Security: extension storage values are encrypted at rest with Windows DPAPI in the current-user scope and stored as `dpapi:v1:<base64>`. Reads decrypt, writes encrypt, and legacy plaintext rows migrate automatically. Malformed or foreign values are treated as missing instead of being returned as ciphertext or encrypted twice
+- Privacy: Settings, Privacy adds a Data at rest section. It explains that library, history and source rows remain plaintext and rely on Windows disk encryption, while extension storage is DPAPI-encrypted
+- Data: add Clear all local data with confirmation. It removes the database and sidecars, safety, quarantine and legacy `.bak` copies, local settings and WebView data, keeps downloads, exported backups and the AniList token, and finishes locked files on the next start
+- Compatibility: schema version 3 marks the DPAPI extension-storage format. Backups made by 0.28.1 are rejected by 0.28.0 and older, and older builds cannot read the encrypted extension values. Keep a backup before downgrading
+- Version: bump to 0.28.1
+
 ## 0.28.0 - 2026-11-10
 
 - NSFW: installed sources expose their manifest NSFW flag, show a badge, and are hidden from Sources and source search by default. Settings, Privacy adds a Show NSFW sources toggle

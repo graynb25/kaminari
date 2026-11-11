@@ -68,7 +68,7 @@ Some sources expose settings. Open the source card menu and choose Settings. Com
 - Remote subtitles are proxied with the stream headers. Inline subtitles become WebView tracks.
 - History has a time range filter, per-row delete and Clear history. Clearing history also clears Continue Watching. Library entries and watched marks stay.
 - Downloads keep a file from a stream when you have the right to keep it. Choose a downloads folder in Settings. Plain HTTP, private addresses and local network hosts are blocked for registry, source and download fetches.
-- Backups restore the library and watch progress. Restored extensions are left disabled until you review them in Sources and enable the ones you trust. Keep the timestamped safety copy next to your library until you are sure the restore is correct. Backups made by 0.28.0 or later use schema 2 and are rejected by 0.27 and older. A backup made by a build with DPAPI extension storage may be accepted by 0.28.0, but its encrypted extension values will be unreadable there.
+- Backups restore the library and watch progress. Restored extensions are left disabled until you review them in Sources and enable the ones you trust. Keep the timestamped safety copy next to your library until you are sure the restore is correct. Backups made by 0.28.1 or later use schema 3 and are rejected by 0.28.0 and older. A 0.28.1 backup also contains DPAPI-encrypted extension values, which older builds and other Windows accounts cannot read.
 - NSFW sources are hidden by default. Enable Show NSFW sources in Settings, Privacy to see them in Sources and source search.
 
 ## Data at rest

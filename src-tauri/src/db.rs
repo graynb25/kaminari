@@ -42,7 +42,7 @@ const MAX_ANILIST_PROGRESS: i64 = 10_000;
 
 /// Bumped whenever a migration changes the on-disk schema. A backup from a
 /// newer version is rejected instead of being silently run against older code.
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 /// Base delay before retrying a failed AniList queue row. Doubles per failed
 /// attempt, with deterministic jitter so a large queue does not retry in

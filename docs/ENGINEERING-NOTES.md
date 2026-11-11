@@ -138,7 +138,7 @@ What we measured. A clean Windows Sandbox run reported `clean_before=True`: 0.27
 
 Key custody. The signing key and password moved from plaintext `%APPDATA%\kaminari-signing` into the DPAPI-encrypted vault at `D:\Data\Key Custody\kaminari-release`. The vault contains the encrypted blob, a loader, an export script, the public key and a README, and is bound to this Windows user profile. An offline copy is staged at `D:\Data\Key Custody\kaminari-release-offline`; physical media is still needed.
 
-What remains. Authenticode signing and the final legal and counsel review are deferred by the maintainer. The L-09 data-at-rest decision is in progress in a separate session.
+What remains. Authenticode signing and the final legal and counsel review are deferred by the maintainer. The L-09 data-at-rest work is complete in the local 0.28.1 candidate, which uses schema version 3.
 
 ## 2026-11-11 Data-at-rest hardening
 
@@ -148,7 +148,7 @@ What we shipped. `js_storage.value` is encrypted with Windows DPAPI in the curre
 
 What we measured. The combined branch passes 205 Rust tests and 114 frontend tests, plus fmt, clippy, frontend check, build, style and `cargo audit --no-yanked` with no vulnerabilities. Tests cover DPAPI round trips, empty values, malformed ciphertext, plaintext migration, the 1 MB quota, the clear marker, sidecars, safety and quarantine copies, and the legacy `.bak` copy.
 
-What remains. SQLCipher was rejected because it would replace the bundled SQLite build that carries the RUSTSEC-2026-0459 fix, and it would complicate backups and portable use. The library and history stay plaintext. Extension storage encryption is one-way: a build without DPAPI support reads the prefix as an ordinary value, so a downgrade can make extension storage appear missing. Release notes must call that out, and a future release should decide whether to bump the schema. Code signing remains deferred.
+What remains. SQLCipher was rejected because it would replace the bundled SQLite build that carries the RUSTSEC-2026-0459 fix, and it would complicate backups and portable use. The library and history stay plaintext. Extension storage encryption is one-way: a build without DPAPI support reads the prefix as an ordinary value, so a downgrade can make extension storage appear missing. The 0.28.1 release bumps the schema to 3, so 0.28.0 and older reject its backups; release notes must also call out the live-downgrade limitation. Code signing remains deferred.
 
 ## 2026-11-11 Phase 2 local hardening
 
