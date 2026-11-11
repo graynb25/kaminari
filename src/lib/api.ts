@@ -5,14 +5,13 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Boot,
   ContinueItem,
+  ExtensionInstallOutcome,
   HistoryItem,
-  InstalledSource,
   JsEpisode,
   JsExtension,
   JsSearchResult,
   JsShowDetail,
   JsStream,
-  LegacyExtension,
   LibraryItem,
   MangayomiPreview,
   Media,
@@ -33,6 +32,14 @@ import type {
 
 export function bootSnapshot(): Promise<Boot> {
   return invoke<Boot>("boot_snapshot");
+}
+
+export function setIncognitoMode(enabled: boolean): Promise<void> {
+  return invoke<void>("set_incognito", { enabled });
+}
+
+export function clearWebviewData(): Promise<void> {
+  return invoke<void>("clear_webview_data");
 }
 
 export function trending(page = 1): Promise<Media[]> {
@@ -101,26 +108,6 @@ export function historyRemove(anilistId: number, episode: number): Promise<void>
   return invoke<void>("history_remove", { anilistId, episode });
 }
 
-export function registryFetch(url: string): Promise<LegacyExtension[]> {
-  return invoke<LegacyExtension[]>("registry_fetch", { url });
-}
-
-export function sourceList(): Promise<InstalledSource[]> {
-  return invoke<InstalledSource[]>("source_list");
-}
-
-export function sourceInstall(extension: LegacyExtension): Promise<void> {
-  return invoke<void>("source_install", { extension });
-}
-
-export function sourceRemove(id: string): Promise<void> {
-  return invoke<void>("source_remove", { id });
-}
-
-export function sourceToggle(id: string, enabled: boolean): Promise<void> {
-  return invoke<void>("source_toggle", { id, enabled });
-}
-
 export function jsExtensionList(): Promise<JsExtension[]> {
   return invoke<JsExtension[]>("js_extension_list");
 }
@@ -129,8 +116,16 @@ export function jsExtensionInstallSample(): Promise<void> {
   return invoke<void>("js_extension_install_sample");
 }
 
-export function jsExtensionInstallPath(path: string): Promise<void> {
-  return invoke<void>("js_extension_install_path", { path });
+export function jsExtensionInstallPick(): Promise<string | null> {
+  return invoke<string | null>("js_extension_install_pick");
+}
+
+export function jsExtensionInstallPackage(token: string): Promise<ExtensionInstallOutcome> {
+  return invoke<ExtensionInstallOutcome>("js_extension_install_package", { token });
+}
+
+export function jsExtensionInstallConfirm(approvalToken: string): Promise<void> {
+  return invoke<void>("js_extension_install_confirm", { approvalToken });
 }
 
 export function mangayomiPreview(url: string): Promise<MangayomiPreview> {
@@ -141,8 +136,8 @@ export function mangayomiInstall(
   url: string,
   sourceIndex: number,
   sha256: string,
-): Promise<string> {
-  return invoke<string>("mangayomi_install", { url, sourceIndex, sha256 });
+): Promise<ExtensionInstallOutcome> {
+  return invoke<ExtensionInstallOutcome>("mangayomi_install", { url, sourceIndex, sha256 });
 }
 
 export function jsExtensionPreferences(id: string): Promise<SourcePreferences> {
@@ -194,10 +189,6 @@ export function proxyStatus(): Promise<ProxyStatus> {
 
 export function playerPlay(request: PlaybackRequest): Promise<PlaybackInfo> {
   return invoke<PlaybackInfo>("player_play", { request });
-}
-
-export function playerStop(): Promise<void> {
-  return invoke<void>("player_stop");
 }
 
 export function playerStatus(): Promise<PlayerStatus> {
@@ -263,6 +254,7 @@ export function sourceLibraryAdd(item: {
   cover?: string | null;
   year?: number | null;
   status?: string | null;
+  anilistId?: number | null;
 }): Promise<void> {
   return invoke<void>("source_library_add", {
     extensionId: item.extensionId,
@@ -271,6 +263,7 @@ export function sourceLibraryAdd(item: {
     cover: item.cover,
     year: item.year,
     status: item.status,
+    anilistId: item.anilistId ?? null,
   });
 }
 

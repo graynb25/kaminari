@@ -38,7 +38,7 @@ The sample is a test source, not a catalog. Install it from Sources if you want 
 
 ## Add a source
 
-Kaminari does not include or name a source. Add a raw Mangayomi JavaScript file from a provider you trust.
+Kaminari does not include or name a source. Add a raw Mangayomi JavaScript file from a provider you trust. For a local `.kext` package, use Choose .kext package instead of a typed path.
 
 1. Open Sources.
 2. Scroll to Mangayomi sources.
@@ -67,8 +67,9 @@ Some sources expose settings. Open the source card menu and choose Settings. Com
 - Autoplay next episode is in Settings. It shows a five second countdown and a Play next button.
 - Remote subtitles are proxied with the stream headers. Inline subtitles become WebView tracks.
 - History has a time range filter, per-row delete and Clear history. Clearing history also clears Continue Watching. Library entries and watched marks stay.
-- Downloads keep a file from a stream when you have the right to keep it. Choose a downloads folder in Settings.
-- Backups restore the library and watch progress. Restored extensions are left disabled until you review them in Sources and enable the ones you trust. Keep the timestamped safety copy next to your library until you are sure the restore is correct.
+- Downloads keep a file from a stream when you have the right to keep it. Choose a downloads folder in Settings. Plain HTTP, private addresses and local network hosts are blocked for registry, source and download fetches.
+- Backups restore the library and watch progress. Restored extensions are left disabled until you review them in Sources and enable the ones you trust. Keep the timestamped safety copy next to your library until you are sure the restore is correct. Backups made by 0.28 or later are not accepted by older builds.
+- NSFW sources are hidden by default. Enable Show NSFW sources in Settings, Privacy to see them in Sources and source search.
 
 ## Updates
 
@@ -85,6 +86,8 @@ Use Windows Settings, Apps, Installed apps, Kaminari, Uninstall. The uninstaller
 - **A source returns nothing:** the site may have changed, be geo-blocked, or use a challenge Kaminari does not solve. Try another source.
 - **Playback stops:** use 0.26.2 or later, try another quality or server in Streams, or open the stream in mpv.
 - **Portable build will not start:** keep the `lib` folder next to `Kaminari.exe`, and install the WebView2 Runtime.
+- **Kaminari will not start or reports a database problem:** a native recovery dialog appears before the window opens. Choose Retry after closing anything that may hold the database, open the data folder to back it up, or choose Quarantine and start fresh. Quarantine moves `kaminari.db`, `kaminari.db-wal` and `kaminari.db-shm` into a timestamped `kaminari.db.quarantine-<number>` folder and creates a new database. Nothing is deleted.
+- **Clear cached images, cookies or WebView data:** open Settings, Privacy and choose Clear WebView data. It clears the shared WebView profile asynchronously, so restart Kaminari afterward.
 - **Update check warns:** the release feed is not publicly reachable. This is expected for a private or local build.
 
 ## Rights and privacy

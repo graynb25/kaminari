@@ -81,7 +81,7 @@ If a provision is found unenforceable, the remaining provisions stay in effect. 
 
 Questions about these terms: [[CONTACT_EMAIL]].
 
-Project repository: [[REPOSITORY_URL]].
+Project repository: https://github.com/graynb25/kaminari.
 
 ## Note
 

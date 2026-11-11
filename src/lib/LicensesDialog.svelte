@@ -252,6 +252,8 @@
                         {/if}
                       </div>
                       {#if openKey === pkg.key && text}
+                        <!-- Scrollable license text needs a tab stop for keyboard users. -->
+                        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                         <div
                           class="license-text-wrap"
                           tabindex="0"

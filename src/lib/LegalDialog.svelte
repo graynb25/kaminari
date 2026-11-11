@@ -14,8 +14,14 @@
   } = $props();
 
   const docs = { terms, privacy } as const;
-  let active = $state<"terms" | "privacy">(initial);
+  let active = $state<"terms" | "privacy">("terms");
   let contentEl = $state<HTMLDivElement | null>(null);
+
+  // Follow the prop if the dialog is reused, but keep switchDoc() free to
+  // change the tab without an effect overwriting it.
+  $effect.pre(() => {
+    active = initial;
+  });
 
   const html = $derived(renderMarkdown(docs[active]));
 

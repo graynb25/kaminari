@@ -4,6 +4,31 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.28.0 - 2026-11-10
+
+- NSFW: installed sources expose their manifest NSFW flag, show a badge, and are hidden from Sources and source search by default. Settings, Privacy adds a Show NSFW sources toggle
+- Sources: add a durable AniList link on source library rows. A source opened from Watch keeps its AniList identity after restart, and Continue Watching merges by ID with the source row as the resume target
+- Sources: install `.kext` packages through a native file picker instead of a free-text path
+- Security: settings, backup and package paths use one-use dialog-scoped tokens, canonical paths and reparse-point checks
+- Security: registry, Mangayomi and download fetches share a safe resolver with HTTPS enforcement, private-address rejection, redirect checks, DNS pinning and streaming caps
+- Security: upgrade rusqlite to 0.41.1 and bundled SQLite to 3.54.1, clearing RUSTSEC-2026-0459
+- Security: extension updates require an explicit review when the name, version, code or host list changes. Trust is computed in Rust, not supplied by a package or backup
+- Security: proxy requests reuse shared entries, index children for constant-time reuse, reject over-budget playlists and cap rendered playlists at 4 MiB
+- Security: host allowlists enforce path boundaries, ports, encoded separator rejection and wildcard subdomains
+- Security: source removal deletes its library, progress and history rows. Episode counts, source metadata and duration values are capped
+- Sync: one guard serializes AniList push and pull, queue batches are bounded, failures use exponential backoff and negative local actions no longer create unexpected AniList writes
+- Portable: sign in can register the kaminari callback only after an explicit user action, with a visible reason when registration is unavailable
+- CI: actions are pinned to commit SHAs, gitleaks is checksum verified, permissions are read-only and the workflow runs frontend tests and dependency audits
+- Privacy: Incognito no longer writes recent searches, automatic background AniList sync pauses while it is on, and Settings, Privacy adds Clear WebView data. The privacy policy now discloses updater traffic, cache behavior and Incognito limits
+- Security: downloads claim final and part files with `create_new` and random names, reject Windows reserved names and reparse points, and hard-cap concurrent downloads at 8
+- Security: settings and backup writes use one shared `create_new` temporary file and an atomic replace that never deletes the target first
+- Security: the CSP allows `worker-src 'self' blob:` so hls.js can create its worker in release builds
+- Data: the `continue_visible` migration and backfill run in one transaction with a repair marker, so an interrupted upgrade cannot permanently hide old Continue rows
+- Startup: a database or setup failure shows a native recovery dialog with Retry, Open data folder and Quarantine and start fresh instead of a panic. Quarantine moves the database and its sidecars aside without deleting them
+- Maintenance: remove dev harnesses and unused API wrappers. Legacy Aniyomi registry and source commands are compiled only in debug builds and are absent from release builds
+- Compatibility: schema version 2 adds the source AniList link. Backups from this build are rejected by older builds
+- Version: bump to 0.28.0
+
 ## 0.27.0 - 2026-11-10
 
 - Security: extension searches, details, episodes, preferences and stream resolve run off the Tauri main thread, with a per-source concurrency limit. A slow source no longer freezes the window

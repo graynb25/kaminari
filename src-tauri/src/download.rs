@@ -8,13 +8,16 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
-use reqwest::header::{self, HeaderName, HeaderValue};
+use reqwest::header::{HeaderName, HeaderValue};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::watch;
 use url::Origin;
+
+use crate::proxy::ProxyStore;
+use crate::safe_http::{self, SafeFetch};
 
 const DOWNLOAD_EVENT: &str = "download-progress";
 const MAX_HEADERS: usize = 16;
@@ -25,8 +28,8 @@ const MAX_HLS_DEPTH: u8 = 3;
 const MAX_FILE_NAME_CHARS: usize = 140;
 const MAX_COLLISION_TRIES: usize = 1000;
 const MAX_DOWNLOADS: usize = 100;
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-const READ_TIMEOUT: Duration = Duration::from_secs(60);
+const MAX_RUNNING_DOWNLOADS: usize = 8;
+const MAX_DOWNLOAD_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 const HEADER_TIMEOUT: Duration = Duration::from_secs(30);
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(150);
 
@@ -133,13 +136,29 @@ impl DownloadState {
             .inner
             .lock()
             .map_err(|_| "downloads are unavailable".to_string())?;
+        let running = map
+            .values()
+            .filter(|record| record.progress.state == DownloadStatus::Running)
+            .count();
+        if running >= MAX_RUNNING_DOWNLOADS {
+            return Err(format!(
+                "Too many downloads are running. The limit is {MAX_RUNNING_DOWNLOADS}."
+            ));
+        }
         if map.len() >= MAX_DOWNLOADS {
             let finished = map
                 .iter()
                 .find(|(_, record)| record.progress.state != DownloadStatus::Running)
                 .map(|(key, _)| key.clone());
-            if let Some(key) = finished {
-                map.remove(&key);
+            match finished {
+                Some(key) => {
+                    map.remove(&key);
+                }
+                None => {
+                    return Err(format!(
+                        "Too many downloads are running. The limit is {MAX_DOWNLOADS}."
+                    ));
+                }
             }
         }
         map.insert(id.to_string(), DownloadRecord { cancel, progress });
@@ -189,9 +208,10 @@ impl DownloadState {
 pub fn download_start(
     state: State<'_, DownloadState>,
     app: AppHandle,
+    proxy: State<'_, ProxyStore>,
     request: DownloadRequest,
 ) -> Result<DownloadStarted, String> {
-    let prepared = prepare(request)?;
+    let prepared = prepare(request, proxy.inner().clone())?;
     let id = new_download_id()?;
     let cancel = CancelToken::default();
     state.insert(
@@ -240,14 +260,16 @@ struct PreparedDownload {
     folder: PathBuf,
     file_name: String,
     direct_url: String,
+    proxy: ProxyStore,
 }
 
 struct DownloadContext<'a> {
     app: &'a AppHandle,
     state: &'a DownloadState,
     id: &'a str,
-    client: &'a reqwest::Client,
+    fetcher: &'a SafeFetch,
     source: &'a DownloadSource,
+    proxy: &'a ProxyStore,
     cancel: &'a CancelToken,
 }
 
@@ -324,16 +346,16 @@ impl<'a> ProgressSink<'a> {
     }
 }
 
-fn prepare(request: DownloadRequest) -> Result<PreparedDownload, String> {
+fn prepare(request: DownloadRequest, proxy: ProxyStore) -> Result<PreparedDownload, String> {
     let folder = validate_folder(&request.folder)?;
-    let direct = validate_url(&request.url)?;
+    let direct = validate_url(&request.url, &proxy)?;
     let proxied = request
         .proxied_url
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
     let effective = match proxied {
-        Some(value) => validate_url(value)?,
+        Some(value) => validate_url(value, &proxy)?,
         None => direct.clone(),
     };
     let headers = if proxied.is_some() {
@@ -357,6 +379,7 @@ fn prepare(request: DownloadRequest) -> Result<PreparedDownload, String> {
         folder,
         file_name,
         direct_url: request.url.trim().to_string(),
+        proxy,
     })
 }
 
@@ -377,17 +400,13 @@ fn validate_folder(folder: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn validate_url(value: &str) -> Result<Url, String> {
+fn validate_url(value: &str, proxy: &ProxyStore) -> Result<Url, String> {
     let url = Url::parse(value.trim()).map_err(|_| "The stream URL is invalid.".to_string())?;
-    if url.scheme() != "http" && url.scheme() != "https" {
-        return Err("The stream URL must be http or https.".to_string());
+    if proxy.authorizes_url(url.as_str()) {
+        return Ok(url);
     }
-    if url.host_str().is_none() {
-        return Err("The stream URL has no host.".to_string());
-    }
-    if !url.username().is_empty() || url.password().is_some() {
-        return Err("The stream URL must not contain credentials.".to_string());
-    }
+    safe_http::validate_https_url(&url)
+        .map_err(|_| "The stream URL must be https and point to a public host.".to_string())?;
     Ok(url)
 }
 
@@ -509,13 +528,14 @@ async fn execute(
     prepared: &PreparedDownload,
     cancel: &CancelToken,
 ) -> Result<(PathBuf, u64), DownloadError> {
-    let client = build_client()?;
+    let fetcher = build_client(&prepared.proxy)?;
     let context = DownloadContext {
         app,
         state,
         id,
-        client: &client,
+        fetcher: &fetcher,
         source: &prepared.source,
+        proxy: &prepared.proxy,
         cancel,
     };
 
@@ -529,16 +549,17 @@ async fn execute(
         direct_file_name(&prepared.file_name, &prepared.direct_url, &prepared.kind)?
     };
 
-    let (target, part) = unique_destination(&prepared.folder, &file_name)?;
+    let (target, part, part_file) = reserve_destination(&prepared.folder, &file_name)?;
     let result = if let Some(plan) = plan.as_ref() {
-        perform_hls(&context, plan, &part).await
+        perform_hls(&context, plan, part_file).await
     } else {
-        perform_direct(&context, &part).await
+        perform_direct(&context, part_file).await
     };
 
     match result {
         Ok(0) => {
             let _ = tokio::fs::remove_file(&part).await;
+            let _ = tokio::fs::remove_file(&target).await;
             Err(DownloadError::Message(
                 "The server returned an empty file.".to_string(),
             ))
@@ -546,10 +567,12 @@ async fn execute(
         Ok(received) => {
             if cancel.is_cancelled() {
                 let _ = tokio::fs::remove_file(&part).await;
+                let _ = tokio::fs::remove_file(&target).await;
                 return Err(DownloadError::Cancelled);
             }
             if tokio::fs::rename(&part, &target).await.is_err() {
                 let _ = tokio::fs::remove_file(&part).await;
+                let _ = tokio::fs::remove_file(&target).await;
                 return Err(DownloadError::Message(
                     "The finished file could not be moved into place.".to_string(),
                 ));
@@ -558,26 +581,35 @@ async fn execute(
         }
         Err(error) => {
             let _ = tokio::fs::remove_file(&part).await;
+            let _ = tokio::fs::remove_file(&target).await;
             Err(error)
         }
     }
 }
 
-fn build_client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .connect_timeout(CONNECT_TIMEOUT)
-        .read_timeout(READ_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::limited(5))
-        .no_gzip()
-        .user_agent("Kaminari")
-        .build()
-        .map_err(|_| "The download client could not start.".to_string())
+fn build_client(proxy: &ProxyStore) -> Result<SafeFetch, String> {
+    let proxy = proxy.clone();
+    SafeFetch::new_with_loopback_authorizer(
+        "Kaminari",
+        None,
+        true, // stream bytes are written as received, never decompressed
+        std::sync::Arc::new(move |url: &Url| proxy.authorizes_url(url.as_str())),
+    )
+    .map_err(|_| "The download client could not start.".to_string())
 }
 
-async fn perform_direct(context: &DownloadContext<'_>, part: &Path) -> Result<u64, DownloadError> {
+async fn perform_direct(
+    context: &DownloadContext<'_>,
+    part_file: std::fs::File,
+) -> Result<u64, DownloadError> {
     let response = send_get(context, &context.source.start_url).await?;
     let total = response.content_length();
-    let mut file = create_part_file(part).await?;
+    if total.is_some_and(|bytes| bytes > MAX_DOWNLOAD_BYTES) {
+        return Err(DownloadError::Message(
+            "The download is larger than the 20 GB limit.".to_string(),
+        ));
+    }
+    let mut file = tokio::fs::File::from_std(part_file);
     let mut sink = ProgressSink::new(context.app, context.state, context.id);
     sink.publish(DownloadStatus::Running, 0, total, None, None);
     let received = write_response(&mut file, response, 0, total, context.cancel, &mut sink).await?;
@@ -588,9 +620,9 @@ async fn perform_direct(context: &DownloadContext<'_>, part: &Path) -> Result<u6
 async fn perform_hls(
     context: &DownloadContext<'_>,
     plan: &HlsPlan,
-    part: &Path,
+    part_file: std::fs::File,
 ) -> Result<u64, DownloadError> {
-    let mut file = create_part_file(part).await?;
+    let mut file = tokio::fs::File::from_std(part_file);
     let mut sink = ProgressSink::new(context.app, context.state, context.id);
     sink.publish(DownloadStatus::Running, 0, None, None, None);
     let mut received = 0u64;
@@ -627,12 +659,6 @@ async fn perform_hls(
     Ok(received)
 }
 
-async fn create_part_file(path: &Path) -> Result<tokio::fs::File, DownloadError> {
-    tokio::fs::File::create(path)
-        .await
-        .map_err(|_| DownloadError::Message("The download file could not be created.".to_string()))
-}
-
 async fn flush_file(file: &mut tokio::fs::File) -> Result<(), DownloadError> {
     file.flush()
         .await
@@ -648,22 +674,27 @@ async fn send_get(
     }
     let parsed = Url::parse(url)
         .map_err(|_| DownloadError::Message("The stream URL is invalid.".to_string()))?;
-    let same_origin = parsed.origin() == context.source.origin;
-    let mut request = context.client.get(parsed);
-    for (name, value) in &context.source.headers {
-        if !same_origin && (*name == header::COOKIE || *name == header::AUTHORIZATION) {
-            continue;
-        }
-        request = request.header(name, value);
-    }
+
+    let source_origin = context.source.origin.clone();
+    let headers = &context.source.headers;
+    let request = context
+        .fetcher
+        .get(parsed.as_str(), move |hop, mut request| {
+            if hop.origin() == source_origin {
+                for (name, value) in headers {
+                    request = request.header(name, value);
+                }
+            }
+            request
+        });
 
     let response = tokio::select! {
-        result = tokio::time::timeout(HEADER_TIMEOUT, request.send()) => {
+        result = tokio::time::timeout(HEADER_TIMEOUT, request) => {
             result
                 .map_err(|_| {
                     DownloadError::Message("The server took too long to answer.".to_string())
                 })?
-                .map_err(|error| DownloadError::Message(reqwest_message(&error)))?
+                .map_err(|error| DownloadError::Message(format!("The stream request failed: {error}")))?
         }
         _ = context.cancel.cancelled() => return Err(DownloadError::Cancelled),
     };
@@ -699,6 +730,11 @@ async fn write_response(
             break;
         };
         let chunk = chunk.map_err(|error| DownloadError::Message(reqwest_message(&error)))?;
+        if received.saturating_add(chunk.len() as u64) > MAX_DOWNLOAD_BYTES {
+            return Err(DownloadError::Message(
+                "The download is larger than the 20 GB limit.".to_string(),
+            ));
+        }
         file.write_all(&chunk)
             .await
             .map_err(|_| DownloadError::Message("The file could not be written.".to_string()))?;
@@ -731,7 +767,7 @@ async fn resolve_hls(context: &DownloadContext<'_>) -> Result<HlsPlan, DownloadE
         let (text, final_url) = fetch_playlist(context, &url).await?;
         if is_master_playlist(&text) {
             validate_master_tags(&text)?;
-            let variants = parse_master_playlist(&final_url, &text)?;
+            let variants = parse_master_playlist(&final_url, &text, context.proxy)?;
             let Some(best) = variants.into_iter().max_by_key(|variant| variant.bandwidth) else {
                 return Err(DownloadError::Message(
                     "The HLS master playlist has no variants.".to_string(),
@@ -740,7 +776,7 @@ async fn resolve_hls(context: &DownloadContext<'_>) -> Result<HlsPlan, DownloadE
             url = best.url;
             continue;
         }
-        return Ok(parse_media_playlist(&final_url, &text)?);
+        return Ok(parse_media_playlist(&final_url, &text, context.proxy)?);
     }
     Err(DownloadError::Message(
         "The HLS playlist nests too deeply.".to_string(),
@@ -814,7 +850,11 @@ fn validate_master_tags(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn parse_master_playlist(base: &Url, text: &str) -> Result<Vec<HlsVariant>, String> {
+fn parse_master_playlist(
+    base: &Url,
+    text: &str,
+    proxy: &ProxyStore,
+) -> Result<Vec<HlsVariant>, String> {
     let mut variants = Vec::new();
     let mut pending_bandwidth: Option<u64> = None;
 
@@ -833,7 +873,7 @@ fn parse_master_playlist(base: &Url, text: &str) -> Result<Vec<HlsVariant>, Stri
         let Some(bandwidth) = pending_bandwidth.take() else {
             continue;
         };
-        let url = resolve_playlist_url(base, line)?;
+        let url = resolve_playlist_url(base, line, proxy)?;
         variants.push(HlsVariant {
             bandwidth,
             url: url.to_string(),
@@ -846,7 +886,7 @@ fn parse_master_playlist(base: &Url, text: &str) -> Result<Vec<HlsVariant>, Stri
     Ok(variants)
 }
 
-fn parse_media_playlist(base: &Url, text: &str) -> Result<HlsPlan, String> {
+fn parse_media_playlist(base: &Url, text: &str, proxy: &ProxyStore) -> Result<HlsPlan, String> {
     let mut segments = Vec::new();
     let mut init: Option<String> = None;
     let mut byte_range_pending = false;
@@ -869,7 +909,7 @@ fn parse_media_playlist(base: &Url, text: &str) -> Result<HlsPlan, String> {
                     "The HLS playlist has an initialization section without a URI.".to_string(),
                 );
             };
-            let resolved = resolve_playlist_url(base, &uri)?.to_string();
+            let resolved = resolve_playlist_url(base, &uri, proxy)?.to_string();
             if init.as_deref().is_some_and(|existing| existing != resolved) {
                 return Err(
                     "This HLS playlist changes its initialization section. It cannot be saved as one file."
@@ -892,7 +932,7 @@ fn parse_media_playlist(base: &Url, text: &str) -> Result<HlsPlan, String> {
                     .to_string(),
             );
         }
-        let resolved = resolve_playlist_url(base, line)?;
+        let resolved = resolve_playlist_url(base, line, proxy)?;
         if segments.len() >= MAX_HLS_SEGMENTS {
             return Err(format!(
                 "The HLS playlist has more than {MAX_HLS_SEGMENTS} segments."
@@ -963,19 +1003,15 @@ fn split_attributes(input: &str) -> Vec<&str> {
     parts
 }
 
-fn resolve_playlist_url(base: &Url, raw: &str) -> Result<Url, String> {
+fn resolve_playlist_url(base: &Url, raw: &str, proxy: &ProxyStore) -> Result<Url, String> {
     let url = base
         .join(raw.trim())
         .map_err(|_| "The HLS playlist has an invalid URI.".to_string())?;
-    if url.scheme() != "http" && url.scheme() != "https" {
-        return Err("The HLS playlist points to a non HTTP URL.".to_string());
+    if proxy.authorizes_url(url.as_str()) {
+        return Ok(url);
     }
-    if url.host_str().is_none() {
-        return Err("The HLS playlist points to a URL without a host.".to_string());
-    }
-    if !url.username().is_empty() || url.password().is_some() {
-        return Err("The HLS playlist points to a URL with credentials.".to_string());
-    }
+    safe_http::validate_https_url(&url)
+        .map_err(|_| "The HLS playlist points to a non-public HTTPS URL.".to_string())?;
     Ok(url)
 }
 
@@ -1021,7 +1057,24 @@ fn sanitize_file_name(input: &str) -> Result<String, String> {
     if cleaned.is_empty() {
         return Err("The file name has no usable characters.".to_string());
     }
+    if is_windows_reserved_name(&cleaned) {
+        return Err("The file name is reserved by Windows. Choose another title.".to_string());
+    }
     Ok(truncate_file_name(&cleaned))
+}
+
+fn is_windows_reserved_name(name: &str) -> bool {
+    let stem = name
+        .split('.')
+        .next()
+        .unwrap_or(name)
+        .trim_end_matches([' ', '.'])
+        .to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.is_ascii()
+            && stem.len() == 4
+            && matches!(&stem[..3], "COM" | "LPT")
+            && matches!(stem.as_bytes()[3], b'1'..=b'9'))
 }
 
 fn is_media_extension(value: &str) -> bool {
@@ -1119,7 +1172,13 @@ fn url_extension(url: &str) -> Option<&'static str> {
     }
 }
 
-fn unique_destination(folder: &Path, file_name: &str) -> Result<(PathBuf, PathBuf), String> {
+/// Claims a final name and a unique `.part` file before any network work.
+/// `create_new` means two concurrent downloads cannot pick or truncate the same
+/// target or part file. The empty target is removed if the download fails.
+fn reserve_destination(
+    folder: &Path,
+    file_name: &str,
+) -> Result<(PathBuf, PathBuf, std::fs::File), String> {
     let path = Path::new(file_name);
     let extension = path
         .extension()
@@ -1141,13 +1200,52 @@ fn unique_destination(folder: &Path, file_name: &str) -> Result<(PathBuf, PathBu
             (_, None) => format!("{stem} ({index})"),
         };
         let target = folder.join(&candidate);
-        let part = folder.join(format!("{candidate}.part"));
-        if !target.exists() && !part.exists() {
-            return Ok((target, part));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&target)
+        {
+            Ok(file) => drop(file),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => {
+                return Err(format!("The download file could not be reserved: {err}"));
+            }
+        }
+
+        match create_part_file(folder, &candidate) {
+            Ok((part, file)) => return Ok((target, part, file)),
+            Err(err) => {
+                let _ = std::fs::remove_file(&target);
+                return Err(err);
+            }
         }
     }
 
     Err("No free file name was found in the downloads folder.".to_string())
+}
+
+fn create_part_file(folder: &Path, candidate: &str) -> Result<(PathBuf, std::fs::File), String> {
+    for _ in 0..8 {
+        let part = folder.join(format!("{candidate}.{}.part", random_suffix()?));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&part)
+        {
+            Ok(file) => return Ok((part, file)),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => {
+                return Err(format!("The download file could not be created: {err}"));
+            }
+        }
+    }
+    Err("Could not create a unique partial download file.".to_string())
+}
+
+fn random_suffix() -> Result<String, String> {
+    let mut bytes = [0u8; 8];
+    getrandom::fill(&mut bytes).map_err(|err| format!("random source failed: {err}"))?;
+    Ok(hex::encode(bytes))
 }
 
 fn new_download_id() -> Result<String, String> {
@@ -1164,6 +1262,10 @@ mod tests {
         Url::parse(value).unwrap()
     }
 
+    fn no_proxy() -> ProxyStore {
+        ProxyStore::for_tests(1)
+    }
+
     fn test_folder(label: &str) -> PathBuf {
         let folder = std::env::temp_dir().join(format!(
             "kaminari-download-{label}-{}",
@@ -1171,6 +1273,26 @@ mod tests {
         ));
         std::fs::create_dir_all(&folder).unwrap();
         folder
+    }
+
+    #[test]
+    fn stream_urls_must_be_public_https() {
+        let proxy = no_proxy();
+        assert!(validate_url("http://cdn.example.com/a.mp4", &proxy).is_err());
+        assert!(validate_url("https://127.0.0.1/a.mp4", &proxy).is_err());
+        assert!(validate_url("https://192.168.1.5/a.mp4", &proxy).is_err());
+        assert!(validate_url("https://user:pass@cdn.example.com/a.mp4", &proxy).is_err());
+        assert!(validate_url("https://cdn.example.com/a.mp4", &proxy).is_ok());
+        assert!(validate_url("http://127.0.0.1:9/s/abc/file?token=def", &proxy).is_err());
+    }
+
+    #[test]
+    fn playlist_children_must_be_public_https() {
+        let base = url("https://cdn.example.com/hls/index.m3u8");
+        let proxy = no_proxy();
+        assert!(resolve_playlist_url(&base, "http://cdn.example.com/seg.ts", &proxy).is_err());
+        assert!(resolve_playlist_url(&base, "https://127.0.0.1/seg.ts", &proxy).is_err());
+        assert!(resolve_playlist_url(&base, "../seg.ts", &proxy).is_ok());
     }
 
     #[test]
@@ -1195,24 +1317,87 @@ mod tests {
         let folder = test_folder("collision");
         std::fs::write(folder.join("Show 01.mp4"), b"old").unwrap();
 
-        let (target, part) = unique_destination(&folder, "Show 01.mp4").unwrap();
+        let (target, part, part_file) = reserve_destination(&folder, "Show 01.mp4").unwrap();
         assert_eq!(
             target.file_name().unwrap().to_string_lossy(),
             "Show 01 (1).mp4"
         );
-        assert_eq!(
-            part.file_name().unwrap().to_string_lossy(),
-            "Show 01 (1).mp4.part"
-        );
-
+        let part_name = part.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(part_name.starts_with("Show 01 (1).mp4."));
+        assert!(part_name.ends_with(".part"));
+        drop(part_file);
         std::fs::write(folder.join("Show 01 (1).mp4"), b"old").unwrap();
-        let (target, _) = unique_destination(&folder, "Show 01.mp4").unwrap();
+        let (target, _, _) = reserve_destination(&folder, "Show 01.mp4").unwrap();
         assert_eq!(
             target.file_name().unwrap().to_string_lossy(),
             "Show 01 (2).mp4"
         );
 
         std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn concurrent_reservations_get_distinct_files() {
+        let folder = test_folder("reserve");
+        let (target_a, part_a, file_a) = reserve_destination(&folder, "Show 01.mp4").unwrap();
+        let (target_b, part_b, file_b) = reserve_destination(&folder, "Show 01.mp4").unwrap();
+        assert_ne!(target_a, target_b);
+        assert_ne!(part_a, part_b);
+        assert!(target_a.is_file());
+        assert!(target_b.is_file());
+        assert!(part_a.is_file());
+        assert!(part_b.is_file());
+
+        drop(file_a);
+        drop(file_b);
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn running_downloads_have_a_hard_cap() {
+        let state = DownloadState::default();
+        for index in 0..MAX_RUNNING_DOWNLOADS {
+            state
+                .insert(
+                    &format!("download-{index}"),
+                    CancelToken::default(),
+                    DownloadProgress {
+                        id: format!("download-{index}"),
+                        received: 0,
+                        total: None,
+                        state: DownloadStatus::Running,
+                        path: None,
+                        message: None,
+                    },
+                )
+                .unwrap();
+        }
+        let error = state
+            .insert(
+                "download-over-limit",
+                CancelToken::default(),
+                DownloadProgress {
+                    id: "download-over-limit".to_string(),
+                    received: 0,
+                    total: None,
+                    state: DownloadStatus::Running,
+                    path: None,
+                    message: None,
+                },
+            )
+            .unwrap_err();
+        assert!(error.contains("Too many downloads"));
+    }
+
+    #[test]
+    fn reserved_windows_device_names_are_rejected() {
+        assert!(sanitize_file_name("CON").is_err());
+        assert!(sanitize_file_name("con.mp4").is_err());
+        assert!(sanitize_file_name("NUL .mkv").is_err());
+        assert!(sanitize_file_name("COM1.mp4").is_err());
+        assert!(sanitize_file_name("LPT9").is_err());
+        assert!(sanitize_file_name("CONAN.mp4").is_ok());
+        assert_eq!(sanitize_file_name("Show 01.mp4. ").unwrap(), "Show 01.mp4");
     }
 
     #[test]
@@ -1227,7 +1412,8 @@ mod tests {
     fn collision_keeps_dots_in_the_title() {
         let folder = test_folder("dotted");
         std::fs::write(folder.join("Dr. Stone - Episode 1 - HLS.ts"), b"old").unwrap();
-        let (target, _) = unique_destination(&folder, "Dr. Stone - Episode 1 - HLS.ts").unwrap();
+        let (target, _, _) =
+            reserve_destination(&folder, "Dr. Stone - Episode 1 - HLS.ts").unwrap();
         assert_eq!(
             target.file_name().unwrap().to_string_lossy(),
             "Dr. Stone - Episode 1 - HLS (1).ts"
@@ -1261,7 +1447,7 @@ mod tests {
         let base = url("https://cdn.example.com/show/master.m3u8");
         let text = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\nlow/index.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=2400000,RESOLUTION=1920x1080\nhigh/index.m3u8\n";
         assert!(validate_master_tags(text).is_ok());
-        let variants = parse_master_playlist(&base, text).unwrap();
+        let variants = parse_master_playlist(&base, text, &no_proxy()).unwrap();
         let best = variants
             .into_iter()
             .max_by_key(|variant| variant.bandwidth)
@@ -1274,7 +1460,7 @@ mod tests {
     fn media_playlist_parses_and_resolves_segments() {
         let base = url("https://cdn.example.com/hls/show/index.m3u8");
         let text = "#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:4.0,\nseg0.ts\n#EXTINF:4.0,\n../seg1.ts\n#EXTINF:4.0,\nhttps://media.example.net/seg2.ts\n#EXT-X-ENDLIST\n";
-        let plan = parse_media_playlist(&base, text).unwrap();
+        let plan = parse_media_playlist(&base, text, &no_proxy()).unwrap();
         assert_eq!(
             plan.segments,
             vec![
@@ -1291,7 +1477,7 @@ mod tests {
     fn init_section_marks_mp4() {
         let base = url("https://cdn.example.com/hls/index.m3u8");
         let text = "#EXTM3U\n#EXT-X-MAP:URI=\"init.mp4\"\n#EXTINF:4.0,\nseg1.m4s\n#EXT-X-ENDLIST\n";
-        let plan = parse_media_playlist(&base, text).unwrap();
+        let plan = parse_media_playlist(&base, text, &no_proxy()).unwrap();
         assert_eq!(
             plan.init.as_deref(),
             Some("https://cdn.example.com/hls/init.mp4")
@@ -1303,7 +1489,7 @@ mod tests {
     fn encrypted_playlist_is_rejected() {
         let base = url("https://cdn.example.com/hls/index.m3u8");
         let text = "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"key.bin\"\n#EXTINF:4.0,\nseg.ts\n#EXT-X-ENDLIST\n";
-        let error = parse_media_playlist(&base, text).unwrap_err();
+        let error = parse_media_playlist(&base, text, &no_proxy()).unwrap_err();
         assert!(error.contains("encrypted"));
     }
 
@@ -1311,7 +1497,7 @@ mod tests {
     fn unencrypted_key_tag_is_allowed() {
         let base = url("https://cdn.example.com/hls/index.m3u8");
         let text = "#EXTM3U\n#EXT-X-KEY:METHOD=NONE\n#EXTINF:4.0,\nseg.ts\n#EXT-X-ENDLIST\n";
-        assert!(parse_media_playlist(&base, text).is_ok());
+        assert!(parse_media_playlist(&base, text, &no_proxy()).is_ok());
     }
 
     #[test]

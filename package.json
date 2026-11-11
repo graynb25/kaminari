@@ -1,6 +1,6 @@
 {
   "name": "kaminari",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.34.9",
@@ -9,6 +9,7 @@
     "licenses:build": "node scripts/generate-licenses.mjs",
     "check:libmpv": "node scripts/check-libmpv-artifacts.mjs",
     "package:portable": "node scripts/package-portable.mjs",
+    "release:manifest": "node scripts/write-latest-json.mjs",
     "prebuild": "node scripts/sync-version.mjs",
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit",

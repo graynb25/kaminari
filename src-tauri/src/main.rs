@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod anilist;
+mod atomic_file;
 mod commands;
 mod db;
 mod download;
@@ -10,9 +11,14 @@ mod error;
 mod ext_host;
 mod mangayomi;
 mod mpv_embed;
+mod path_guard;
 mod player;
+mod portable;
 mod proxy;
+#[cfg(debug_assertions)]
 mod registry;
+mod safe_http;
+mod startup;
 mod tray;
 
 use tauri::Manager;
@@ -32,7 +38,7 @@ fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    tauri::Builder::default()
+    let result = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -50,11 +56,25 @@ fn main() {
         .manage(player::PlayerState::new())
         .manage(mpv_embed::MpvEmbedState::default())
         .manage(download::DownloadState::default())
+        .manage(path_guard::PathAuthority::new())
+        .manage(commands::ExtensionInstallState::new())
+        .manage(commands::AniListSyncGuard::new())
+        .manage(commands::IncognitoState::new())
         .setup(|app| {
-            let data_dir = app.path().app_data_dir()?;
-            std::fs::create_dir_all(&data_dir)?;
-            let db_path = data_dir.join("kaminari.db");
-            let database = db::Db::new(db_path.to_string_lossy().as_ref())?;
+            let data_dir = match app.path().app_data_dir() {
+                Ok(dir) => dir,
+                Err(err) => {
+                    startup::report_fatal(&format!(
+                        "Kaminari could not resolve its data folder: {err}"
+                    ));
+                    std::process::exit(1);
+                }
+            };
+            let Some(database) = startup::open_database(app.handle(), &data_dir) else {
+                // The recovery dialog's cancel/close button quits without
+                // touching user data.
+                std::process::exit(0);
+            };
             app.manage(database);
 
             let sync_handle = app.handle().clone();
@@ -100,8 +120,10 @@ fn main() {
             });
 
             #[cfg(any(target_os = "linux", all(target_os = "windows", debug_assertions)))]
-            if let Err(err) = app.deep_link().register_all() {
-                tracing::warn!(error = %err, "deep link: scheme registration failed");
+            if !portable::is_portable() {
+                if let Err(err) = app.deep_link().register_all() {
+                    tracing::warn!(error = %err, "deep link: scheme registration failed");
+                }
             }
 
             if let Ok(Some(urls)) = app.deep_link().get_current() {
@@ -119,9 +141,12 @@ fn main() {
             commands::anilist_auth_start,
             commands::anilist_auth_status,
             commands::anilist_auth_logout,
+            commands::anilist_oauth_status,
+            commands::anilist_register_callback,
             commands::anilist_sync_pull,
             commands::anilist_sync_push,
             commands::anilist_sync_pending,
+            commands::set_incognito,
             commands::library_list,
             commands::library_add,
             commands::library_remove,
@@ -133,15 +158,27 @@ fn main() {
             commands::history_list,
             commands::history_clear,
             commands::history_remove,
+            // Legacy Aniyomi registry/source commands stay available to
+            // development builds and tests but are not reachable from the
+            // release webview. The metadata code remains for future runtime
+            // work.
+            #[cfg(debug_assertions)]
             commands::source_validate_id,
+            #[cfg(debug_assertions)]
             commands::registry_fetch,
+            #[cfg(debug_assertions)]
             commands::source_list,
+            #[cfg(debug_assertions)]
             commands::source_install,
+            #[cfg(debug_assertions)]
             commands::source_remove,
+            #[cfg(debug_assertions)]
             commands::source_toggle,
             commands::js_extension_list,
             commands::js_extension_install_sample,
-            commands::js_extension_install_path,
+            commands::js_extension_install_pick,
+            commands::js_extension_install_package,
+            commands::js_extension_install_confirm,
             commands::mangayomi_preview,
             commands::mangayomi_install,
             commands::js_extension_remove,
@@ -174,15 +211,24 @@ fn main() {
             commands::source_continue,
             commands::source_history,
             commands::source_history_remove,
+            commands::backup_export_pick,
             commands::backup_export,
+            commands::backup_restore_pick,
             commands::backup_restore,
+            commands::settings_export_pick,
             commands::settings_export,
+            commands::settings_import_pick,
             commands::settings_read,
+            commands::clear_webview_data,
             commands::app_restart,
             download::download_start,
             download::download_cancel,
             download::downloads_list
         ])
-        .run(tauri::generate_context!())
-        .expect("error starting Kaminari");
+        .run(tauri::generate_context!());
+
+    if let Err(err) = result {
+        startup::report_fatal(&format!("Kaminari stopped before its window opened: {err}"));
+        std::process::exit(1);
+    }
 }

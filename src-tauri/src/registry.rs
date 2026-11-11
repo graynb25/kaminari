@@ -1,11 +1,19 @@
 // Aniyomi style registry reader. Metadata only. Nothing here executes an APK.
 
+use reqwest::header::ACCEPT;
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 use crate::error::{AppError, AppResult};
+use crate::safe_http::{self, SafeFetch};
 
 const MAX_BYTES: usize = 20 * 1024 * 1024;
 const MAX_EXTENSIONS: usize = 500;
+const USER_AGENT_TEXT: &str = concat!(
+    "Kaminari/",
+    env!("CARGO_PKG_VERSION"),
+    " (+https://github.com/graynb25/kaminari)"
+);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,24 +66,19 @@ impl LegacyExtension {
 pub async fn fetch_index(url: &str) -> AppResult<Vec<LegacyExtension>> {
     validate_url(url)?;
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|err| AppError::Net(err.to_string()))?;
+    let client = SafeFetch::new(
+        USER_AGENT_TEXT,
+        Some(std::time::Duration::from_secs(15)),
+        false,
+    )
+    .map_err(AppError::Net)?;
 
     let response = client
-        .get(url)
-        .header(
-            "User-Agent",
-            concat!(
-                "Kaminari/",
-                env!("CARGO_PKG_VERSION"),
-                " (+https://github.com/graynb25/kaminari)"
-            ),
-        )
-        .send()
+        .get(url, |_url, request| {
+            request.header(ACCEPT, "application/json")
+        })
         .await
-        .map_err(|err| AppError::Net(err.to_string()))?;
+        .map_err(AppError::Net)?;
 
     if !response.status().is_success() {
         return Err(AppError::Net(format!(
@@ -84,15 +87,9 @@ pub async fn fetch_index(url: &str) -> AppResult<Vec<LegacyExtension>> {
         )));
     }
 
-    let bytes = response
-        .bytes()
+    let bytes = safe_http::read_capped(response, MAX_BYTES, "registry")
         .await
-        .map_err(|err| AppError::Net(err.to_string()))?;
-    if bytes.len() > MAX_BYTES {
-        return Err(AppError::Net(
-            "Registry is larger than the 20 MB limit".to_string(),
-        ));
-    }
+        .map_err(AppError::Net)?;
 
     let mut entries: Vec<LegacyExtension> = serde_json::from_slice(&bytes)
         .map_err(|err| AppError::Net(format!("Registry JSON is invalid: {err}")))?;
@@ -103,13 +100,9 @@ pub async fn fetch_index(url: &str) -> AppResult<Vec<LegacyExtension>> {
 }
 
 fn validate_url(url: &str) -> AppResult<()> {
-    if url.starts_with("https://") {
-        Ok(())
-    } else {
-        Err(AppError::Blocked(
-            "Registry URL must start with https://".to_string(),
-        ))
-    }
+    let parsed = Url::parse(url.trim())
+        .map_err(|_| AppError::Blocked("Registry URL is not valid".to_string()))?;
+    safe_http::validate_https_url(&parsed).map_err(AppError::Blocked)
 }
 
 #[cfg(test)]

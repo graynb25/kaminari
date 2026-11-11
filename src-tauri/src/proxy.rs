@@ -3,7 +3,7 @@
 // Rust keeps the upstream URL, the allowlisted headers, the per entry token
 // and the rewritten playlist children in memory only.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
@@ -29,8 +29,15 @@ pub const ABSOLUTE_TTL: Duration = Duration::from_secs(4 * 60 * 60);
 pub const MAX_ENTRIES: usize = 64;
 pub const MAX_HEADERS: usize = 16;
 pub const MAX_HEADER_BYTES: usize = 8 * 1024;
+// Keep the child cap at 4096: an earlier 256 child cap broke long VOD
+// playlists (see docs/ENGINEERING-NOTES.md). The cap is enforced before a
+// refresh mutates the table, so a playlist can never leave dangling child ids.
 pub const MAX_CHILDREN: usize = 4096;
 pub const MAX_PLAYLIST_BYTES: usize = 2 * 1024 * 1024;
+// Rewriting each child URI expands it to a loopback path. A 2 MB playlist can
+// grow by roughly one proxy path per segment line, so bound the rendered body
+// at twice the upstream cap.
+pub const MAX_RENDERED_PLAYLIST_BYTES: usize = 2 * MAX_PLAYLIST_BYTES;
 pub const MAX_PLAYLIST_DEPTH: u8 = 4;
 pub const MAX_KEY_BYTES: usize = 64 * 1024;
 pub const MAX_SUBTITLE_BYTES: usize = 512 * 1024;
@@ -108,7 +115,6 @@ impl ChildKind {
 
 #[derive(Debug, Clone)]
 struct ChildEntry {
-    child_id: String,
     upstream_url: String,
     content_type: Option<String>,
     byte_range: Option<String>,
@@ -466,7 +472,116 @@ fn default_cookie_path(url: &Url) -> String {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ChildKey {
+    upstream_url: String,
+    byte_range: Option<String>,
+}
+
+impl ChildKey {
+    fn from_spec(spec: &ChildSpec) -> Self {
+        Self {
+            upstream_url: spec.upstream_url.clone(),
+            byte_range: spec.byte_range.clone(),
+        }
+    }
+
+    fn from_child(child: &ChildEntry) -> Self {
+        Self {
+            upstream_url: child.upstream_url.clone(),
+            byte_range: child.byte_range.clone(),
+        }
+    }
+}
+
+#[derive(Default)]
+struct ChildIndex {
+    by_id: HashMap<String, ChildEntry>,
+    by_key: HashMap<ChildKey, String>,
+    order: VecDeque<String>,
+}
+
+impl ChildIndex {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn get_mut(&mut self, child_id: &str) -> Option<&mut ChildEntry> {
+        self.by_id.get_mut(child_id)
+    }
+
+    fn id_for(&self, key: &ChildKey) -> Option<&str> {
+        self.by_key.get(key).map(String::as_str)
+    }
+
+    fn insert(&mut self, spec: &ChildSpec, now: Instant) -> Result<String, ProxyError> {
+        if self.by_id.len() >= MAX_CHILDREN {
+            return Err(ProxyError::Oversized("playlist-too-many-children"));
+        }
+        let mut child_id = random_hex_n(8).map_err(|_| ProxyError::Upstream("random"))?;
+        while self.by_id.contains_key(&child_id) {
+            child_id = random_hex_n(8).map_err(|_| ProxyError::Upstream("random"))?;
+        }
+        let key = ChildKey::from_spec(spec);
+        let entry = ChildEntry {
+            upstream_url: spec.upstream_url.clone(),
+            content_type: spec.content_type.clone(),
+            byte_range: spec.byte_range.clone(),
+            kind: spec.kind,
+            depth: spec.depth,
+            last_used: now,
+        };
+        self.by_key.insert(key, child_id.clone());
+        self.by_id.insert(child_id.clone(), entry);
+        self.order.push_back(child_id.clone());
+        Ok(child_id)
+    }
+
+    /// Drop the least recently inserted children that the current playlist
+    /// does not reference. Children that are still in the live window keep
+    /// their ids, so reconciliation cannot evict a URL it just handed out.
+    fn make_room(&mut self, current: &HashSet<ChildKey>) -> Result<(), ProxyError> {
+        let existing_current = current
+            .iter()
+            .filter(|key| self.by_key.contains_key(*key))
+            .count();
+        let projected = self
+            .by_id
+            .len()
+            .saturating_sub(existing_current)
+            .saturating_add(current.len());
+        if projected <= MAX_CHILDREN {
+            return Ok(());
+        }
+        let to_evict = projected - MAX_CHILDREN;
+        let non_current = self.by_id.len().saturating_sub(existing_current);
+        if non_current < to_evict {
+            return Err(ProxyError::Oversized("playlist-too-many-children"));
+        }
+
+        let mut kept = VecDeque::with_capacity(self.by_id.len());
+        let mut evicted = 0usize;
+        while let Some(child_id) = self.order.pop_front() {
+            let Some(child) = self.by_id.get(&child_id) else {
+                continue;
+            };
+            let key = ChildKey::from_child(child);
+            if evicted < to_evict && !current.contains(&key) {
+                self.by_id.remove(&child_id);
+                self.by_key.remove(&key);
+                evicted += 1;
+            } else {
+                kept.push_back(child_id);
+            }
+        }
+        self.order = kept;
+        if self.by_id.len().saturating_sub(existing_current) + current.len() > MAX_CHILDREN {
+            return Err(ProxyError::Oversized("playlist-too-many-children"));
+        }
+        Ok(())
+    }
+}
+
 struct ProxyEntry {
     opaque_id: String,
     token: String,
@@ -478,11 +593,24 @@ struct ProxyEntry {
     allowed: Option<Vec<HostRule>>,
     allow_private: bool,
     created_at: Instant,
-    last_used: Instant,
-    children: HashMap<String, ChildEntry>,
+    last_used: Mutex<Instant>,
+    children: Mutex<ChildIndex>,
 }
 
 impl ProxyEntry {
+    fn touch(&self, now: Instant) {
+        if let Ok(mut last_used) = self.last_used.lock() {
+            *last_used = now;
+        }
+    }
+
+    fn last_used(&self) -> Instant {
+        *self
+            .last_used
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     fn cookie_header(&self, url: &Url) -> Option<String> {
         self.jar.lock().ok().and_then(|mut jar| jar.header_for(url))
     }
@@ -495,7 +623,7 @@ impl ProxyEntry {
 }
 
 struct StoreState {
-    entries: HashMap<String, ProxyEntry>,
+    entries: HashMap<String, Arc<ProxyEntry>>,
     port: u16,
     enabled: bool,
     allow_private: bool,
@@ -700,7 +828,7 @@ impl ProxyStore {
         let token = random_hex()?;
         let now = Instant::now();
         let kind = stream.kind.to_ascii_lowercase();
-        let entry = ProxyEntry {
+        let entry = Arc::new(ProxyEntry {
             opaque_id: opaque_id.clone(),
             token: token.clone(),
             extension_id: extension_id.to_string(),
@@ -711,9 +839,9 @@ impl ProxyStore {
             allowed,
             allow_private,
             created_at: now,
-            last_used: now,
-            children: HashMap::new(),
-        };
+            last_used: Mutex::new(now),
+            children: Mutex::new(ChildIndex::new()),
+        });
 
         let port = {
             let mut state = self
@@ -727,7 +855,7 @@ impl ProxyStore {
                 if let Some(key) = state
                     .entries
                     .iter()
-                    .min_by_key(|(_, entry)| entry.last_used)
+                    .min_by_key(|(_, entry)| entry.last_used())
                     .map(|(key, _)| key.clone())
                 {
                     if let Some(old) = state.entries.remove(&key) {
@@ -778,16 +906,63 @@ impl ProxyStore {
         Ok(())
     }
 
-    fn lookup(&self, id: &str, token: &str) -> Result<ProxyEntry, LookupError> {
-        let mut state = self.inner.lock().map_err(|_| LookupError::NotFound)?;
-        let Some(entry) = state.entries.get(id) else {
-            return Err(LookupError::NotFound);
+    /// True only for a URL the app's proxy issued for a live entry: loopback
+    /// host, this store's port, `/s/{opaque_id}/...` and the matching random
+    /// token. Downloads use this to accept the proxy without accepting an
+    /// arbitrary localhost URL.
+    pub fn authorizes_url(&self, value: &str) -> bool {
+        let Ok(url) = Url::parse(value) else {
+            return false;
         };
-        check_entry(entry, token)?;
+        if url.scheme() != "http" || url.host_str() != Some("127.0.0.1") {
+            return false;
+        }
+        if !url.username().is_empty() || url.password().is_some() {
+            return false;
+        }
+        let Ok(state) = self.inner.lock() else {
+            return false;
+        };
+        if !state.enabled || url.port() != Some(state.port) {
+            return false;
+        }
+        let segments: Vec<&str> = url
+            .path_segments()
+            .map(|segments| segments.collect())
+            .unwrap_or_default();
+        if segments.len() < 3 || segments[0] != "s" {
+            return false;
+        }
+        let Some(entry) = state.entries.get(segments[1]).cloned() else {
+            return false;
+        };
+        drop(state);
         let now = Instant::now();
-        let entry = state.entries.get_mut(id).ok_or(LookupError::NotFound)?;
-        entry.last_used = now;
-        Ok(entry.clone())
+        if now.duration_since(entry.created_at) >= ABSOLUTE_TTL
+            || now.duration_since(entry.last_used()) >= IDLE_TTL
+        {
+            return false;
+        }
+        let token = url
+            .query_pairs()
+            .find(|(name, _)| name == "token")
+            .map(|(_, value)| value.into_owned());
+        matches!(token.as_deref(), Some(token) if constant_time_eq(token.as_bytes(), entry.token.as_bytes()))
+    }
+
+    fn lookup(&self, id: &str, token: &str) -> Result<Arc<ProxyEntry>, LookupError> {
+        let entry = {
+            let state = self.inner.lock().map_err(|_| LookupError::NotFound)?;
+            state
+                .entries
+                .get(id)
+                .cloned()
+                .ok_or(LookupError::NotFound)?
+        };
+        let now = Instant::now();
+        check_entry(&entry, token, now)?;
+        entry.touch(now);
+        Ok(entry)
     }
 
     fn lookup_child(
@@ -795,77 +970,76 @@ impl ProxyStore {
         id: &str,
         token: &str,
         child_id: &str,
-    ) -> Result<(ProxyEntry, ChildEntry), LookupError> {
-        let mut state = self.inner.lock().map_err(|_| LookupError::NotFound)?;
-        let Some(entry) = state.entries.get(id) else {
-            return Err(LookupError::NotFound);
+    ) -> Result<(Arc<ProxyEntry>, ChildEntry), LookupError> {
+        let entry = {
+            let state = self.inner.lock().map_err(|_| LookupError::NotFound)?;
+            state
+                .entries
+                .get(id)
+                .cloned()
+                .ok_or(LookupError::NotFound)?
         };
-        check_entry(entry, token)?;
         let now = Instant::now();
-        let entry = state.entries.get_mut(id).ok_or(LookupError::NotFound)?;
-        entry.last_used = now;
-        let child = match entry.children.get_mut(child_id) {
-            Some(child) => {
-                child.last_used = now;
-                child.clone()
-            }
-            None => return Err(LookupError::NotFound),
+        check_entry(&entry, token, now)?;
+        entry.touch(now);
+        let child = {
+            let mut children = entry.children.lock().map_err(|_| LookupError::NotFound)?;
+            let child = children.get_mut(child_id).ok_or(LookupError::NotFound)?;
+            child.last_used = now;
+            child.clone()
         };
-        Ok((entry.clone(), child))
+        Ok((entry, child))
     }
 
     fn reconcile_children(&self, id: &str, specs: &[ChildSpec]) -> Result<Vec<String>, ProxyError> {
-        let mut state = self
-            .inner
+        // Bound the work and the table before touching the entry. A playlist
+        // that needs more distinct children than the cap fails closed instead
+        // of leaving loopback URLs that point at evicted children.
+        let mut current = HashSet::with_capacity(specs.len().min(MAX_CHILDREN + 1));
+        for spec in specs {
+            current.insert(ChildKey::from_spec(spec));
+            if current.len() > MAX_CHILDREN {
+                return Err(ProxyError::Oversized("playlist-too-many-children"));
+            }
+        }
+
+        let entry = {
+            let state = self
+                .inner
+                .lock()
+                .map_err(|_| ProxyError::Upstream("store"))?;
+            state
+                .entries
+                .get(id)
+                .cloned()
+                .ok_or(ProxyError::Upstream("entry"))?
+        };
+        let mut children = entry
+            .children
             .lock()
             .map_err(|_| ProxyError::Upstream("store"))?;
-        let Some(entry) = state.entries.get_mut(id) else {
-            return Err(ProxyError::Upstream("entry"));
-        };
+        children.make_room(&current)?;
+
         let now = Instant::now();
         let mut ids = Vec::with_capacity(specs.len());
         for spec in specs {
-            if let Some(child) = entry.children.values_mut().find(|child| {
-                child.upstream_url == spec.upstream_url && child.byte_range == spec.byte_range
-            }) {
-                if spec.content_type.is_some() {
-                    child.content_type = spec.content_type.clone();
+            let key = ChildKey::from_spec(spec);
+            if let Some(child_id) = children.id_for(&key).map(str::to_string) {
+                if let Some(child) = children.get_mut(&child_id) {
+                    if spec.content_type.is_some() {
+                        child.content_type = spec.content_type.clone();
+                    }
+                    child.byte_range = spec.byte_range.clone();
+                    child.kind = spec.kind;
+                    child.depth = spec.depth;
+                    child.last_used = now;
+                    ids.push(child_id);
+                    continue;
                 }
-                child.byte_range = spec.byte_range.clone();
-                child.kind = spec.kind;
-                child.depth = spec.depth;
-                child.last_used = now;
-                ids.push(child.child_id.clone());
-                continue;
+                // Defensive: drop an index entry that lost its child.
+                children.by_key.remove(&key);
             }
-
-            if entry.children.len() >= MAX_CHILDREN {
-                if let Some(key) = entry
-                    .children
-                    .iter()
-                    .min_by_key(|(_, child)| child.last_used)
-                    .map(|(key, _)| key.clone())
-                {
-                    entry.children.remove(&key);
-                }
-            }
-
-            let mut child_id = random_hex_n(8).map_err(|_| ProxyError::Upstream("random"))?;
-            while entry.children.contains_key(&child_id) {
-                child_id = random_hex_n(8).map_err(|_| ProxyError::Upstream("random"))?;
-            }
-            entry.children.insert(
-                child_id.clone(),
-                ChildEntry {
-                    child_id: child_id.clone(),
-                    upstream_url: spec.upstream_url.clone(),
-                    content_type: spec.content_type.clone(),
-                    byte_range: spec.byte_range.clone(),
-                    kind: spec.kind,
-                    depth: spec.depth,
-                    last_used: now,
-                },
-            );
+            let child_id = children.insert(spec, now)?;
             ids.push(child_id);
         }
         Ok(ids)
@@ -880,7 +1054,7 @@ impl ProxyStore {
         };
         state.entries.retain(|_, entry| {
             let expired = now.duration_since(entry.created_at) >= ABSOLUTE_TTL
-                || now.duration_since(entry.last_used) >= IDLE_TTL;
+                || now.duration_since(entry.last_used()) >= IDLE_TTL;
             if expired {
                 removed += 1;
                 tracing::info!(
@@ -905,7 +1079,7 @@ impl ProxyStore {
     }
 
     #[cfg(test)]
-    fn for_tests(port: u16) -> Self {
+    pub(crate) fn for_tests(port: u16) -> Self {
         Self::with_state(port, true, true)
     }
 
@@ -940,7 +1114,9 @@ impl ProxyStore {
     fn expire_for_test(&self, opaque_id: &str) {
         let mut state = self.inner.lock().unwrap();
         if let Some(entry) = state.entries.get_mut(opaque_id) {
-            entry.last_used = Instant::now() - IDLE_TTL - Duration::from_secs(1);
+            if let Ok(mut last_used) = entry.last_used.lock() {
+                *last_used = Instant::now() - IDLE_TTL - Duration::from_secs(1);
+            }
         }
     }
 }
@@ -1058,7 +1234,10 @@ async fn manifest_handler(
         Ok(ids) => ids,
         Err(err) => return proxy_error_response(err),
     };
-    let rewritten = render_playlist(&entry, &parsed, &child_ids);
+    let rewritten = match render_playlist(&entry, &parsed, &child_ids) {
+        Ok(rewritten) => rewritten,
+        Err(err) => return proxy_error_response(err),
+    };
     playlist_response(rewritten, &method)
 }
 
@@ -1161,7 +1340,10 @@ async fn playlist_child_response(
         Ok(ids) => ids,
         Err(err) => return proxy_error_response(err),
     };
-    let rewritten = render_playlist(entry, &parsed, &child_ids);
+    let rewritten = match render_playlist(entry, &parsed, &child_ids) {
+        Ok(rewritten) => rewritten,
+        Err(err) => return proxy_error_response(err),
+    };
     playlist_response(rewritten, method)
 }
 
@@ -1546,13 +1728,12 @@ fn short(status: StatusCode, body: &'static str) -> Response {
     (status, body).into_response()
 }
 
-fn check_entry(entry: &ProxyEntry, token: &str) -> Result<(), LookupError> {
+fn check_entry(entry: &ProxyEntry, token: &str, now: Instant) -> Result<(), LookupError> {
     if !constant_time_eq(entry.token.as_bytes(), token.as_bytes()) {
         return Err(LookupError::Forbidden);
     }
-    let now = Instant::now();
     if now.duration_since(entry.created_at) >= ABSOLUTE_TTL
-        || now.duration_since(entry.last_used) >= IDLE_TTL
+        || now.duration_since(entry.last_used()) >= IDLE_TTL
     {
         return Err(LookupError::Expired);
     }
@@ -1999,13 +2180,17 @@ fn parse_byte_range(value: &str, next_offset: &mut u64) -> Option<String> {
     Some(format!("{start}-{end}"))
 }
 
-fn render_playlist(entry: &ProxyEntry, parsed: &ParsedPlaylist, child_ids: &[String]) -> String {
+fn render_playlist(
+    entry: &ProxyEntry,
+    parsed: &ParsedPlaylist,
+    child_ids: &[String],
+) -> Result<String, ProxyError> {
     let mut out = String::new();
     for line in &parsed.lines {
         match line {
             PlaylistLine::Text(text) => {
-                out.push_str(text);
-                out.push('\n');
+                push_rendered(&mut out, text)?;
+                push_rendered(&mut out, "\n")?;
             }
             PlaylistLine::UriTag {
                 text,
@@ -2014,23 +2199,34 @@ fn render_playlist(entry: &ProxyEntry, parsed: &ParsedPlaylist, child_ids: &[Str
                 spec,
             } => {
                 if let Some(child_id) = child_ids.get(*spec) {
-                    out.push_str(&text[..*uri_start]);
-                    out.push_str(&child_path(entry, child_id));
-                    out.push_str(&text[*uri_end..]);
+                    push_rendered(&mut out, &text[..*uri_start])?;
+                    push_rendered(&mut out, &child_path(entry, child_id))?;
+                    push_rendered(&mut out, &text[*uri_end..])?;
                 } else {
-                    out.push_str(text);
+                    push_rendered(&mut out, text)?;
                 }
-                out.push('\n');
+                push_rendered(&mut out, "\n")?;
             }
             PlaylistLine::Segment { spec } => {
                 if let Some(child_id) = child_ids.get(*spec) {
-                    out.push_str(&child_path(entry, child_id));
+                    push_rendered(&mut out, &child_path(entry, child_id))?;
                 }
-                out.push('\n');
+                push_rendered(&mut out, "\n")?;
             }
         }
     }
-    out
+    Ok(out)
+}
+
+fn push_rendered(out: &mut String, value: &str) -> Result<(), ProxyError> {
+    let Some(next) = out.len().checked_add(value.len()) else {
+        return Err(ProxyError::Oversized("playlist-too-large"));
+    };
+    if next > MAX_RENDERED_PLAYLIST_BYTES {
+        return Err(ProxyError::Oversized("playlist-too-large"));
+    }
+    out.push_str(value);
+    Ok(())
 }
 
 fn child_path(entry: &ProxyEntry, child_id: &str) -> String {
@@ -2125,27 +2321,7 @@ fn check_ip(ip: IpAddr, allow_private: bool) -> Result<(), String> {
 }
 
 fn is_blocked_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(ip) => {
-            ip.is_private()
-                || ip.is_loopback()
-                || ip.is_link_local()
-                || ip.is_multicast()
-                || ip.is_broadcast()
-                || ip.is_unspecified()
-                || ip.octets() == [169, 254, 169, 254]
-                || ip.octets()[0] == 0
-        }
-        IpAddr::V6(ip) => {
-            ip.to_ipv4_mapped()
-                .is_some_and(|ip| is_blocked_ip(IpAddr::V4(ip)))
-                || ip.is_loopback()
-                || ip.is_unspecified()
-                || ip.is_unique_local()
-                || ip.is_unicast_link_local()
-                || ip.is_multicast()
-        }
-    }
+    !crate::safe_http::is_public_ip(ip)
 }
 
 fn parse_range(value: &str) -> Option<ByteRange> {
@@ -3570,9 +3746,11 @@ live/seg{}.ts\n",
 
         {
             let state = store.inner.lock().unwrap();
-            let children = &state.entries.get(&registered.opaque_id).unwrap().children;
-            assert_eq!(children.len(), 2);
+            let entry = state.entries.get(&registered.opaque_id).unwrap();
+            let children = entry.children.lock().unwrap();
+            assert_eq!(children.by_id.len(), 2);
             let ranges = children
+                .by_id
                 .values()
                 .map(|child| child.byte_range.clone())
                 .collect::<Vec<_>>();
@@ -3651,6 +3829,9 @@ live/seg{}.ts\n",
             .get(&registered.opaque_id)
             .unwrap()
             .children
+            .lock()
+            .unwrap()
+            .by_id
             .len();
         assert_eq!(children, 4);
     }
@@ -3732,6 +3913,9 @@ live/seg{}.ts\n",
             .get(&registered.opaque_id)
             .unwrap()
             .children
+            .lock()
+            .unwrap()
+            .by_id
             .len();
         assert_eq!(children, 5, "live child registry grew beyond unique URLs");
     }
@@ -4343,10 +4527,11 @@ live/seg{}.ts\n",
             .unwrap();
         assert_eq!(ids.len(), 283);
         let state = store.inner.lock().unwrap();
-        let children = &state.entries.get(&registered.opaque_id).unwrap().children;
-        assert_eq!(children.len(), 283);
+        let entry = state.entries.get(&registered.opaque_id).unwrap();
+        let children = entry.children.lock().unwrap();
+        assert_eq!(children.by_id.len(), 283);
         for id in &ids {
-            assert!(children.contains_key(id), "missing early child {id}");
+            assert!(children.by_id.contains_key(id), "missing early child {id}");
         }
     }
 
@@ -4388,6 +4573,9 @@ live/seg{}.ts\n",
                 .get(&registered.opaque_id)
                 .unwrap()
                 .children
+                .lock()
+                .unwrap()
+                .by_id
                 .len(),
             10
         );
@@ -4404,6 +4592,8 @@ live/seg{}.ts\n",
             .unwrap();
         assert_eq!(ids[0], ids[1]);
 
+        // A single refresh cannot exceed the entry budget. It fails before
+        // mutating the table, so previously issued child URLs stay valid.
         let many = (0..MAX_CHILDREN + 40)
             .map(|index| ChildSpec {
                 upstream_url: format!("http://127.0.0.1:9/many/{index}.ts"),
@@ -4413,10 +4603,10 @@ live/seg{}.ts\n",
                 depth: 1,
             })
             .collect::<Vec<_>>();
-        let ids = store
-            .reconcile_children(&registered.opaque_id, &many)
-            .unwrap();
-        assert_eq!(ids.len(), MAX_CHILDREN + 40);
+        assert!(matches!(
+            store.reconcile_children(&registered.opaque_id, &many),
+            Err(ProxyError::Oversized("playlist-too-many-children"))
+        ));
         assert_eq!(
             store
                 .inner
@@ -4426,9 +4616,60 @@ live/seg{}.ts\n",
                 .get(&registered.opaque_id)
                 .unwrap()
                 .children
+                .lock()
+                .unwrap()
+                .by_id
                 .len(),
-            MAX_CHILDREN
+            11
         );
+
+        // Fill the table with children that are not in the next playlist.
+        // The next refresh must evict those first and keep every child it
+        // references, even at the cap.
+        let stale = (0..40)
+            .map(|index| ChildSpec {
+                upstream_url: format!("http://127.0.0.1:9/stale/{index}.ts"),
+                content_type: None,
+                byte_range: None,
+                kind: ChildKind::Segment,
+                depth: 1,
+            })
+            .collect::<Vec<_>>();
+        store
+            .reconcile_children(&registered.opaque_id, &stale)
+            .unwrap();
+
+        let mut refresh = specs.clone();
+        refresh.push(ChildSpec {
+            upstream_url: "http://127.0.0.1:9/seg/dup.ts".to_string(),
+            content_type: None,
+            byte_range: None,
+            kind: ChildKind::Segment,
+            depth: 1,
+        });
+        refresh.extend((0..MAX_CHILDREN - refresh.len()).map(|index| ChildSpec {
+            upstream_url: format!("http://127.0.0.1:9/refresh/{index}.ts"),
+            content_type: None,
+            byte_range: None,
+            kind: ChildKind::Segment,
+            depth: 1,
+        }));
+        let refresh_ids = store
+            .reconcile_children(&registered.opaque_id, &refresh)
+            .unwrap();
+        assert_eq!(refresh_ids.len(), MAX_CHILDREN);
+        assert_eq!(&refresh_ids[..10], &first[..]);
+        assert_eq!(refresh_ids[10], ids[0]);
+        let state = store.inner.lock().unwrap();
+        let entry = state.entries.get(&registered.opaque_id).unwrap();
+        let children = entry.children.lock().unwrap();
+        assert_eq!(children.by_id.len(), MAX_CHILDREN);
+        for id in &refresh_ids {
+            assert!(
+                children.by_id.contains_key(id),
+                "evicted current child {id}"
+            );
+        }
     }
 
     #[test]
@@ -4460,7 +4701,7 @@ live/seg{}.ts\n",
             "audio".to_string(),
             "segment".to_string(),
         ];
-        let rendered = render_playlist(&entry, &parsed, &child_ids);
+        let rendered = render_playlist(&entry, &parsed, &child_ids).unwrap();
         assert!(!rendered.contains("https://cdn.example"), "{rendered}");
         assert!(rendered.contains("IV=0xABCD"), "{rendered}");
         assert!(
@@ -4472,6 +4713,21 @@ live/seg{}.ts\n",
             "{rendered}"
         );
         assert_eq!(rendered.matches("/s/opaque/seg/").count(), 3);
+    }
+
+    #[test]
+    fn rendered_playlist_bytes_are_capped() {
+        let entry = test_entry();
+        let parsed = ParsedPlaylist {
+            lines: vec![PlaylistLine::Text(
+                "x".repeat(MAX_RENDERED_PLAYLIST_BYTES + 1),
+            )],
+            specs: Vec::new(),
+        };
+        assert!(matches!(
+            render_playlist(&entry, &parsed, &[]),
+            Err(ProxyError::Oversized("playlist-too-large"))
+        ));
     }
 
     #[test]
@@ -4519,8 +4775,8 @@ https://other.example/hls/high.m3u8\n";
             allowed: None,
             allow_private: true,
             created_at: now,
-            last_used: now,
-            children: HashMap::new(),
+            last_used: Mutex::new(now),
+            children: Mutex::new(ChildIndex::new()),
         }
     }
 
@@ -4590,9 +4846,9 @@ https://other.example/hls/high.m3u8\n";
     }
 
     #[test]
-    fn cookie_jar_is_shared_by_entry_clones() {
-        let entry = test_entry();
-        let clone = entry.clone();
+    fn cookie_jar_is_shared_by_entry_handles() {
+        let entry = Arc::new(test_entry());
+        let clone = Arc::clone(&entry);
         let url = Url::parse("https://cdn.example/hls/media.m3u8").unwrap();
         let headers = HeaderMap::from_iter([(
             header::SET_COOKIE,
@@ -4680,6 +4936,36 @@ https://other.example/hls/high.m3u8\n";
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn download_authority_accepts_only_issued_proxy_urls() {
+        let store = ProxyStore::for_tests(8765);
+        let stream = ProxyStreamInput {
+            url: "http://127.0.0.1:9/video.mp4".to_string(),
+            kind: "file".to_string(),
+            headers: None,
+        };
+        let registered = store
+            .register_inner("app.kaminari.test", &stream, None, false)
+            .await
+            .unwrap();
+
+        assert!(store.authorizes_url(&registered.proxy_url));
+        let child = registered.proxy_url.replace("/file", "/seg/segment-1");
+        assert!(store.authorizes_url(&child));
+
+        let wrong_token = format!("{}0", registered.proxy_url);
+        assert!(!store.authorizes_url(&wrong_token));
+        let wrong_port = registered.proxy_url.replace(":8765", ":8766");
+        assert!(!store.authorizes_url(&wrong_port));
+        let wrong_host = registered.proxy_url.replace("127.0.0.1", "localhost");
+        assert!(!store.authorizes_url(&wrong_host));
+        let no_token = registered.proxy_url.split('?').next().unwrap();
+        assert!(!store.authorizes_url(no_token));
+
+        store.revoke(&registered.opaque_id).unwrap();
+        assert!(!store.authorizes_url(&registered.proxy_url));
     }
 
     fn token_of(registered: &ProxyUrl) -> String {

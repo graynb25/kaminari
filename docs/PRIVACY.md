@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: 2026-11-08
+Last updated: 2026-11-11
 
 Kaminari is local-first. The app has no account system, no analytics, no advertising, no telemetry, and no crash upload by default. This policy explains what stays on your machine and what leaves it when you use the app.
 
@@ -19,7 +19,7 @@ If you contact us by email or through the project repository, we receive what yo
 Kaminari stores the following locally:
 
 - **SQLite database:** library entries, watched episodes, playback progress, history, source library entries, installed extension metadata and extension storage.
-- **WebView local storage:** your theme choice and recent searches.
+- **WebView local storage:** your theme choice, the Incognito flag and recent searches. While Incognito is on, new searches stay in memory for the open window and are not written to local storage.
 - **WebView cache:** images and media fragments cached by the embedded browser.
 - **WebView cookies:** cookies set by sites you access through the app or its extensions, if any.
 
@@ -33,6 +33,7 @@ Kaminari makes network requests directly from your device. We do not proxy or re
 
 - **AniList:** `https://graphql.anilist.co` for search, metadata, cover images and banners. AniList receives your IP address, user agent, query and request time under its own privacy policy.
 - **Artwork hosts:** cover and banner images are fetched from the hosts AniList or your extensions return.
+- **App updates:** when you open Settings, the app may check the signed release feed at `https://github.com/graynb25/kaminari/releases/latest/download/latest.json`. GitHub receives your IP address, user agent and request time under its own privacy policy. An update is downloaded only after you confirm it.
 - **Registry URLs:** Kaminari does not expose a registry browser. The legacy registry command remains in the backend for a possible future APK runtime; if it is called, the app fetches the URL you choose and that host receives your request.
 - **Extension hosts:** extensions you install can call `net.fetch` against hosts listed in their manifest. Those hosts receive your request and any data the extension sends.
 - **Stream hosts:** when you play a video, the player fetches the stream and segments from the host the extension resolved. That host receives your request and may set cookies.
@@ -42,7 +43,19 @@ These third parties may log IP addresses, timestamps, headers, cookies and reque
 
 ## 5. Cookies and tracking
 
-Kaminari does not use advertising or analytics cookies and does not track you across apps or websites. The embedded WebView may store cookies set by sites you access, including source sites and stream hosts. You can clear that data by deleting the app's WebView data folder or by resetting the app's site data.
+Kaminari does not use advertising or analytics cookies and does not track you across apps or websites. The embedded WebView may store cookies set by sites you access, including source sites and stream hosts. You can clear that data from Settings > Privacy > Clear WebView data, or by deleting the app's WebView data folder.
+
+### 5.1 Incognito mode and its limits
+
+Incognito is a playback-privacy mode, not a network anonymity tool. While it is on:
+
+- Playback is not written to history, progress, Continue Watching or AniList, and the app pauses its automatic background AniList sync. An explicit "Sync now" in Settings still runs if you press it.
+- New recent searches stay in memory for the open window and are not written to WebView local storage.
+- Downloads you start are still written to disk, and AniList, extension, artwork, stream and update requests still leave your device with your IP address.
+- The WebView profile is not changed. Cover images, media fragments and cookies can still be cached until you clear WebView data or delete the WebView data folder.
+- The queue created before Incognito was turned on is kept, not deleted. It resumes syncing when Incognito is turned off.
+
+WebView data is cleared asynchronously. Restart Kaminari after clearing it to start from an empty cache and the cleared local settings.
 
 ## 6. Sharing and sale
 
@@ -80,7 +93,7 @@ We may update this policy. The updated version will be posted with the app or in
 
 Privacy questions: [[CONTACT_EMAIL]].
 
-Project repository: [[REPOSITORY_URL]].
+Project repository: https://github.com/graynb25/kaminari.
 
 ## Note
 

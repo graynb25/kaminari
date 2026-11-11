@@ -2,11 +2,14 @@
   import { onMount } from "svelte";
   import Callout from "./Callout.svelte";
   import Icon from "./Icon.svelte";
+  import Modal from "./Modal.svelte";
   import PageHeader from "./PageHeader.svelte";
   import ProgressBar from "./ProgressBar.svelte";
   import SourcePreferencesDialog from "./SourcePreferencesDialog.svelte";
   import {
-    jsExtensionInstallPath,
+    jsExtensionInstallConfirm,
+    jsExtensionInstallPackage,
+    jsExtensionInstallPick,
     jsExtensionInstallSample,
     jsExtensionList,
     jsExtensionRemove,
@@ -14,8 +17,10 @@
     mangayomiInstall,
     mangayomiPreview,
   } from "./api";
+  import { filterNsfwSources, showNsfwEnabled } from "./nsfw";
   import type {
     Boot,
+    ExtensionInstallPreview,
     JsExtension,
     JsSearchItem,
     MangayomiPreview,
@@ -36,7 +41,6 @@
   let jsLoading = $state(true);
   let jsBusy = $state<string | null>(null);
   let prefsExtension = $state<JsExtension | null>(null);
-  let jsPath = $state("");
   let jsTestId = $state<string | null>(null);
   let jsTestQuery = $state("Popeye");
   let jsTestLoading = $state(false);
@@ -46,6 +50,13 @@
   let mangayomiPreviewState = $state<MangayomiPreview | null>(null);
   let mangayomiError = $state<string | null>(null);
   let mangayomiBusy = $state<string | null>(null);
+  let pendingApproval = $state<{
+    token: string;
+    preview: ExtensionInstallPreview;
+    kind: "package" | "mangayomi";
+  } | null>(null);
+  let approvalBusy = $state(false);
+  let approvalError = $state<string | null>(null);
 
   const mem = $derived(
     boot ? `${Math.round(boot.limits.extMemoryBytes / 1024 / 1024)}MB per runtime` : "Loading",
@@ -53,14 +64,27 @@
   const memShort = $derived(
     boot ? `${Math.round(boot.limits.extMemoryBytes / 1024 / 1024)}MB` : "Loading",
   );
+  const showNsfw = showNsfwEnabled();
+  const visibleExtensions = $derived(filterNsfwSources(jsExtensions, showNsfw));
+  const hiddenNsfwCount = $derived(jsExtensions.length - visibleExtensions.length);
+  const visiblePreviewSources = $derived(
+    mangayomiPreviewState
+      ? filterNsfwSources(mangayomiPreviewState.sources, showNsfw)
+      : [],
+  );
+  const hiddenPreviewCount = $derived(
+    mangayomiPreviewState
+      ? mangayomiPreviewState.sources.length - visiblePreviewSources.length
+      : 0,
+  );
   const nativeCount = $derived(
-    jsExtensions.filter((extension) => extension.kind !== "mangayomi").length,
+    visibleExtensions.filter((extension) => extension.kind !== "mangayomi").length,
   );
   const mangayomiCount = $derived(
-    jsExtensions.filter((extension) => extension.kind === "mangayomi").length,
+    visibleExtensions.filter((extension) => extension.kind === "mangayomi").length,
   );
   const hostCount = $derived(
-    jsExtensions.reduce((sum, extension) => sum + extension.hosts.length, 0),
+    visibleExtensions.reduce((sum, extension) => sum + extension.hosts.length, 0),
   );
 
   onMount(() => {
@@ -93,15 +117,15 @@
   }
 
   async function installPath() {
-    const path = jsPath.trim();
-    if (!path) {
-      notify("Paste a path to a .kext package first.", "error");
-      return;
-    }
     jsBusy = "path";
     try {
-      await jsExtensionInstallPath(path);
-      jsPath = "";
+      const token = await jsExtensionInstallPick();
+      if (!token) return;
+      const outcome = await jsExtensionInstallPackage(token);
+      if (!outcome.installed) {
+        offerApproval(outcome.preview, outcome.approvalToken, "package");
+        return;
+      }
       await refreshJsExtensions();
       notify("Installed the package as sideloaded.", "success");
     } catch (e) {
@@ -110,6 +134,46 @@
     } finally {
       jsBusy = null;
     }
+  }
+
+  function offerApproval(
+    preview: ExtensionInstallPreview,
+    token: string | null,
+    kind: "package" | "mangayomi",
+  ) {
+    if (!token) {
+      notify("The update needs approval, but no approval token was returned.", "error");
+      return;
+    }
+    approvalError = null;
+    pendingApproval = { token, preview, kind };
+  }
+
+  async function confirmReplacement() {
+    if (!pendingApproval || approvalBusy) return;
+    approvalBusy = true;
+    approvalError = null;
+    try {
+      await jsExtensionInstallConfirm(pendingApproval.token);
+      const updated = pendingApproval;
+      pendingApproval = null;
+      if (updated.kind === "mangayomi") {
+        mangayomiPreviewState = null;
+        mangayomiUrl = "";
+      }
+      await refreshJsExtensions();
+      notify(`Updated ${updated.preview.name}.`, "success");
+    } catch (e) {
+      approvalError = e instanceof Error ? e.message : String(e);
+    } finally {
+      approvalBusy = false;
+    }
+  }
+
+  function cancelReplacement() {
+    if (approvalBusy) return;
+    pendingApproval = null;
+    approvalError = null;
   }
 
   async function inspectMangayomi() {
@@ -139,11 +203,15 @@
     mangayomiBusy = `install-${source.index}`;
     mangayomiError = null;
     try {
-      await mangayomiInstall(
+      const outcome = await mangayomiInstall(
         mangayomiPreviewState.url,
         source.index,
         mangayomiPreviewState.sha256,
       );
+      if (!outcome.installed) {
+        offerApproval(outcome.preview, outcome.approvalToken, "mangayomi");
+        return;
+      }
       mangayomiPreviewState = null;
       mangayomiUrl = "";
       await refreshJsExtensions();
@@ -254,26 +322,13 @@
           <Icon name="download" size={14} />
           {jsBusy === "sample" ? "Installing" : "Install sample"}
         </button>
-        <label class="relative flex-1">
-          <span class="sr-only">Path to a .kext package</span>
-          <span class="absolute left-3 top-1/2 -translate-y-1/2" style="color: var(--paper-450);">
-            <Icon name="folder" size={14} />
-          </span>
-          <input
-            bind:value={jsPath}
-            placeholder="Path to a .kext package"
-            class="w-full h-9 rounded-xl pl-9 pr-3 text-sm outline-none"
-            style="background: var(--input-bg); border: 1px solid var(--line); color: var(--text-1); font-family: var(--font-mono);"
-            aria-label="Path to a .kext package"
-            spellcheck="false"
-          />
-        </label>
         <button
           class="btn-ghost px-4 py-2 text-sm shrink-0"
           disabled={jsBusy === "path"}
           onclick={() => void installPath()}
         >
-          {jsBusy === "path" ? "Installing" : "Install from path"}
+          <Icon name="folder" size={14} />
+          {jsBusy === "path" ? "Installing" : "Choose .kext package"}
         </button>
       </div>
       <p class="text-xs mt-2 leading-relaxed" style="color: var(--paper-450);">
@@ -309,9 +364,28 @@
           <p class="text-xs mt-0.5" style="color: var(--paper-300);">Install the sample to run a real search through the host.</p>
         </div>
       </div>
+    {:else if visibleExtensions.length === 0}
+      <div class="surface px-5 py-6 flex items-center gap-4">
+        <span class="w-10 h-10 grid place-items-center rounded-xl shrink-0" style="background: var(--accent-wash); border: 1px solid var(--line-volt); color: var(--volt-300);">
+          <Icon name="eyeOff" size={18} />
+        </span>
+        <div>
+          <p class="text-sm font-semibold">Installed sources are hidden</p>
+          <p class="text-xs mt-0.5" style="color: var(--paper-300);">
+            {hiddenNsfwCount} {hiddenNsfwCount === 1 ? "source is" : "sources are"} marked NSFW.
+            Turn on Show NSFW sources in Settings to see {hiddenNsfwCount === 1 ? "it" : "them"}.
+          </p>
+        </div>
+      </div>
     {:else}
+      {#if hiddenNsfwCount > 0}
+        <Callout tone="info" class="mb-3">
+          {hiddenNsfwCount} NSFW {hiddenNsfwCount === 1 ? "source is" : "sources are"} hidden.
+          Turn on Show NSFW sources in Settings to show {hiddenNsfwCount === 1 ? "it" : "them"}.
+        </Callout>
+      {/if}
       <div class="space-y-3">
-        {#each jsExtensions as extension (extension.id)}
+        {#each visibleExtensions as extension (extension.id)}
           <article class="surface p-4">
             <div class="flex items-start gap-3">
               <div class="source-tile" aria-hidden="true">JS</div>
@@ -325,6 +399,9 @@
                     <span class="chip text-[10px] px-2 py-0.5">Native</span>
                   {/if}
                   <span class="chip chip-volt text-[10px] px-2 py-0.5">{extension.trust}</span>
+                  {#if extension.nsfw}
+                    <span class="chip chip-volt text-[10px] px-2 py-0.5">NSFW</span>
+                  {/if}
                 </div>
                 <p class="text-[11px] mt-0.5 truncate" style="color: var(--paper-450); font-family: var(--font-mono);" title={extension.id}>
                   {extension.id}
@@ -497,8 +574,19 @@
             mangayomiPreviewState.bytes / 1024,
           )} KB
         </p>
-        <div class="space-y-2 mt-3">
-          {#each mangayomiPreviewState.sources as source (source.index)}
+        {#if hiddenPreviewCount > 0}
+          <Callout tone="info" class="mt-3">
+            {hiddenPreviewCount} NSFW {hiddenPreviewCount === 1 ? "source is" : "sources are"} hidden.
+            Turn on Show NSFW sources in Settings to inspect {hiddenPreviewCount === 1 ? "it" : "them"}.
+          </Callout>
+        {/if}
+        {#if visiblePreviewSources.length === 0}
+          <p class="text-xs mt-3" style="color: var(--paper-450);">
+            Every source in this package is marked NSFW and hidden by your setting.
+          </p>
+        {:else}
+          <div class="space-y-2 mt-3">
+            {#each visiblePreviewSources as source (source.index)}
             <div
               class="rounded-xl p-3 flex flex-col sm:flex-row sm:items-center gap-3"
               style="background: var(--well-bg); border: 1px solid var(--line);"
@@ -530,7 +618,8 @@
               </button>
             </div>
           {/each}
-        </div>
+          </div>
+        {/if}
       {/if}
     </div>
   </section>
@@ -542,4 +631,112 @@
       {notify}
     />
   {/if}
+
+  <Modal
+    open={pendingApproval !== null}
+    size="md"
+    overlayName="extension-update"
+    label="Review extension update"
+    onClose={cancelReplacement}
+    headerClass="px-5 py-4"
+    bodyClass="px-5 py-5"
+    footerClass="px-5 py-3 flex items-center gap-2"
+  >
+    {#snippet header()}
+      <div class="flex items-center gap-3">
+        <span
+          class="w-9 h-9 grid place-items-center rounded-xl shrink-0"
+          style="background: var(--warning-wash, var(--accent-wash)); border: 1px solid var(--warning-line, var(--line-volt)); color: var(--warning, var(--volt-300));"
+        >
+          <Icon name="shield" size={17} />
+        </span>
+        <div class="min-w-0 flex-1">
+          <h2 class="text-base font-semibold">Review extension update</h2>
+          <p class="text-[11px]" style="color: var(--text-4);">
+            The installed package would be replaced.
+          </p>
+        </div>
+        <button
+          class="btn-ghost px-2.5 py-1.5 text-xs"
+          onclick={cancelReplacement}
+          disabled={approvalBusy}
+          aria-label="Close"
+        >
+          <Icon name="close" size={14} />
+        </button>
+      </div>
+    {/snippet}
+
+    {#if pendingApproval}
+      <div class="space-y-4">
+        <p class="text-sm leading-relaxed" style="color: var(--paper-300);">
+          {pendingApproval.preview.existingName ?? pendingApproval.preview.id} is already
+          installed. This package uses the same ID but its contents are different.
+          {pendingApproval.kind === "mangayomi"
+            ? "It will replace the existing Mangayomi source."
+            : "It will replace the existing .kext package."}
+        </p>
+
+        <div class="rounded-xl p-3 space-y-1.5" style="background: var(--well-bg); border: 1px solid var(--line);">
+          <div class="flex items-center justify-between gap-3 text-xs">
+            <span style="color: var(--paper-450);">ID</span>
+            <span class="font-mono truncate" title={pendingApproval.preview.id}>{pendingApproval.preview.id}</span>
+          </div>
+          {#each pendingApproval.preview.changes as change (change.field)}
+            <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
+              <span style="color: var(--paper-450);">{change.field}</span>
+              <span class="font-mono text-right break-all">
+                <span style="color: var(--paper-400);">{change.before || "none"}</span>
+                <span style="color: var(--paper-450);"> → </span>
+                <span style="color: var(--paper-100);">{change.after || "none"}</span>
+              </span>
+            </div>
+          {/each}
+        </div>
+
+        {#if pendingApproval.preview.addedHosts.length > 0}
+          <Callout tone="warning" title="New network hosts">
+            This update can contact {pendingApproval.preview.addedHosts.length} new
+            {pendingApproval.preview.addedHosts.length === 1 ? "host" : "hosts"}:
+            <span class="font-mono break-all">{pendingApproval.preview.addedHosts.join(", ")}</span>
+          </Callout>
+        {/if}
+        {#if pendingApproval.preview.removedHosts.length > 0}
+          <p class="text-xs leading-relaxed" style="color: var(--paper-450);">
+            Hosts removed by this update:
+            <span class="font-mono break-all">{pendingApproval.preview.removedHosts.join(", ")}</span>
+          </p>
+        {/if}
+        {#if pendingApproval.preview.trustChanged}
+          <Callout tone="info">
+            Trust is set by where the package came from, not by the package itself.
+            This update stores it as <span class="font-mono">{pendingApproval.preview.trust}</span>.
+          </Callout>
+        {/if}
+        {#if approvalError}
+          <Callout tone="danger">{approvalError}</Callout>
+        {/if}
+      </div>
+    {/if}
+
+    {#snippet footer()}
+      <button
+        class="btn-ghost px-4 py-2 text-sm"
+        onclick={cancelReplacement}
+        disabled={approvalBusy}
+        data-autofocus
+      >
+        Cancel
+      </button>
+      <button
+        class="btn-primary px-4 py-2 text-sm ml-auto"
+        onclick={() => void confirmReplacement()}
+        disabled={approvalBusy}
+        aria-busy={approvalBusy}
+      >
+        <Icon name="download" size={14} />
+        {approvalBusy ? "Replacing" : "Replace extension"}
+      </button>
+    {/snippet}
+  </Modal>
 </div>

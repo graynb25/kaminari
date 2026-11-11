@@ -10,13 +10,26 @@ export function coverOf(item: Media): string | null {
   return item.coverImage?.extraLarge || item.coverImage?.large || null;
 }
 
+// Shared by source matching and Continue Watching. NFKD plus the combining
+// mark strip keeps accented titles comparable without a per caller variant.
+export function normalizeTitle(value: string): string {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 export function cleanHtml(text?: string | null): string {
   if (!text) return "";
   return text
     .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<[^>]+>/g, "")
+    .replace(/<[^>]+>/g, " ")
     .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
+    .replace(/&#0?39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/&amp;/g, "&")
     .replace(/\s+/g, " ")
     .trim();

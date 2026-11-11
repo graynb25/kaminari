@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { normalizeTitle, sortByMatch, titleScore } from "./sourceMatch";
+import { normalizeTitle } from "./format";
+import { sortByMatch, titleScore } from "./sourceMatch";
 
 function item(title: string, id = title) {
   return { id, title, cover: null };

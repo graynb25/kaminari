@@ -1,19 +1,22 @@
 ﻿<script lang="ts">
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { confirm, open, save } from "@tauri-apps/plugin-dialog";
+  import { confirm, open } from "@tauri-apps/plugin-dialog";
   import { check, type Update } from "@tauri-apps/plugin-updater";
   import BrandMark from "./BrandMark.svelte";
   import Icon from "./Icon.svelte";
   import PageHeader from "./PageHeader.svelte";
   import ProgressBar from "./ProgressBar.svelte";
-  import { playerStatus, proxyStatus } from "./api";
+  import { clearWebviewData, playerStatus, proxyStatus } from "./api";
   import {
     anilistAuthLogout,
     anilistAuthStart,
     anilistAuthStatus,
+    anilistOAuthStatus,
+    anilistRegisterCallback,
     onAnilistAuthChanged,
     type AniListAuthStatus,
+    type AniListOAuthStatus,
   } from "./anilistAuth";
   import { anilistSyncPending, anilistSyncPush } from "./anilistSync";
   import { readDownloadsFolder, saveDownloadsFolder } from "./downloads";
@@ -33,6 +36,7 @@
   } from "./theme";
   import { ACCENTS, getAccent, setAccent, type AccentId } from "./accent";
   import { autoplayEnabled, setAutoplayEnabled } from "./autoplay";
+  import { setShowNsfwEnabled, showNsfwEnabled } from "./nsfw";
   import {
     downloadLabel,
     downloadPercent,
@@ -75,12 +79,18 @@
   let downloadsFolder = $state("");
   let qualityPreference = $state<QualityPreference>("auto");
   let autoplayOn = $state(true);
+  let showNsfw = $state(showNsfwEnabled());
   let folderBusy = $state(false);
   let dataStatus = $state("");
   let dataStatusTone = $state<"success" | "error">("success");
   let restartNeeded = $state(false);
+  let webviewBusy = $state(false);
+  let webviewStatus = $state("");
+  let webviewStatusTone = $state<"success" | "error">("success");
   let anilistAuth = $state<AniListAuthStatus | null>(null);
+  let anilistOAuth = $state<AniListOAuthStatus | null>(null);
   let anilistBusy = $state(false);
+  let anilistRegistering = $state(false);
   let anilistWaiting = $state(false);
   let anilistSyncing = $state(false);
   let anilistPushing = $state(false);
@@ -144,7 +154,7 @@
     { id: "settings-appearance", title: "Appearance", hint: "Theme and preview" },
     { id: "settings-app", title: "App", hint: "Version, stack, player" },
     { id: "settings-playback", title: "Playback", hint: "Proxy for protected streams" },
-    { id: "settings-privacy", title: "Privacy", hint: "Incognito and local tracking" },
+    { id: "settings-privacy", title: "Privacy", hint: "Incognito and NSFW sources" },
     { id: "settings-data", title: "Data", hint: "Endpoints and local library" },
     { id: "settings-updates-diagnostics", title: "Updates and diagnostics", hint: "Version, budgets, export" },
     { id: "settings-licenses", title: "Licenses", hint: "Packages and their licenses" },
@@ -164,12 +174,6 @@
   function toggleProxy() {
     proxyOn = !proxyOn;
     setProxyFlag(proxyOn);
-  }
-
-  function backupFileName(): string {
-    const now = new Date();
-    const pad = (value: number) => String(value).padStart(2, "0");
-    return `kaminari-backup-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.db`;
   }
 
   function formatBytes(bytes: number): string {
@@ -293,20 +297,36 @@
     }
   }
 
+  async function clearWebviewDataAction() {
+    if (webviewBusy) return;
+    const approved = await confirm(
+      "Clear the WebView cache, cookies and local storage? This removes cover and media cache, recent searches and the saved Incognito setting. Library data in SQLite is not affected.",
+      { title: "Clear WebView data", kind: "warning" },
+    );
+    if (!approved) return;
+    webviewBusy = true;
+    webviewStatus = "";
+    webviewStatusTone = "success";
+    try {
+      await clearWebviewData();
+      webviewStatus =
+        "WebView data cleared. Restart Kaminari to start with the cleared cache and settings.";
+    } catch (err) {
+      webviewStatusTone = "error";
+      webviewStatus = errorText(err);
+    } finally {
+      webviewBusy = false;
+    }
+  }
+
   async function backupLibrary() {
     if (dataBusy) return;
     resetDataStatus();
     dataBusy = true;
     try {
-      const path = pickedPath(
-        await save({
-          title: "Backup library",
-          defaultPath: backupFileName(),
-          filters: [{ name: "Kaminari backup", extensions: ["db"] }],
-        }),
-      );
-      if (!path) return;
-      const result = await invoke<{ path: string; bytes: number }>("backup_export", { path });
+      const token = await invoke<string | null>("backup_export_pick");
+      if (!token) return;
+      const result = await invoke<{ bytes: number }>("backup_export", { token });
       setDataStatus("success", `Backup saved (${formatBytes(result.bytes)}).`);
     } catch (err) {
       setDataStatus("error", errorText(err));
@@ -343,21 +363,14 @@
     resetDataStatus();
     dataBusy = true;
     try {
-      const path = pickedPath(
-        await open({
-          title: "Restore backup",
-          multiple: false,
-          directory: false,
-          filters: [{ name: "Kaminari backup", extensions: ["db"] }],
-        }),
-      );
-      if (!path) return;
+      const token = await invoke<string | null>("backup_restore_pick");
+      if (!token) return;
       const approved = await confirm(
         "Replace the current library with this backup? Restart Kaminari after the restore.",
         { title: "Restore backup", kind: "warning" },
       );
       if (!approved) return;
-      await invoke<void>("backup_restore", { path });
+      await invoke<void>("backup_restore", { token });
       setDataStatus("success", "Backup restored. Restart to load it.", true);
     } catch (err) {
       setDataStatus("error", errorText(err));
@@ -371,16 +384,10 @@
     resetDataStatus();
     dataBusy = true;
     try {
-      const path = pickedPath(
-        await save({
-          title: "Export settings",
-          defaultPath: "kaminari-settings.json",
-          filters: [{ name: "Kaminari settings", extensions: ["json"] }],
-        }),
-      );
-      if (!path) return;
+      const token = await invoke<string | null>("settings_export_pick");
+      if (!token) return;
       const json = JSON.stringify(collectSettings(), null, 2);
-      await invoke<void>("settings_export", { path, json });
+      await invoke<void>("settings_export", { token, json });
       setDataStatus("success", "Settings exported.");
     } catch (err) {
       setDataStatus("error", errorText(err));
@@ -394,16 +401,9 @@
     resetDataStatus();
     dataBusy = true;
     try {
-      const path = pickedPath(
-        await open({
-          title: "Import settings",
-          multiple: false,
-          directory: false,
-          filters: [{ name: "Kaminari settings", extensions: ["json"] }],
-        }),
-      );
-      if (!path) return;
-      const raw = await invoke<string>("settings_read", { path });
+      const token = await invoke<string | null>("settings_import_pick");
+      if (!token) return;
+      const raw = await invoke<string>("settings_read", { token });
       const data = parseSettings(raw);
       applySettings(data);
       themeMode = data.theme;
@@ -425,12 +425,26 @@
     }
   }
 
+  async function refreshOAuthStatus() {
+    try {
+      anilistOAuth = await anilistOAuthStatus();
+    } catch {
+      anilistOAuth = null;
+    }
+  }
+
   async function connectAniList() {
     if (anilistBusy || anilistWaiting) return;
     anilistError = "";
     anilistNotice = "";
     if (anilistAuth?.error) {
       anilistAuth = { ...anilistAuth, error: null };
+    }
+    if (anilistOAuth && !anilistOAuth.callbackRegistered) {
+      anilistError =
+        anilistOAuth.message ??
+        "Enable the kaminari:// sign in callback before connecting AniList.";
+      return;
     }
     anilistBusy = true;
     anilistWaiting = true;
@@ -441,6 +455,28 @@
       anilistError = errorText(err);
     } finally {
       anilistBusy = false;
+    }
+  }
+
+  async function enableOAuthCallback() {
+    if (anilistBusy || anilistRegistering || anilistWaiting) return;
+    anilistError = "";
+    anilistNotice = "";
+    anilistRegistering = true;
+    try {
+      await anilistRegisterCallback();
+      anilistOAuth = await anilistOAuthStatus();
+      if (!anilistOAuth.callbackRegistered) {
+        anilistError =
+          anilistOAuth.message ??
+          "The system did not register the kaminari:// callback for this build.";
+        return;
+      }
+      await connectAniList();
+    } catch (err) {
+      anilistError = errorText(err);
+    } finally {
+      anilistRegistering = false;
     }
   }
 
@@ -506,8 +542,16 @@
           result.conflicts === 1
             ? `Sent ${result.pushed} changes. AniList had a newer change for 1 title, so the AniList value was kept.`
             : `Sent ${result.pushed} changes. AniList had newer changes for ${result.conflicts} titles, so the AniList values were kept.`;
+        if (result.pending > 0) {
+          anilistNotice += ` ${result.pending} ${result.pending === 1 ? "change is" : "changes are"} still waiting to send.`;
+        }
       } else if (result.pushed > 0) {
         anilistNotice = `Sent ${result.pushed} changes to AniList.`;
+        if (result.pending > 0) {
+          anilistNotice += ` ${result.pending} ${result.pending === 1 ? "change is" : "changes are"} still waiting to send.`;
+        }
+      } else if (result.pending > 0) {
+        anilistNotice = `${result.pending} ${result.pending === 1 ? "change is" : "changes are"} still waiting for AniList. Kaminari will retry automatically.`;
       } else {
         anilistNotice = "AniList is already up to date.";
       }
@@ -621,6 +665,7 @@
     let eventSeq = 0;
 
     void refreshAniListPending();
+    void refreshOAuthStatus();
 
     void (async () => {
       try {
@@ -995,7 +1040,8 @@
                   <p class="text-sm" style="color: var(--paper-50);">Incognito mode</p>
                   <p class="text-xs mt-0.5" style="color: var(--paper-400);">
                     Playback is not written to history, progress, Continue Watching or AniList.
-                    Library changes still work.
+                    New searches are not saved and automatic AniList sync pauses. Library changes
+                    still work.
                   </p>
                 </div>
                 <button
@@ -1012,8 +1058,63 @@
               </div>
               <p class="text-xs mt-2 leading-relaxed" style="color: var(--paper-450);">
                 Incognito is local to this device. Turn it off here when you want playback to count
-                again. The player shows an Incognito badge while it is active.
+                again. The player shows an Incognito badge while it is active. It does not change
+                the WebView profile, so images and stream fragments can still be cached.
               </p>
+              <div
+                class="flex flex-wrap items-center justify-between gap-3 py-2.5 mt-3"
+                style="border-top: 1px solid var(--line);"
+              >
+                <div class="min-w-0">
+                  <p class="text-sm" style="color: var(--paper-50);">WebView data</p>
+                  <p class="text-xs mt-0.5" style="color: var(--paper-400);">
+                    Clear the embedded browser cache, cookies and local storage, including recent
+                    searches. SQLite library data stays.
+                  </p>
+                </div>
+                <button
+                  class="btn-ghost px-3 py-2 text-xs shrink-0"
+                  disabled={webviewBusy}
+                  onclick={() => void clearWebviewDataAction()}
+                >
+                  <Icon name="trash" size={14} />
+                  {webviewBusy ? "Clearing" : "Clear WebView data"}
+                </button>
+              </div>
+              {#if webviewStatus}
+                <p
+                  role="status"
+                  class="text-xs mt-1"
+                  style="color: {webviewStatusTone === 'error' ? 'var(--danger, #f87171)' : 'var(--paper-400)'};"
+                >
+                  {webviewStatus}
+                </p>
+              {/if}
+              <div
+                class="flex flex-wrap items-center justify-between gap-3 py-2.5 mt-3"
+                style="border-top: 1px solid var(--line);"
+              >
+                <div class="min-w-0">
+                  <p class="text-sm" style="color: var(--paper-50);">Show NSFW sources</p>
+                  <p class="text-xs mt-0.5" style="color: var(--paper-400);">
+                    Off by default. NSFW sources stay installed but are hidden from the Sources page
+                    and from source search while this is off.
+                  </p>
+                </div>
+                <button
+                  class="chip text-[10px] px-2 py-1 shrink-0"
+                  aria-label="Show NSFW sources"
+                  aria-pressed={showNsfw}
+                  onclick={() => {
+                    showNsfw = !showNsfw;
+                    setShowNsfwEnabled(showNsfw);
+                  }}
+                  title="Show NSFW sources"
+                >
+                  <span class="status-dot {showNsfw ? '' : 'is-offline'}" style="width: 4px; height: 4px;" aria-hidden="true"></span>
+                  {showNsfw ? "On" : "Off"}
+                </button>
+              </div>
               <div class="mt-4 pt-3" style="border-top: 1px solid var(--line);">
                 <p class="text-sm" style="color: var(--paper-50);">History and Continue Watching</p>
                 <p class="text-xs mt-0.5" style="color: var(--paper-400);">
@@ -1191,19 +1292,45 @@
                       <div class="min-w-0 flex-1">
                         <p class="text-sm font-semibold">AniList account</p>
                         <p class="text-xs mt-0.5" style="color: var(--paper-400);">
-                          Connect to keep your AniList list and progress in step.
+                          {#if anilistOAuth && !anilistOAuth.callbackRegistered}
+                            {anilistOAuth.portable
+                              ? "Portable build: enable the sign in callback once for this Windows account."
+                              : "Enable the kaminari:// callback to connect AniList."}
+                          {:else}
+                            Connect to keep your AniList list and progress in step.
+                          {/if}
                         </p>
                       </div>
-                      <button
-                        class="btn-ghost px-3 py-2 text-xs"
-                        disabled={anilistBusy || anilistWaiting}
-                        onclick={connectAniList}
-                      >
-                        <Icon name="external" size={14} />
-                        {anilistHasError ? "Reconnect" : "Connect AniList"}
-                      </button>
+                      {#if anilistOAuth && !anilistOAuth.callbackRegistered}
+                        <button
+                          class="btn-ghost px-3 py-2 text-xs"
+                          disabled={anilistBusy || anilistWaiting || anilistRegistering || !anilistOAuth.canRegister}
+                          onclick={() => void enableOAuthCallback()}
+                          title={anilistOAuth.message ?? undefined}
+                        >
+                          <Icon name="link" size={14} />
+                          {anilistRegistering ? "Enabling" : "Enable AniList sign in"}
+                        </button>
+                      {:else}
+                        <button
+                          class="btn-ghost px-3 py-2 text-xs"
+                          disabled={anilistBusy || anilistWaiting}
+                          onclick={connectAniList}
+                        >
+                          <Icon name="external" size={14} />
+                          {anilistHasError ? "Reconnect" : "Connect AniList"}
+                        </button>
+                      {/if}
                     {/if}
                   </div>
+                  {#if anilistOAuth && !anilistOAuth.callbackRegistered && anilistOAuth.message}
+                    <p class="text-[11px] mt-2 leading-relaxed" style="color: var(--paper-450);">
+                      {anilistOAuth.message}
+                      {#if anilistOAuth.portable}
+                        Installed builds register the callback automatically; the portable build asks first.
+                      {/if}
+                    </p>
+                  {/if}
                   {#if anilistStatusText}
                     <p
                       role="status"

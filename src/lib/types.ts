@@ -58,34 +58,6 @@ export type ContinueItem = {
   updatedAt: number;
 };
 
-export type LegacySource = {
-  name: string;
-  lang: string;
-  id: string;
-  baseUrl: string;
-};
-
-export type LegacyExtension = {
-  name: string;
-  pkg: string;
-  apk: string;
-  lang: string;
-  code: number;
-  version: string;
-  nsfw: number;
-  torrent: number;
-  sources: LegacySource[];
-};
-
-export type InstalledSource = {
-  id: string;
-  name: string;
-  version: string;
-  enabled: boolean;
-  sourceCount: number;
-  nsfw: boolean;
-};
-
 export type JsExtension = {
   id: string;
   name: string;
@@ -96,6 +68,40 @@ export type JsExtension = {
   trust: string;
   installedAt: number;
   hosts: string[];
+  nsfw: boolean;
+};
+
+export type ExtensionInstallChange = {
+  field: string;
+  before: string;
+  after: string;
+};
+
+export type ExtensionInstallPreview = {
+  id: string;
+  name: string;
+  version: string;
+  apiVersion: string;
+  trust: string;
+  newInstall: boolean;
+  requiresApproval: boolean;
+  codeChanged: boolean;
+  nameChanged: boolean;
+  versionChanged: boolean;
+  manifestChanged: boolean;
+  trustChanged: boolean;
+  addedHosts: string[];
+  removedHosts: string[];
+  existingName: string | null;
+  existingVersion: string | null;
+  existingTrust: string | null;
+  changes: ExtensionInstallChange[];
+};
+
+export type ExtensionInstallOutcome = {
+  installed: boolean;
+  approvalToken: string | null;
+  preview: ExtensionInstallPreview;
 };
 
 export type MangayomiSourcePreview = {
@@ -275,6 +281,7 @@ export type SourceLibraryItem = {
   cover?: string | null;
   year?: number | null;
   status?: string | null;
+  anilistId?: number | null;
   addedAt: number;
   watchedCount: number;
   lastEpisodeId?: string | null;
@@ -306,6 +313,7 @@ export type SourceContinueItem = {
   showId: string;
   title: string;
   cover?: string | null;
+  anilistId?: number | null;
   episodeId: string;
   episodeNumber: number;
   episodeTitle?: string | null;

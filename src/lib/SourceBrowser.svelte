@@ -24,6 +24,7 @@
     jsExtensionEpisodes,
     jsExtensionResolve,
     jsExtensionTest,
+    detail as fetchAniListDetail,
     watchedMarkAll,
     watchedSet,
     mpvEmbedStatus,
@@ -37,6 +38,7 @@
     sourceProgressMarkAll,
     sourceProgressSet,
   } from "./api";
+  import { cleanHtml } from "./format";
   import { libmpvEnabled, libmpvNeedsProxy } from "./libmpv";
   import {
     pickStream,
@@ -65,6 +67,7 @@
     initialShow = null,
     initialEpisodeId = null,
     anilistMedia = null,
+    anilistId = null,
     sourceLibrary = [],
     incognito = false,
     onLibraryChanged,
@@ -75,6 +78,7 @@
     initialShow?: JsSearchItem | null;
     initialEpisodeId?: string | null;
     anilistMedia?: Media | null;
+    anilistId?: number | null;
     sourceLibrary?: SourceLibraryItem[];
     incognito?: boolean;
     onLibraryChanged?: () => void;
@@ -114,6 +118,9 @@
   let autoPlayed = false;
   let playbackEpisodeId: string | null = null;
   let progressSave: Promise<void> = Promise.resolve();
+  let linkedMedia = $state<Media | null>(null);
+  let currentAniListId = $state<number | null>(null);
+  const linkedKeys = new Set<string>();
   const anilistMarked = new Set<string>();
 
   const inSourceLibrary = $derived(
@@ -124,6 +131,7 @@
         )
       : false,
   );
+  const activeAniListId = $derived(currentAniListId);
   const watchedSourceCount = $derived(progress.filter((row) => row.watched).length);
   const activeQualityOptions = $derived(
     activePlayback ? (streams[activePlayback.episode.id] ?? [activePlayback.stream]) : [],
@@ -137,6 +145,10 @@
       else closeButton?.focus();
     });
     void (async () => {
+      if (anilistMedia) {
+        linkedMedia = anilistMedia;
+        currentAniListId = anilistMedia.id;
+      }
       if (initialShow) {
         await openShow(initialShow);
       } else {
@@ -240,6 +252,7 @@
       cover: item.cover ?? null,
       year: item.year ?? null,
     };
+    applyAniListLink(item.id);
     episodes = [];
     streams = {};
     showError = null;
@@ -249,6 +262,9 @@
       selected = await jsExtensionDetail(extension.id, item.id);
     } catch (e) {
       showError = e instanceof Error ? e.message : String(e);
+    }
+    if (anilistMedia) {
+      await persistAniListLink();
     }
     try {
       episodes = await jsExtensionEpisodes(extension.id, item.id);
@@ -308,6 +324,7 @@
           cover: selected.cover ?? null,
           year: selected.year ?? null,
           status: selected.status ?? null,
+          anilistId: activeAniListId,
         });
         notify(`Saved ${selected.title} to the source library.`, "success");
       }
@@ -327,13 +344,69 @@
       cover: selected.cover ?? null,
       year: selected.year ?? null,
       status: selected.status ?? null,
+      anilistId: activeAniListId,
     });
+  }
+
+  async function loadAniListMedia(id: number) {
+    try {
+      const media = await fetchAniListDetail(id);
+      if (currentAniListId === id) linkedMedia = media;
+    } catch {
+      // The durable link still exists; progress mirrors once AniList answers.
+    }
+  }
+
+  function applyAniListLink(showId: string) {
+    if (anilistMedia) {
+      currentAniListId = anilistMedia.id;
+      linkedMedia = anilistMedia;
+      return;
+    }
+    const linkedRow = sourceLibrary.find(
+      (item) => item.extensionId === extension.id && item.showId === showId,
+    );
+    const durableId =
+      linkedRow?.anilistId ??
+      (initialShow?.id === showId ? anilistId : null) ??
+      null;
+    currentAniListId = durableId;
+    if (durableId === null) {
+      linkedMedia = null;
+      return;
+    }
+    if (linkedMedia?.id !== durableId) {
+      linkedMedia = null;
+      void loadAniListMedia(durableId);
+    }
+  }
+
+  async function persistAniListLink() {
+    if (!selected || !anilistMedia) return;
+    const key = `${extension.id}|${selected.id}`;
+    if (linkedKeys.has(key)) return;
+    linkedKeys.add(key);
+    try {
+      await sourceLibraryAdd({
+        extensionId: extension.id,
+        showId: selected.id,
+        title: selected.title,
+        cover: selected.cover ?? null,
+        year: selected.year ?? null,
+        status: selected.status ?? null,
+        anilistId: anilistMedia.id,
+      });
+      onLibraryChanged?.();
+    } catch (error) {
+      linkedKeys.delete(key);
+      notify(`Could not link this show to AniList: ${errorText(error)}`, "error");
+    }
   }
 
   function anilistEpisodeNumber(episode: JsEpisode): number {
     const number = Math.max(1, Math.round(episode.number));
-    return anilistMedia?.episodes && anilistMedia.episodes > 0
-      ? Math.min(number, anilistMedia.episodes)
+    return linkedMedia?.episodes && linkedMedia.episodes > 0
+      ? Math.min(number, linkedMedia.episodes)
       : number;
   }
 
@@ -367,9 +440,9 @@
         });
       }
       progress = await sourceProgressGet(extension.id, selected.id);
-      if (watched && anilistMedia) {
+      if (watched && linkedMedia) {
         try {
-          await watchedSet(anilistMedia, anilistEpisodeNumber(episode), true);
+          await watchedSet(linkedMedia, anilistEpisodeNumber(episode), true);
           notify(`Marked episode ${episode.number} watched and queued AniList.`, "success");
         } catch (error) {
           notify(`Marked locally, but AniList queue failed: ${errorText(error)}`, "error");
@@ -406,11 +479,11 @@
         watched,
       });
       progress = await sourceProgressGet(extension.id, selected.id);
-      if (watched && anilistMedia) {
-        const through = anilistProgressThrough(anilistMedia.episodes, episodes);
+      if (watched && linkedMedia) {
+        const through = anilistProgressThrough(linkedMedia.episodes, episodes);
         if (through > 0) {
           try {
-            await watchedMarkAll(anilistMedia, through, true);
+            await watchedMarkAll(linkedMedia, through, true);
             notify(
               `Marked all ${episodes.length} episodes watched and queued AniList through episode ${through}.`,
               "success",
@@ -456,11 +529,11 @@
       // Progress is best effort. Playback stays up.
     }
 
-    if (watched && anilistMedia && !anilistMarked.has(episode.id)) {
+    if (watched && linkedMedia && !anilistMarked.has(episode.id)) {
       anilistMarked.add(episode.id);
       const bounded = anilistEpisodeNumber(episode);
       try {
-        await watchedSet(anilistMedia, bounded, true);
+        await watchedSet(linkedMedia, bounded, true);
         notify(`AniList progress queued for episode ${bounded}.`, "info");
       } catch (error) {
         anilistMarked.delete(episode.id);
@@ -828,20 +901,6 @@
       : `${minutes}:${String(seconds).padStart(2, "0")}`;
   }
 
-  function clean(text?: string | null): string {
-    if (!text) return "";
-    return text
-      .replace(/<br\s*\/?>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&quot;/g, '"')
-      .replace(/&#0?39;/g, "'")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
   function hostOf(url: string): string {
     try {
       return new URL(url).host;
@@ -959,7 +1018,7 @@
                   <Icon name="package" size={11} />
                   {extension.name}
                 </span>
-                {#if anilistMedia}
+                {#if activeAniListId}
                   <span class="chip text-[11px] px-2.5 py-1" title="Finished episodes are queued to AniList">
                     <Icon name="check" size={11} />
                     AniList
@@ -974,7 +1033,7 @@
                 </div>
               {/if}
               <p class="text-sm mt-3 leading-relaxed max-w-2xl line-clamp-3" style="color: var(--paper-300);">
-                {clean(selected.synopsis) || "This source did not return a synopsis."}
+                {cleanHtml(selected.synopsis) || "This source did not return a synopsis."}
               </p>
             </div>
           </div>

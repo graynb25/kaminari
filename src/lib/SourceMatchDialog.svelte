@@ -7,6 +7,7 @@
   import ProgressBar from "./ProgressBar.svelte";
   import { jsExtensionList, jsExtensionTest } from "./api";
   import { displayTitle } from "./format";
+  import { filterNsfwSources, showNsfwEnabled } from "./nsfw";
   import { sortByMatch } from "./sourceMatch";
   import type { JsExtension, JsSearchItem, Media } from "./types";
 
@@ -31,10 +32,17 @@
 
   let extensions = $state<JsExtension[]>([]);
   let groups = $state<Group[]>([]);
-  let query = $state(displayTitle(media));
+  let query = $state("");
   let loading = $state(true);
   let error = $state<string | null>(null);
+  let hiddenNsfw = $state(0);
   let disposed = false;
+
+  // Seed the search box from the selected title. A later media change (for
+  // example a refreshed AniList row) updates it; typing only changes query.
+  $effect.pre(() => {
+    query = displayTitle(media);
+  });
 
   onMount(() => {
     void load();
@@ -48,10 +56,15 @@
   }
 
   async function load() {
+    // The pre-effect seeds the box before paint; this also covers the mount
+    // ordering if load starts first.
+    if (!query.trim()) query = displayTitle(media);
     loading = true;
     error = null;
     try {
-      extensions = (await jsExtensionList()).filter((extension) => extension.enabled);
+      const installed = (await jsExtensionList()).filter((extension) => extension.enabled);
+      extensions = filterNsfwSources(installed, showNsfwEnabled());
+      hiddenNsfw = installed.length - extensions.length;
     } catch (e) {
       error = errorText(e);
       loading = false;
@@ -156,13 +169,24 @@
     <ProgressBar label="Searching installed sources" indeterminate />
   {:else if extensions.length === 0}
     <Callout tone="info" title="No sources installed">
-      Add a source first, then come back to this title. Kaminari ships no catalog.
+      {#if hiddenNsfw > 0}
+        {hiddenNsfw} NSFW {hiddenNsfw === 1 ? "source is" : "sources are"} hidden. Turn on
+        Show NSFW sources in Settings to search {hiddenNsfw === 1 ? "it" : "them"}.
+      {:else}
+        Add a source first, then come back to this title. Kaminari ships no catalog.
+      {/if}
       <button class="btn-ghost px-2.5 py-1 text-[11px] mt-2" onclick={onOpenSources}>
         <Icon name="package" size={12} />
         Open Sources
       </button>
     </Callout>
   {:else}
+    {#if hiddenNsfw > 0}
+      <Callout tone="info" class="mb-4">
+        {hiddenNsfw} NSFW {hiddenNsfw === 1 ? "source is" : "sources are"} hidden. Turn on
+        Show NSFW sources in Settings to search {hiddenNsfw === 1 ? "it" : "them"}.
+      </Callout>
+    {/if}
     <div class="space-y-5">
       {#each groups as group (group.extension.id)}
         <section aria-label="{group.extension.name} results">

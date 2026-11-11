@@ -452,6 +452,14 @@ impl AniListClient {
         *self.token.lock().expect("token lock") = None;
     }
 
+    pub fn has_token(&self) -> bool {
+        self.token
+            .lock()
+            .expect("token lock")
+            .as_ref()
+            .is_some_and(|token| !token.is_empty())
+    }
+
     async fn acquire(&self) {
         loop {
             let wait = {

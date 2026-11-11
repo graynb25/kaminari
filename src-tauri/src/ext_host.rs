@@ -38,8 +38,9 @@ const MAX_SELECT_OUTPUT_BYTES: usize = 1024 * 1024;
 const SELECT_ROW_OVERHEAD_BYTES: usize = 512;
 #[cfg(test)]
 const MAX_STORAGE_BYTES: usize = 1024 * 1024;
-const MAX_KEXT_BYTES: usize = 4 * 1024 * 1024;
+pub(crate) const MAX_KEXT_BYTES: usize = 4 * 1024 * 1024;
 
+#[cfg(debug_assertions)]
 pub fn validate_source_id(id: &str) -> bool {
     !id.is_empty() && id.chars().all(|c| c.is_ascii_digit())
 }
@@ -202,6 +203,36 @@ pub struct ExtPackage {
     pub code: String,
 }
 
+/// The trust a package earns from where it came from. This is computed in Rust
+/// by the install path and is never accepted from a package, a backup row or a
+/// webview caller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExtensionTrust {
+    Builtin,
+    Sideloaded,
+}
+
+impl ExtensionTrust {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ExtensionTrust::Builtin => "builtin",
+            ExtensionTrust::Sideloaded => "sideloaded",
+        }
+    }
+
+    /// Older builds allowed arbitrary trust labels, including `signed` for
+    /// packages that were never signed. Keep only the two labels this build
+    /// can actually prove.
+    pub fn from_stored(value: &str) -> Self {
+        if value == ExtensionTrust::Builtin.as_str() {
+            ExtensionTrust::Builtin
+        } else {
+            ExtensionTrust::Sideloaded
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct HostLimits {
     pub timeout: Duration,
@@ -283,7 +314,10 @@ struct HostContext {
 
 #[derive(Debug, Clone)]
 pub(crate) struct HostRule {
+    any_host: bool,
     host: String,
+    subdomains: bool,
+    port: Option<u16>,
     path_prefix: String,
 }
 
@@ -292,24 +326,53 @@ impl HostRule {
         let raw = raw.trim();
         if raw == "*" {
             return Some(Self {
-                host: "*".to_string(),
+                any_host: true,
+                host: String::new(),
+                subdomains: false,
+                port: None,
                 path_prefix: "/".to_string(),
             });
         }
         let trimmed = raw.trim_end_matches('*');
-        let url = reqwest::Url::parse(trimmed).ok()?;
+        let scheme_end = trimmed.find("://")?;
+        if !trimmed[..scheme_end].eq_ignore_ascii_case("https") {
+            return None;
+        }
+        let authority_and_path = &trimmed[scheme_end + 3..];
+        if authority_and_path.is_empty() {
+            return None;
+        }
+        // `url` rejects a literal `*.` host, so parse a placeholder and keep
+        // the wildcard flag separately.
+        let subdomains = authority_and_path.starts_with("*.");
+        let parse_target = if subdomains {
+            format!("https://placeholder.{}", &authority_and_path[2..])
+        } else {
+            format!("https://{authority_and_path}")
+        };
+        let url = reqwest::Url::parse(&parse_target).ok()?;
         if url.scheme() != "https" {
             return None;
         }
-        let host = url.host_str()?.to_ascii_lowercase();
-        let path = url.path();
+        if !url.username().is_empty() || url.password().is_some() {
+            return None;
+        }
+        let parsed_host = url.host_str()?.to_ascii_lowercase();
+        let host = if subdomains {
+            parsed_host.strip_prefix("placeholder.")?.to_string()
+        } else {
+            parsed_host
+        };
+        if host.is_empty() || host == "*" {
+            return None;
+        }
+        let path_prefix = normalize_rule_path(url.path())?;
         Some(Self {
+            any_host: false,
             host,
-            path_prefix: if path.is_empty() {
-                "/".to_string()
-            } else {
-                path.to_string()
-            },
+            subdomains,
+            port: Some(url.port().unwrap_or(443)),
+            path_prefix,
         })
     }
 
@@ -317,13 +380,105 @@ impl HostRule {
         if url.scheme() != "https" {
             return false;
         }
-        if self.host == "*" {
+        // A compat `*` rule deliberately has no host or path scope. Keep the
+        // original behavior for it; path normalization only applies to rules
+        // that actually restrict a path.
+        if self.any_host {
             return true;
         }
-        url.host_str()
-            .map(|host| host.eq_ignore_ascii_case(&self.host))
-            .unwrap_or(false)
-            && url.path().starts_with(&self.path_prefix)
+        let Some(host) = url.host_str() else {
+            return false;
+        };
+        let host = host.to_ascii_lowercase();
+        let host_matches = if self.subdomains {
+            host.len() > self.host.len()
+                && host.ends_with(&self.host)
+                && host.as_bytes()[host.len() - self.host.len() - 1] == b'.'
+        } else {
+            host == self.host
+        };
+        if !host_matches {
+            return false;
+        }
+        if self.port != url.port_or_known_default() {
+            return false;
+        }
+        let Some(path) = normalize_rule_path(url.path()) else {
+            return false;
+        };
+        path_prefix_matches(&self.path_prefix, &path)
+    }
+}
+
+fn path_prefix_matches(prefix: &str, path: &str) -> bool {
+    if prefix == "/" || path == prefix {
+        return true;
+    }
+    if prefix.ends_with('/') {
+        return path.starts_with(prefix);
+    }
+    path.starts_with(prefix) && path.as_bytes().get(prefix.len()) == Some(&b'/')
+}
+
+/// Decode the path for comparison and fail on a segment that an upstream
+/// server could normalize into a different path. A single encoded dot or
+/// separator is enough to escape a path-scoped permission.
+fn normalize_rule_path(raw: &str) -> Option<String> {
+    if !raw.starts_with('/') || has_encoded_separator(raw) {
+        return None;
+    }
+    let once = percent_decode_path(raw)?;
+    if has_encoded_separator(&once) {
+        return None;
+    }
+    let twice = percent_decode_path(&once).unwrap_or_else(|| once.clone());
+    validate_rule_path(&once)?;
+    validate_rule_path(&twice)?;
+    Some(once)
+}
+
+fn has_encoded_separator(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.contains("%2f") || lower.contains("%5c")
+}
+
+fn validate_rule_path(path: &str) -> Option<()> {
+    if !path.starts_with('/') || path.contains('\0') || path.contains('\\') {
+        return None;
+    }
+    if path
+        .split('/')
+        .any(|segment| segment == "." || segment == "..")
+    {
+        return None;
+    }
+    Some(())
+}
+
+fn percent_decode_path(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let high = hex_digit(*bytes.get(index + 1)?)?;
+            let low = hex_digit(*bytes.get(index + 2)?)?;
+            out.push(high * 16 + low);
+            index += 3;
+        } else {
+            out.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+fn hex_digit(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        _ => None,
     }
 }
 
@@ -1041,6 +1196,7 @@ mod tests {
         Arc::new(MemoryStorage::default())
     }
 
+    #[cfg(debug_assertions)]
     #[test]
     fn legacy_source_ids_stay_digits_only() {
         assert!(validate_source_id("8542735178285060053"));
@@ -1110,6 +1266,59 @@ mod tests {
         let rule = HostRule::parse("*").unwrap();
         assert!(rule.allows(&reqwest::Url::parse("https://cdn.example/a.m3u8").unwrap()));
         assert!(!rule.allows(&reqwest::Url::parse("http://cdn.example/a.m3u8").unwrap()));
+    }
+
+    #[test]
+    fn host_rules_are_path_boundary_aware() {
+        let prefix = HostRule::parse("https://example.com/api*").unwrap();
+        assert!(prefix.allows(&reqwest::Url::parse("https://example.com/api").unwrap()));
+        assert!(prefix.allows(&reqwest::Url::parse("https://example.com/api/1").unwrap()));
+        assert!(!prefix.allows(&reqwest::Url::parse("https://example.com/apix").unwrap()));
+
+        let folder = HostRule::parse("https://example.com/api/*").unwrap();
+        assert!(folder.allows(&reqwest::Url::parse("https://example.com/api/1").unwrap()));
+        assert!(!folder.allows(&reqwest::Url::parse("https://example.com/api").unwrap()));
+        assert!(!folder.allows(&reqwest::Url::parse("https://example.com/apix/1").unwrap()));
+    }
+
+    #[test]
+    fn host_rules_include_the_port() {
+        let scoped = HostRule::parse("https://example.com:8443/*").unwrap();
+        assert!(scoped.allows(&reqwest::Url::parse("https://example.com:8443/a").unwrap()));
+        assert!(!scoped.allows(&reqwest::Url::parse("https://example.com/a").unwrap()));
+        assert!(!scoped.allows(&reqwest::Url::parse("https://example.com:9443/a").unwrap()));
+
+        let default_port = HostRule::parse("https://example.com/*").unwrap();
+        assert!(default_port.allows(&reqwest::Url::parse("https://example.com:443/a").unwrap()));
+        assert!(!default_port.allows(&reqwest::Url::parse("https://example.com:8443/a").unwrap()));
+    }
+
+    #[test]
+    fn host_rules_reject_encoded_dot_segments() {
+        let rule = HostRule::parse("https://example.com/api/*").unwrap();
+        for raw in [
+            "https://example.com/api/..%2fadmin",
+            "https://example.com/api/%2e%2e/admin",
+            "https://example.com/api/%2E%2E/admin",
+            "https://example.com/api/%252e%252e/admin",
+            "https://example.com/api/%2fadmin",
+        ] {
+            let url = reqwest::Url::parse(raw).unwrap();
+            assert!(!rule.allows(&url), "{raw} escaped the path prefix");
+        }
+        // A literal dot segment is normalized by the URL parser before the
+        // allowlist sees it, so it also leaves the prefix.
+        assert!(!rule.allows(&reqwest::Url::parse("https://example.com/api/../admin").unwrap()));
+    }
+
+    #[test]
+    fn host_rules_match_wildcard_subdomains() {
+        let rule = HostRule::parse("https://*.example.com/*").unwrap();
+        assert!(rule.allows(&reqwest::Url::parse("https://a.example.com/x").unwrap()));
+        assert!(rule.allows(&reqwest::Url::parse("https://a.b.example.com/x").unwrap()));
+        assert!(!rule.allows(&reqwest::Url::parse("https://example.com/x").unwrap()));
+        assert!(!rule.allows(&reqwest::Url::parse("https://badexample.com/x").unwrap()));
+        assert!(!rule.allows(&reqwest::Url::parse("https://example.com.evil/x").unwrap()));
     }
 
     #[test]
