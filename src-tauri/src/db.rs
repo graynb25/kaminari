@@ -19,6 +19,19 @@ use crate::registry::LegacyExtension;
 /// spend memory or disk on.
 const MAX_BACKUP_BYTES: u64 = 1024 * 1024 * 1024;
 
+/// Extension-controlled source metadata is persisted and rendered. Keep every
+/// field bounded so one package cannot bloat the database or freeze a list.
+const MAX_SOURCE_EXTENSION_ID_BYTES: usize = 128;
+const MAX_SOURCE_ID_BYTES: usize = 2048;
+const MAX_SOURCE_TITLE_BYTES: usize = 4096;
+const MAX_SOURCE_COVER_BYTES: usize = 4096;
+const MAX_SOURCE_STATUS_BYTES: usize = 64;
+const MAX_SOURCE_EPISODE_TITLE_BYTES: usize = 512;
+const MAX_SOURCE_EPISODES_PER_SHOW: usize = 1000;
+const MAX_SOURCE_EPISODE_NUMBER: i64 = 10_000;
+const MAX_SOURCE_SECONDS: f64 = 7.0 * 24.0 * 60.0 * 60.0;
+const MAX_ANILIST_PROGRESS: i64 = 10_000;
+
 /// Bumped whenever a migration changes the on-disk schema. A backup from a
 /// newer version is rejected instead of being silently run against older code.
 const SCHEMA_VERSION: i64 = 2;
@@ -405,9 +418,9 @@ impl Db {
                     updated_at = unixepoch()",
                 params![entry.media.id, status],
             )?;
-            let mut progress = entry.progress.max(0);
+            let mut progress = entry.progress.clamp(0, MAX_ANILIST_PROGRESS);
             if let Some(episodes) = entry.media.episodes.filter(|episodes| *episodes > 0) {
-                progress = progress.min(i64::from(episodes));
+                progress = progress.min(i64::from(episodes).min(MAX_ANILIST_PROGRESS));
             }
             for episode in 1..=progress {
                 tx.execute(
@@ -504,6 +517,7 @@ impl Db {
     }
 
     pub fn set_watched(&self, media: &Media, episode: i64, watched: bool) -> AppResult<Vec<i64>> {
+        check_source_episode_number(episode)?;
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         upsert_media(&conn, media)?;
         if watched {
@@ -520,11 +534,12 @@ impl Db {
         through: i64,
         watched: bool,
     ) -> AppResult<Vec<i64>> {
+        let through = clamp_watched_through(through, media.episodes);
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         upsert_media(&conn, media)?;
         if watched {
             ensure_library_entry(&conn, media.id)?;
-            for episode in 1..=through.max(0) {
+            for episode in 1..=through {
                 conn.execute(
                     "INSERT OR IGNORE INTO watched(anilist_id, episode, watched_at)
                      VALUES (?1, ?2, unixepoch())",
@@ -534,7 +549,7 @@ impl Db {
             conn.execute(
                 "INSERT INTO history(anilist_id, episode, watched_at)
                  VALUES (?1, ?2, unixepoch())",
-                params![media.id, through.max(0)],
+                params![media.id, through],
             )?;
             conn.execute(
                 "INSERT INTO progress(anilist_id, episode, position_sec, duration_sec, updated_at)
@@ -542,7 +557,7 @@ impl Db {
                  ON CONFLICT(anilist_id) DO UPDATE SET
                     episode = excluded.episode,
                     updated_at = unixepoch()",
-                params![media.id, through.max(0)],
+                params![media.id, through],
             )?;
         } else {
             conn.execute(
@@ -706,8 +721,25 @@ impl Db {
     }
 
     pub fn remove_js_extension(&self, id: &str) -> AppResult<()> {
-        let conn = self.conn.lock().map_err(|_| db_locked())?;
-        conn.execute("DELETE FROM js_extensions WHERE id = ?1", params![id])?;
+        let mut conn = self.conn.lock().map_err(|_| db_locked())?;
+        let tx = conn.transaction()?;
+        // The source tables have no foreign key to js_extensions. Delete the
+        // rows in the same transaction so uninstalling a source cannot leave
+        // dead Continue Watching, history or library cards behind.
+        tx.execute(
+            "DELETE FROM source_history WHERE extension_id = ?1",
+            params![id],
+        )?;
+        tx.execute(
+            "DELETE FROM source_progress WHERE extension_id = ?1",
+            params![id],
+        )?;
+        tx.execute(
+            "DELETE FROM source_library WHERE extension_id = ?1",
+            params![id],
+        )?;
+        tx.execute("DELETE FROM js_extensions WHERE id = ?1", params![id])?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -722,6 +754,7 @@ impl Db {
         status: Option<&str>,
         anilist_id: Option<i64>,
     ) -> AppResult<()> {
+        validate_source_library_input(extension_id, show_id, title, cover, status)?;
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         conn.execute(
             "INSERT INTO source_library(
@@ -771,6 +804,7 @@ impl Db {
                      ORDER BY sp.updated_at DESC, sp.episode_number DESC LIMIT 1)
              FROM source_library sl
              LEFT JOIN js_extensions je ON je.id = sl.extension_id
+             WHERE je.id IS NOT NULL
              ORDER BY sl.updated_at DESC",
         )?;
         let rows = statement.query_map([], |row| {
@@ -795,6 +829,7 @@ impl Db {
     }
 
     pub fn source_library_remove(&self, extension_id: &str, show_id: &str) -> AppResult<()> {
+        validate_source_keys(extension_id, show_id)?;
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         conn.execute(
             "DELETE FROM source_library WHERE extension_id = ?1 AND show_id = ?2",
@@ -816,6 +851,7 @@ impl Db {
         extension_id: &str,
         show_id: &str,
     ) -> AppResult<Vec<SourceProgress>> {
+        validate_source_keys(extension_id, show_id)?;
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         let mut statement = conn.prepare(
             "SELECT episode_id, episode_number, episode_title, position_sec, duration_sec, watched, updated_at
@@ -849,7 +885,37 @@ impl Db {
         duration_sec: f64,
         watched: bool,
     ) -> AppResult<()> {
+        validate_source_progress_input(
+            extension_id,
+            show_id,
+            episode_id,
+            episode_number,
+            episode_title,
+            position_sec,
+            duration_sec,
+        )?;
         let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM source_progress
+                WHERE extension_id = ?1 AND show_id = ?2 AND episode_id = ?3
+             )",
+            params![extension_id, show_id, episode_id],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            let count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM source_progress
+                 WHERE extension_id = ?1 AND show_id = ?2",
+                params![extension_id, show_id],
+                |row| row.get(0),
+            )?;
+            if count as usize >= MAX_SOURCE_EPISODES_PER_SHOW {
+                return Err(AppError::Blocked(format!(
+                    "episode limit reached ({MAX_SOURCE_EPISODES_PER_SHOW} per show)"
+                )));
+            }
+        }
         conn.execute(
             "INSERT INTO source_progress(
                 extension_id, show_id, episode_id, episode_number, episode_title,
@@ -908,12 +974,32 @@ impl Db {
         episodes: &[SourceProgressMark],
         watched: bool,
     ) -> AppResult<()> {
+        validate_source_progress_marks(extension_id, show_id, episodes)?;
         if episodes.is_empty() {
             return Ok(());
         }
         let mut conn = self.conn.lock().map_err(|_| db_locked())?;
         let tx = conn.transaction()?;
         if watched {
+            let existing: HashSet<String> = {
+                let mut statement = tx.prepare(
+                    "SELECT episode_id FROM source_progress
+                     WHERE extension_id = ?1 AND show_id = ?2",
+                )?;
+                let rows = statement.query_map(params![extension_id, show_id], |row| row.get(0))?;
+                rows.collect::<Result<HashSet<_>, _>>()?
+            };
+            let mut incoming = HashSet::new();
+            for episode in episodes {
+                if !existing.contains(episode.episode_id.as_str()) {
+                    incoming.insert(episode.episode_id.as_str());
+                }
+            }
+            if existing.len() + incoming.len() > MAX_SOURCE_EPISODES_PER_SHOW {
+                return Err(AppError::Blocked(format!(
+                    "episode limit reached ({MAX_SOURCE_EPISODES_PER_SHOW} per show)"
+                )));
+            }
             let mut statement = tx.prepare(
                 "INSERT INTO source_progress(
                     extension_id, show_id, episode_id, episode_number, episode_title,
@@ -940,7 +1026,7 @@ impl Db {
                     updated_at = unixepoch()",
             )?;
             for episode in episodes {
-                let duration = episode.duration_sec.max(0.0);
+                let duration = episode.duration_sec;
                 statement.execute(params![
                     extension_id,
                     show_id,
@@ -1001,6 +1087,7 @@ impl Db {
                ON sl.extension_id = sp.extension_id AND sl.show_id = sp.show_id
              LEFT JOIN js_extensions je ON je.id = sp.extension_id
              WHERE sp.rank = 1
+               AND je.id IS NOT NULL
              ORDER BY sp.updated_at DESC
              LIMIT ?1",
         )?;
@@ -1034,6 +1121,7 @@ impl Db {
              JOIN source_library sl
                ON sl.extension_id = sh.extension_id AND sl.show_id = sh.show_id
              LEFT JOIN js_extensions je ON je.id = sh.extension_id
+             WHERE je.id IS NOT NULL
              ORDER BY sh.updated_at DESC
              LIMIT ?1",
         )?;
@@ -1060,6 +1148,8 @@ impl Db {
         show_id: &str,
         episode_id: &str,
     ) -> AppResult<()> {
+        validate_source_keys(extension_id, show_id)?;
+        check_source_len("episode id", episode_id, MAX_SOURCE_ID_BYTES)?;
         let conn = self.conn.lock().map_err(|_| db_locked())?;
         conn.execute(
             "DELETE FROM source_history
@@ -1681,6 +1771,113 @@ fn db_locked() -> AppError {
     AppError::Db("database lock poisoned".to_string())
 }
 
+fn check_source_len(label: &str, value: &str, max: usize) -> AppResult<()> {
+    if value.len() > max {
+        return Err(AppError::Blocked(format!(
+            "{label} is too long ({} bytes; limit is {max})",
+            value.len()
+        )));
+    }
+    Ok(())
+}
+
+fn check_optional_source_len(label: &str, value: Option<&str>, max: usize) -> AppResult<()> {
+    match value {
+        Some(value) => check_source_len(label, value, max),
+        None => Ok(()),
+    }
+}
+
+fn check_source_episode_number(value: i64) -> AppResult<()> {
+    if !(0..=MAX_SOURCE_EPISODE_NUMBER).contains(&value) {
+        return Err(AppError::Blocked(format!(
+            "episode number must be between 0 and {MAX_SOURCE_EPISODE_NUMBER}"
+        )));
+    }
+    Ok(())
+}
+
+fn check_source_seconds(label: &str, value: f64) -> AppResult<()> {
+    if !value.is_finite() || value < 0.0 || value > MAX_SOURCE_SECONDS {
+        return Err(AppError::Blocked(format!(
+            "{label} must be a finite number between 0 and {MAX_SOURCE_SECONDS} seconds"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_source_keys(extension_id: &str, show_id: &str) -> AppResult<()> {
+    check_source_len("extension id", extension_id, MAX_SOURCE_EXTENSION_ID_BYTES)?;
+    check_source_len("show id", show_id, MAX_SOURCE_ID_BYTES)
+}
+
+pub(crate) fn validate_source_library_input(
+    extension_id: &str,
+    show_id: &str,
+    title: &str,
+    cover: Option<&str>,
+    status: Option<&str>,
+) -> AppResult<()> {
+    validate_source_keys(extension_id, show_id)?;
+    check_source_len("title", title, MAX_SOURCE_TITLE_BYTES)?;
+    check_optional_source_len("cover", cover, MAX_SOURCE_COVER_BYTES)?;
+    check_optional_source_len("status", status, MAX_SOURCE_STATUS_BYTES)
+}
+
+pub(crate) fn validate_source_progress_input(
+    extension_id: &str,
+    show_id: &str,
+    episode_id: &str,
+    episode_number: i64,
+    episode_title: Option<&str>,
+    position_sec: f64,
+    duration_sec: f64,
+) -> AppResult<()> {
+    validate_source_keys(extension_id, show_id)?;
+    check_source_len("episode id", episode_id, MAX_SOURCE_ID_BYTES)?;
+    check_optional_source_len(
+        "episode title",
+        episode_title,
+        MAX_SOURCE_EPISODE_TITLE_BYTES,
+    )?;
+    check_source_episode_number(episode_number)?;
+    check_source_seconds("position", position_sec)?;
+    check_source_seconds("duration", duration_sec)
+}
+
+pub(crate) fn validate_source_progress_marks(
+    extension_id: &str,
+    show_id: &str,
+    episodes: &[SourceProgressMark],
+) -> AppResult<()> {
+    validate_source_keys(extension_id, show_id)?;
+    if episodes.len() > MAX_SOURCE_EPISODES_PER_SHOW {
+        return Err(AppError::Blocked(format!(
+            "too many episodes in one request (limit is {MAX_SOURCE_EPISODES_PER_SHOW})"
+        )));
+    }
+    for episode in episodes {
+        check_source_len("episode id", &episode.episode_id, MAX_SOURCE_ID_BYTES)?;
+        check_optional_source_len(
+            "episode title",
+            episode.episode_title.as_deref(),
+            MAX_SOURCE_EPISODE_TITLE_BYTES,
+        )?;
+        check_source_episode_number(episode.episode_number)?;
+        check_source_seconds("episode duration", episode.duration_sec)?;
+    }
+    Ok(())
+}
+
+fn clamp_watched_through(through: i64, episodes: Option<i32>) -> i64 {
+    let media_limit = episodes
+        .filter(|value| *value > 0)
+        .map(i64::from)
+        .unwrap_or(MAX_ANILIST_PROGRESS)
+        .min(MAX_ANILIST_PROGRESS);
+    through.clamp(0, media_limit)
+}
+
 impl ExtStorage for Db {
     fn get(&self, extension_id: &str, key: &str) -> Option<String> {
         let conn = self.conn.lock().ok()?;
@@ -1978,6 +2175,248 @@ mod tests {
             .unwrap()
             .is_empty());
         assert!(db.source_history(10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn removing_extension_deletes_source_rows_and_hides_orphans() {
+        let db = Db::new(":memory:").unwrap();
+        let package = crate::ext_host::sample_package().unwrap();
+        db.install_js_extension(&package.manifest, &package.code, "builtin")
+            .unwrap();
+        db.source_library_add(
+            &package.manifest.id,
+            "show-1",
+            "Popeye",
+            Some("https://example.com/cover.jpg"),
+            Some(1933),
+            Some("finished"),
+            None,
+        )
+        .unwrap();
+        db.source_progress_set(
+            &package.manifest.id,
+            "show-1",
+            "ep-1",
+            1,
+            Some("Episode 1"),
+            30.0,
+            600.0,
+            false,
+        )
+        .unwrap();
+        // A legacy orphan from a source that is already gone.
+        db.source_library_add(
+            "removed.source",
+            "orphan-show",
+            "Orphan",
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        db.source_progress_set(
+            "removed.source",
+            "orphan-show",
+            "ep-1",
+            1,
+            None,
+            30.0,
+            600.0,
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(db.source_library_list().unwrap().len(), 1);
+        assert_eq!(db.source_continue(10).unwrap().len(), 1);
+        assert_eq!(db.source_history(10).unwrap().len(), 1);
+
+        db.remove_js_extension(&package.manifest.id).unwrap();
+
+        assert!(db.source_library_list().unwrap().is_empty());
+        assert!(db.source_continue(10).unwrap().is_empty());
+        assert!(db.source_history(10).unwrap().is_empty());
+        assert!(db
+            .source_progress_get(&package.manifest.id, "show-1")
+            .unwrap()
+            .is_empty());
+
+        let conn = db.conn.lock().unwrap();
+        for table in ["source_library", "source_progress", "source_history"] {
+            let sql = format!("SELECT COUNT(*) FROM {table} WHERE extension_id = ?1");
+            let count: i64 = conn
+                .query_row(&sql, params![package.manifest.id], |row| row.get(0))
+                .unwrap();
+            assert_eq!(count, 0, "{table} kept rows for the removed extension");
+        }
+        // Orphan rows are hidden from every list, but deleting one extension
+        // must not delete another extension's rows.
+        let orphans: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM source_library WHERE extension_id = 'removed.source'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(orphans, 1);
+    }
+
+    #[test]
+    fn episode_counts_are_clamped_for_watch_all_and_anilist() {
+        let db = Db::new(":memory:").unwrap();
+
+        let mut bounded = sample_media();
+        bounded.episodes = Some(3);
+        let watched = db.mark_all_watched(&bounded, i64::MAX, true).unwrap();
+        assert_eq!(watched, vec![1, 2, 3]);
+
+        let mut unbounded = sample_media();
+        unbounded.id = 42;
+        unbounded.title.romaji = Some("Unbounded".to_string());
+        unbounded.episodes = None;
+        let watched = db.mark_all_watched(&unbounded, i64::MAX, true).unwrap();
+        assert_eq!(watched.len(), MAX_ANILIST_PROGRESS as usize);
+        assert_eq!(watched.last().copied(), Some(MAX_ANILIST_PROGRESS));
+        assert!(db.set_watched(&unbounded, -1, true).is_err());
+        assert!(db.set_watched(&unbounded, i64::MAX, true).is_err());
+
+        let mut pulled = sample_media();
+        pulled.id = 77;
+        pulled.title.romaji = Some("Pulled".to_string());
+        pulled.episodes = None;
+        let entries = vec![AniListListEntry {
+            media: pulled,
+            status: "CURRENT".to_string(),
+            progress: i64::MAX,
+        }];
+        db.sync_anilist_entries(&entries).unwrap();
+        let row = db
+            .list_library()
+            .unwrap()
+            .into_iter()
+            .find(|item| item.media.id == 77)
+            .unwrap();
+        assert_eq!(row.watched_count, MAX_ANILIST_PROGRESS);
+    }
+
+    #[test]
+    fn source_metadata_limits_reject_oversized_and_nonfinite_values() {
+        let db = Db::new(":memory:").unwrap();
+
+        let title = "x".repeat(MAX_SOURCE_TITLE_BYTES + 1);
+        assert!(db
+            .source_library_add("ext", "show", &title, None, None, None, None)
+            .is_err());
+        let cover = "x".repeat(MAX_SOURCE_COVER_BYTES + 1);
+        assert!(db
+            .source_library_add("ext", "show", "ok", Some(&cover), None, None, None)
+            .is_err());
+        let status = "x".repeat(MAX_SOURCE_STATUS_BYTES + 1);
+        assert!(db
+            .source_library_add("ext", "show", "ok", None, None, Some(&status), None)
+            .is_err());
+        let long_id = "x".repeat(MAX_SOURCE_ID_BYTES + 1);
+        assert!(db
+            .source_progress_set("ext", "show", &long_id, 1, None, 0.0, 0.0, false)
+            .is_err());
+        let long_episode_title = "x".repeat(MAX_SOURCE_EPISODE_TITLE_BYTES + 1);
+        assert!(db
+            .source_progress_set(
+                "ext",
+                "show",
+                "ep",
+                1,
+                Some(&long_episode_title),
+                0.0,
+                0.0,
+                false
+            )
+            .is_err());
+
+        for value in [
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            -1.0,
+            MAX_SOURCE_SECONDS + 1.0,
+        ] {
+            assert!(db
+                .source_progress_set("ext", "show", "ep", 1, None, value, 0.0, false)
+                .is_err());
+            assert!(db
+                .source_progress_set("ext", "show", "ep", 1, None, 0.0, value, false)
+                .is_err());
+        }
+        assert!(db
+            .source_progress_set("ext", "show", "ep", -1, None, 0.0, 0.0, false)
+            .is_err());
+        assert!(db
+            .source_progress_set(
+                "ext",
+                "show",
+                "ep",
+                MAX_SOURCE_EPISODE_NUMBER + 1,
+                None,
+                0.0,
+                0.0,
+                false
+            )
+            .is_err());
+        db.source_progress_set("ext", "show", "ep", 1, None, 0.0, 0.0, false)
+            .unwrap();
+
+        let marks = (0..=MAX_SOURCE_EPISODES_PER_SHOW)
+            .map(|index| SourceProgressMark {
+                episode_id: format!("ep-{index}"),
+                episode_number: index as i64,
+                episode_title: None,
+                duration_sec: 0.0,
+            })
+            .collect::<Vec<_>>();
+        assert!(db
+            .source_progress_mark_all("ext", "show", &marks, true)
+            .is_err());
+        db.source_progress_mark_all(
+            "ext",
+            "marked",
+            &marks[..MAX_SOURCE_EPISODES_PER_SHOW],
+            true,
+        )
+        .unwrap();
+        assert!(db
+            .source_progress_mark_all(
+                "ext",
+                "marked",
+                &marks[MAX_SOURCE_EPISODES_PER_SHOW..],
+                true
+            )
+            .is_err());
+
+        for index in 0..MAX_SOURCE_EPISODES_PER_SHOW as i64 {
+            db.source_progress_set(
+                "ext",
+                "full",
+                &format!("ep-{index}"),
+                index,
+                None,
+                0.0,
+                0.0,
+                false,
+            )
+            .unwrap();
+        }
+        assert!(db
+            .source_progress_set(
+                "ext",
+                "full",
+                "one-too-many",
+                MAX_SOURCE_EPISODES_PER_SHOW as i64,
+                None,
+                0.0,
+                0.0,
+                false
+            )
+            .is_err());
     }
 
     #[test]

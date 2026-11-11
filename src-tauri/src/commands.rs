@@ -16,6 +16,7 @@ use crate::anilist::{
     decide_write, AniListAuthStatus, AniListClient, Media, ShelfKind, Viewer, WriteDecision,
 };
 use crate::db::{
+    validate_source_library_input, validate_source_progress_input, validate_source_progress_marks,
     ContinueItem, Db, HistoryItem, InstalledSource, JsExtensionRow, LibraryItem,
     SourceContinueItem, SourceHistoryItem, SourceLibraryItem, SourceProgress, SourceProgressMark,
 };
@@ -950,6 +951,14 @@ pub fn source_library_add(
     status: Option<String>,
     anilist_id: Option<i64>,
 ) -> Result<(), String> {
+    validate_source_library_input(
+        &extension_id,
+        &show_id,
+        &title,
+        cover.as_deref(),
+        status.as_deref(),
+    )
+    .map_err(ipc_error)?;
     state
         .source_library_add(
             &extension_id,
@@ -998,6 +1007,16 @@ pub fn source_progress_set(
     duration_sec: f64,
     watched: bool,
 ) -> Result<(), String> {
+    validate_source_progress_input(
+        &extension_id,
+        &show_id,
+        &episode_id,
+        episode_number,
+        episode_title.as_deref(),
+        position_sec,
+        duration_sec,
+    )
+    .map_err(ipc_error)?;
     state
         .source_progress_set(
             &extension_id,
@@ -1020,6 +1039,7 @@ pub fn source_progress_mark_all(
     episodes: Vec<SourceProgressMark>,
     watched: bool,
 ) -> Result<(), String> {
+    validate_source_progress_marks(&extension_id, &show_id, &episodes).map_err(ipc_error)?;
     state
         .source_progress_mark_all(&extension_id, &show_id, &episodes, watched)
         .map_err(ipc_error)
