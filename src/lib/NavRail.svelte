@@ -17,10 +17,11 @@
   // One coherent stroke set: 24px, 1.5 width, currentColor. No emoji in chrome.
   const items: { id: View; label: string; key: string; icon: string }[] = [
     { id: "browse", label: "Browse", key: "1", icon: "grid" },
-    { id: "library", label: "Library", key: "2", icon: "library" },
-    { id: "history", label: "History", key: "3", icon: "clock" },
-    { id: "sources", label: "Sources", key: "4", icon: "package" },
-    { id: "settings", label: "Settings", key: "5", icon: "settings" },
+    { id: "schedule", label: "Schedule", key: "2", icon: "calendar" },
+    { id: "library", label: "Library", key: "3", icon: "library" },
+    { id: "history", label: "History", key: "4", icon: "clock" },
+    { id: "sources", label: "Sources", key: "5", icon: "package" },
+    { id: "settings", label: "Settings", key: "6", icon: "settings" },
   ];
 </script>
 

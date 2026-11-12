@@ -342,7 +342,7 @@ export type HistoryItem = {
   watchedAt: number;
 };
 
-export type View = "browse" | "library" | "history" | "sources" | "settings";
+export type View = "browse" | "schedule" | "library" | "history" | "sources" | "settings";
 
 export type RailState = {
   items: Media[];
