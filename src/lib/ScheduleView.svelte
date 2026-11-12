@@ -139,10 +139,9 @@
 
   $effect(() => {
     const keys = new Set(grouped.map((day) => day.key));
-    if (!selectedKey || !keys.has(selectedKey)) {
-      selectedKey =
-        nextDayWithEntries(grouped, grouped[0]?.key) ?? grouped[0]?.key ?? null;
-    }
+    if (selectedKey && keys.has(selectedKey)) return;
+    const fallback = nextDayWithEntries(grouped, grouped[0]?.key);
+    if (fallback) selectedKey = fallback;
   });
 
   const selectedDay = $derived(grouped.find((day) => day.key === selectedKey) ?? null);
@@ -415,7 +414,7 @@
               {#each later as entry}
                 {@const row = rowByKey.get(`${entry.anilistId}:${entry.airingAt}`)}
                 {#if row}
-                  <button class="sched-row" onclick={() => openRow(row)} aria-label="{row.title}, episode {row.entry.episode}, {formatScheduleDate(row.entry.airingAt)} at {formatScheduleTime(row.entry.airingAt)}">
+                  <button class="sched-row sched-row-later" onclick={() => openRow(row)} aria-label="{row.title}, episode {row.entry.episode}, {formatScheduleDate(row.entry.airingAt)} at {formatScheduleTime(row.entry.airingAt)}">
                     <span class="sched-time mono">{formatScheduleDate(row.entry.airingAt)}</span>
                     <span class="sched-poster">
                       {#if row.cover}
@@ -439,7 +438,7 @@
             {#each later as entry}
               {@const row = rowByKey.get(`${entry.anilistId}:${entry.airingAt}`)}
               {#if row}
-                <button class="sched-row" onclick={() => openRow(row)} aria-label="{row.title}, episode {row.entry.episode}, {formatScheduleDate(row.entry.airingAt)} at {formatScheduleTime(row.entry.airingAt)}">
+                <button class="sched-row sched-row-later" onclick={() => openRow(row)} aria-label="{row.title}, episode {row.entry.episode}, {formatScheduleDate(row.entry.airingAt)} at {formatScheduleTime(row.entry.airingAt)}">
                   <span class="sched-time mono">{formatScheduleDate(row.entry.airingAt)}</span>
                   <span class="sched-poster">
                     {#if row.cover}
@@ -604,6 +603,10 @@
 
   .sched-row:hover {
     border-color: var(--line-strong);
+  }
+
+  .sched-row-later {
+    grid-template-columns: 96px 48px minmax(0, 1fr) auto;
   }
 
   .sched-row.is-past {
