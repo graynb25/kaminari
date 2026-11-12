@@ -122,7 +122,7 @@ Jan 3  [poster] Example Show D                    EP 12
 3. The backend collects distinct AniList ids from `library` (excluding `dropped`) and `source_library` where `anilist_id` is not null.
 4. One `Page.media(id_in: [...])` request per 50 ids, with `nextAiringEpisode` and a one-node `airingSchedule(notYetAired: true)` fallback.
 5. Keep entries with a usable `airingAt`. Update the cache in one transaction on a fully successful fetch. Replace future rows, keep past rows from the last 48 hours so today still reads as a timeline after an episode airs.
-6. Return `items`, `fetchedAt` and an optional `warning`. On network failure with a cache, return the cache plus a warning instead of an error.
+6. Return `items`, `fetchedAt`, `stale` and an optional `warning`. A matching snapshot returns immediately even when stale; the view uses `stale` to trigger `force=true` in the background. On network failure with a cache, return the cache plus a warning instead of an error.
 7. The frontend joins each entry by `anilistId` to `library` and `sourceLibraryItems` for title, cover, status and source info. The cache does not duplicate media rows.
 
 Multiple rows per show are allowed. When an episode airs and AniList advances to the next one, the old row stays for up to 48 hours and the new row is added. The selected day then shows the aired episode and the next episode is in its own day.
@@ -203,7 +203,7 @@ Rust:
 
 - `anilist.rs`: `AiringScheduleNode`, `AiringScheduleEntry`, `airing_schedule(&self, ids: &[i64])` with batching, parsing and tests.
 - `db.rs`: `airing_schedule_ids`, `airing_schedule_cached`, `airing_schedule_replace`, `airing_schedule_fetched_at`. Migration 0008. Tests for empty, replace, 48-hour retention, removal and freshness.
-- `commands.rs`: `airing_schedule(force)` combines the database and client, returns cached data on failure, and never writes user progress.
+- `commands.rs`: `airing_schedule(force)` combines the database and client, returns a matching snapshot immediately with `stale`, fetches on force or when no snapshot exists, returns cached data on failure, and never writes user progress.
 - `main.rs`: register the command.
 
 Frontend:
