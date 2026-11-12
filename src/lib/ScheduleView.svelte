@@ -78,6 +78,16 @@
     };
   });
 
+  // Keep the schedule fresh while the view stays open. A hidden window
+  // skips the call and waits for the next visible tick.
+  $effect(() => {
+    if (!online) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") onRefresh();
+    }, 30 * 60 * 1000);
+    return () => window.clearInterval(id);
+  });
+
   const libraryById = $derived(new Map(library.map((entry) => [entry.media.id, entry])));
   const sourceByAnilist = $derived.by(() => {
     const map = new Map<number, SourceLibraryItem>();
@@ -154,6 +164,18 @@
     return null;
   });
 
+  // AniList advances nextAiringEpisode after an episode airs. Ask once,
+  // five minutes later, so the next episode replaces the one that just aired.
+  $effect(() => {
+    const airingAt = nextUp?.entry.airingAt;
+    if (!airingAt) return;
+    const delay = Math.max(0, (airingAt + 5 * 60) * 1000 - Date.now());
+    const id = window.setTimeout(() => {
+      if (document.visibilityState === "visible") onRefresh();
+    }, delay);
+    return () => window.clearTimeout(id);
+  });
+
   const subtitle = $derived.by(() => {
     if (visibleRows.length === 0) return "Nothing airing this week.";
     const word = distinctCount === 1 ? "show" : "shows";
@@ -164,7 +186,7 @@
   });
 
   const updatedLabel = $derived(
-    fetchedAt ? `Updated ${formatScheduleTime(fetchedAt)}${stale ? " (stale)" : ""}` : "Not updated yet",
+    fetchedAt ? `Updated ${formatScheduleTime(fetchedAt)}${stale ? " (cached)" : ""}` : "Not updated yet",
   );
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "local";
   const hasLibrary = $derived(library.length > 0 || sourceItems.length > 0);
