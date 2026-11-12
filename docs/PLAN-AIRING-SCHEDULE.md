@@ -1,6 +1,6 @@
 # Airing schedule plan
 
-Status: direction set to the recommendations below. No application code has been written. Implementation starts only after the maintainer says start. This plan adds a read-only schedule view over the existing library. It does not add content, sources or playback paths.
+Status: implemented locally on branch `feat/airing-schedule` at commit `4288877`, plus documentation and the 0.29.0 local candidate. Not published. This plan adds a read-only schedule view over the existing library. It does not add content, sources or playback paths.
 
 ## Why this is possible
 
@@ -325,3 +325,7 @@ Set on 2026-11-12 from the planning review. The recommended option was the defau
 - More than one future episode per show. A daily show shows only its next episode in v1.
 - A month calendar, genre and status filters, and per-user timezone overrides.
 - Notifications, background downloads and auto-play of a newly aired episode.
+
+## Implementation
+
+Local branch `feat/airing-schedule`, 2026-11-12. Backend `b9ca160`, helpers `99ded4c`, view `1c51270`, refresh fix `47936ed`, day fix `4ee2b48`, detail line `4288877`. The branch passes 234 Rust tests and 146 frontend tests, plus fmt, clippy, frontend check, build, style, diff and the dependency audit. Visual QA against a copied database covered light and dark themes, the default day, the empty-day jump, the Aired state, the Later group, the Wednesday Sasaki slot and the detail-page next-episode line. The real database stayed on schema 3. No push, tag, release or GitHub Actions run.
