@@ -363,3 +363,6 @@ export type Toast = {
   tone: ToastTone;
   action?: ToastAction;
 };
+
+export type AiringScheduleEntry = { anilistId: number; episode: number; airingAt: number };
+export type AiringSchedule = { items: AiringScheduleEntry[]; fetchedAt: number | null; stale: boolean; warning: string | null };
