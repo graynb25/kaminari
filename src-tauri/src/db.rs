@@ -408,6 +408,7 @@ impl Db {
                 format: row.get(7)?,
                 status: row.get(8)?,
                 episodes: row.get(9)?,
+                next_airing_episode: None,
                 recommendations: None,
             };
             Ok(LibraryItem {
@@ -649,6 +650,7 @@ impl Db {
                 format: row.get(7)?,
                 status: row.get(8)?,
                 episodes: total_episodes.map(|value| value as i32),
+                next_airing_episode: None,
                 recommendations: None,
             };
             Ok(HistoryItem {
@@ -984,6 +986,7 @@ impl Db {
                 format: row.get(7)?,
                 status: row.get(8)?,
                 episodes: total_episodes.map(|value| value as i32),
+                next_airing_episode: None,
                 recommendations: None,
             };
             Ok(ContinueItem {
@@ -2993,6 +2996,7 @@ mod tests {
             format: Some("TV".to_string()),
             status: Some("FINISHED".to_string()),
             episodes: Some(28),
+            next_airing_episode: None,
             recommendations: None,
         }
     }

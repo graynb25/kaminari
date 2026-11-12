@@ -148,6 +148,7 @@ mod tests {
             format: Some("TV".to_string()),
             status: Some("FINISHED".to_string()),
             episodes: Some(12),
+            next_airing_episode: None,
             recommendations: None,
         }
     }

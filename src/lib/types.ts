@@ -26,6 +26,7 @@ export type Media = {
   format?: string | null;
   status?: string | null;
   episodes?: number | null;
+  nextAiringEpisode?: { airingAt: number; episode: number } | null;
   recommendations?: {
     nodes: { mediaRecommendation?: Media | null }[];
   } | null;

@@ -157,6 +157,13 @@ pub struct CoverImage {
     pub color: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NextAiringEpisode {
+    pub airing_at: i64,
+    pub episode: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Media {
@@ -171,6 +178,8 @@ pub struct Media {
     pub format: Option<String>,
     pub status: Option<String>,
     pub episodes: Option<i32>,
+    #[serde(default)]
+    pub next_airing_episode: Option<NextAiringEpisode>,
     #[serde(default)]
     pub recommendations: Option<Recommendations>,
 }
@@ -848,6 +857,7 @@ const MEDIA_FIELDS: &str = r#"
   format
   status
   episodes
+  nextAiringEpisode { airingAt episode }
 "#;
 
 fn media_query(body: &str) -> String {
@@ -1047,6 +1057,71 @@ mod tests {
         assert!(detail.contains("mediaRecommendation"));
         assert!(!shelf_query(false).contains("recommendations"));
         assert!(!search_query().contains("recommendations"));
+    }
+
+    #[test]
+    fn detail_query_includes_next_airing_episode() {
+        let detail = detail_query();
+        assert!(detail.contains("nextAiringEpisode { airingAt episode }"));
+    }
+
+    #[test]
+    fn parses_detail_next_airing_episode() {
+        let raw = r#"
+          {
+            "data": {
+              "Media": {
+                "id": 15125,
+                "title": { "romaji": "Frieren", "english": "Frieren", "native": null },
+                "coverImage": null,
+                "bannerImage": null,
+                "description": null,
+                "genres": ["Adventure"],
+                "averageScore": 91,
+                "seasonYear": 2023,
+                "format": "TV",
+                "status": "RELEASING",
+                "episodes": 28,
+                "nextAiringEpisode": { "airingAt": 1790000000, "episode": 8 }
+              }
+            }
+          }
+        "#;
+        let envelope: MediaEnvelope = serde_json::from_str(raw).unwrap();
+        let media = envelope.data.unwrap().media;
+        assert_eq!(
+            media.next_airing_episode,
+            Some(NextAiringEpisode {
+                airing_at: 1790000000,
+                episode: 8,
+            })
+        );
+    }
+
+    #[test]
+    fn parses_missing_next_airing_episode_as_none() {
+        let raw = r#"
+          {
+            "data": {
+              "Media": {
+                "id": 15125,
+                "title": { "romaji": "Frieren", "english": "Frieren", "native": null },
+                "coverImage": null,
+                "bannerImage": null,
+                "description": null,
+                "genres": ["Adventure"],
+                "averageScore": 91,
+                "seasonYear": 2023,
+                "format": "TV",
+                "status": "FINISHED",
+                "episodes": 28
+              }
+            }
+          }
+        "#;
+        let envelope: MediaEnvelope = serde_json::from_str(raw).unwrap();
+        let media = envelope.data.unwrap().media;
+        assert!(media.next_airing_episode.is_none());
     }
 
     #[test]
