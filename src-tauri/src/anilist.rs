@@ -204,6 +204,26 @@ pub struct MediaListEntry {
     pub updated_at: i64,
 }
 
+/// One upcoming episode from AniList. Small and local only, never written
+/// to the media cache.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AiringScheduleEntry {
+    pub anilist_id: i64,
+    pub episode: i64,
+    pub airing_at: i64,
+}
+
+/// AniList accepts up to 50 ids per Page request.
+pub const AIRING_BATCH_SIZE: usize = 50;
+
+/// Splits library ids into request sized batches.
+pub fn airing_batches(ids: &[i64]) -> Vec<Vec<i64>> {
+    ids.chunks(AIRING_BATCH_SIZE)
+        .map(|chunk| chunk.to_vec())
+        .collect()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WriteDecision {
     Push,
@@ -301,6 +321,58 @@ impl ShelfKind {
 #[derive(Debug, Deserialize)]
 struct Page {
     media: Vec<Media>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AiringNext {
+    #[serde(default)]
+    airing_at: Option<i64>,
+    #[serde(default)]
+    episode: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AiringNode {
+    #[serde(default)]
+    airing_at: Option<i64>,
+    #[serde(default)]
+    episode: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AiringConnection {
+    #[serde(default)]
+    nodes: Vec<AiringNode>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AiringMedia {
+    id: i64,
+    #[serde(default)]
+    next_airing_episode: Option<AiringNext>,
+    #[serde(default)]
+    airing_schedule: Option<AiringConnection>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AiringPage {
+    #[serde(default)]
+    media: Vec<AiringMedia>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AiringPageData {
+    #[serde(rename = "Page")]
+    page: AiringPage,
+}
+
+#[derive(Debug, Deserialize)]
+struct AiringPageEnvelope {
+    data: Option<AiringPageData>,
+    errors: Option<Vec<GraphQlError>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -673,6 +745,65 @@ impl AniListClient {
             .map(|data| data.entry)
             .ok_or_else(|| AppError::Net("AniList returned no list entry".to_string()))
     }
+
+    /// Fetches the next airing episode for library ids in batches of 50.
+    /// Prefers nextAiringEpisode and falls back to the first not yet aired
+    /// schedule node. Returns only entries with a usable air time.
+    pub async fn airing_schedule(&self, ids: &[i64]) -> AppResult<Vec<AiringScheduleEntry>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let query = airing_query();
+        let mut entries = Vec::new();
+        for batch in airing_batches(ids) {
+            let json = self
+                .post(&query, serde_json::json!({ "ids": batch }))
+                .await?;
+            let envelope: AiringPageEnvelope =
+                serde_json::from_value(json).map_err(|err| AppError::Net(err.to_string()))?;
+            if let Some(errors) = envelope.errors {
+                return Err(AppError::Net(graphql_message(errors)));
+            }
+            let media = envelope
+                .data
+                .map(|data| data.page.media)
+                .unwrap_or_default();
+            for item in media {
+                if let Some(entry) = parse_airing_media(item) {
+                    entries.push(entry);
+                }
+            }
+        }
+        Ok(entries)
+    }
+}
+
+fn parse_airing_media(media: AiringMedia) -> Option<AiringScheduleEntry> {
+    if let Some(next) = media.next_airing_episode {
+        if let (Some(airing_at), Some(episode)) = (next.airing_at, next.episode) {
+            if airing_at > 0 {
+                return Some(AiringScheduleEntry {
+                    anilist_id: media.id,
+                    episode,
+                    airing_at,
+                });
+            }
+        }
+    }
+    let nodes = media
+        .airing_schedule
+        .map(|conn| conn.nodes)
+        .unwrap_or_default();
+    let node = nodes.into_iter().next()?;
+    let (airing_at, episode) = (node.airing_at?, node.episode?);
+    if airing_at <= 0 {
+        return None;
+    }
+    Some(AiringScheduleEntry {
+        anilist_id: media.id,
+        episode,
+        airing_at,
+    })
 }
 
 fn list_entries(envelope: MediaListEnvelope) -> AppResult<Vec<AniListListEntry>> {
@@ -831,6 +962,23 @@ mutation SaveMediaListEntry($mediaId: Int, $status: MediaListStatus, $progress: 
   }
 }
 "#
+}
+
+fn airing_query() -> String {
+    r#"
+query Airing($ids: [Int]) {
+  Page(page: 1, perPage: 50) {
+    media(id_in: $ids, type: ANIME) {
+      id
+      nextAiringEpisode { airingAt episode }
+      airingSchedule(notYetAired: true, perPage: 1) {
+        nodes { airingAt episode }
+      }
+    }
+  }
+}
+"#
+    .to_string()
 }
 
 #[cfg(test)]
@@ -1261,5 +1409,111 @@ mod tests {
             decide_write("watching", 3, 100, Some(&same_time_different)),
             WriteDecision::Push
         );
+    }
+
+    fn airing_envelope_for(media_json: &str) -> AiringPageEnvelope {
+        let raw = format!(r#"{{ "data": {{ "Page": {{ "media": [{media_json}] }} }} }}"#);
+        serde_json::from_str(&raw).unwrap()
+    }
+
+    #[test]
+    fn airing_prefers_next_episode_over_schedule() {
+        let envelope = airing_envelope_for(
+            r#"{
+              "id": 21,
+              "nextAiringEpisode": { "airingAt": 1790000000, "episode": 8 },
+              "airingSchedule": { "nodes": [{ "airingAt": 1790000000, "episode": 7 }] }
+            }"#,
+        );
+        let media = envelope.data.unwrap().page.media;
+        assert_eq!(media.len(), 1);
+        let entry = parse_airing_media(media.into_iter().next().unwrap()).unwrap();
+        assert_eq!(
+            entry,
+            AiringScheduleEntry {
+                anilist_id: 21,
+                episode: 8,
+                airing_at: 1790000000,
+            }
+        );
+    }
+
+    #[test]
+    fn airing_falls_back_to_schedule_node() {
+        let envelope = airing_envelope_for(
+            r#"{
+              "id": 22,
+              "nextAiringEpisode": null,
+              "airingSchedule": { "nodes": [{ "airingAt": 1790003600, "episode": 5 }] }
+            }"#,
+        );
+        let media = envelope.data.unwrap().page.media;
+        let entry = parse_airing_media(media.into_iter().next().unwrap()).unwrap();
+        assert_eq!(entry.anilist_id, 22);
+        assert_eq!(entry.episode, 5);
+        assert_eq!(entry.airing_at, 1790003600);
+    }
+
+    #[test]
+    fn airing_supports_both_sources_together() {
+        let envelope = airing_envelope_for(
+            r#"{
+              "id": 23,
+              "nextAiringEpisode": { "airingAt": 1790010000, "episode": 12 },
+              "airingSchedule": { "nodes": [{ "airingAt": 1790010000, "episode": 12 }] }
+            }"#,
+        );
+        let media = envelope.data.unwrap().page.media;
+        let entry = parse_airing_media(media.into_iter().next().unwrap()).unwrap();
+        assert_eq!(entry.anilist_id, 23);
+        assert_eq!(entry.episode, 12);
+        assert_eq!(entry.airing_at, 1790010000);
+    }
+
+    #[test]
+    fn airing_returns_none_without_either_source() {
+        let envelope = airing_envelope_for(
+            r#"{
+              "id": 24,
+              "nextAiringEpisode": null,
+              "airingSchedule": { "nodes": [] }
+            }"#,
+        );
+        let media = envelope.data.unwrap().page.media;
+        assert!(parse_airing_media(media.into_iter().next().unwrap()).is_none());
+
+        let missing = airing_envelope_for(r#"{"id": 25}"#);
+        let media = missing.data.unwrap().page.media;
+        assert!(parse_airing_media(media.into_iter().next().unwrap()).is_none());
+    }
+
+    #[test]
+    fn airing_batches_split_at_fifty() {
+        assert!(airing_batches(&[]).is_empty());
+
+        let one: Vec<i64> = vec![7];
+        let batches = airing_batches(&one);
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0], vec![7]);
+
+        let fifty: Vec<i64> = (1..=50).collect();
+        let batches = airing_batches(&fifty);
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].len(), 50);
+
+        let fifty_one: Vec<i64> = (1..=51).collect();
+        let batches = airing_batches(&fifty_one);
+        assert_eq!(batches.len(), 2);
+        assert_eq!(batches[0].len(), 50);
+        assert_eq!(batches[1], vec![51]);
+    }
+
+    #[test]
+    fn airing_query_uses_id_in_and_fallback() {
+        let query = airing_query();
+        assert!(query.contains("id_in: $ids"));
+        assert!(query.contains("nextAiringEpisode"));
+        assert!(query.contains("airingSchedule(notYetAired: true, perPage: 1)"));
+        assert!(query.contains("perPage: 50"));
     }
 }

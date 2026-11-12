@@ -10,7 +10,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::anilist::{AniListListEntry, CoverImage, Media, MediaTitle};
+use crate::anilist::{AiringScheduleEntry, AniListListEntry, CoverImage, Media, MediaTitle};
 use crate::error::{AppError, AppResult};
 use crate::ext_host::{ExtStorage, ExtensionTrust, Manifest};
 #[cfg(debug_assertions)]
@@ -42,13 +42,22 @@ const MAX_ANILIST_PROGRESS: i64 = 10_000;
 
 /// Bumped whenever a migration changes the on-disk schema. A backup from a
 /// newer version is rejected instead of being silently run against older code.
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 /// Base delay before retrying a failed AniList queue row. Doubles per failed
 /// attempt, with deterministic jitter so a large queue does not retry in
 /// lockstep, and stops growing at half an hour.
 pub const ANILIST_SYNC_BACKOFF_BASE_SECS: i64 = 30;
 pub const ANILIST_SYNC_BACKOFF_MAX_SECS: i64 = 30 * 60;
+
+/// Freshness window for the airing schedule snapshot. Inside the window a
+/// matching id set returns the cache directly. The view refreshes with
+/// force in the background when stale is true.
+pub const AIRING_SCHEDULE_FRESH_SECS: i64 = 15 * 60;
+
+/// Aired rows stay for two days so today still reads as a timeline after
+/// an episode airs.
+pub const AIRING_SCHEDULE_RETENTION_SECS: i64 = 48 * 3600;
 
 /// Tables and columns that every Kaminari backup must contain before it can
 /// replace the live library. Newer tables are validated separately when they
@@ -149,6 +158,7 @@ pub const DIAGNOSTICS_TABLES: &[&str] = &[
     "source_history",
     "js_extensions",
     "js_storage",
+    "airing_schedule",
 ];
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -723,6 +733,140 @@ impl Db {
             schema_version,
             row_counts,
         })
+    }
+
+    /// Distinct AniList ids that can appear in the schedule. Library rows
+    /// except dropped, plus linked source rows. Sorted for stable storage.
+    pub fn airing_schedule_ids(&self) -> AppResult<Vec<i64>> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let mut statement = conn.prepare(
+            "SELECT anilist_id FROM library WHERE status <> 'dropped'
+             UNION
+             SELECT anilist_id FROM source_library WHERE anilist_id IS NOT NULL",
+        )?;
+        let rows = statement.query_map([], |row| row.get::<_, i64>(0))?;
+        let mut ids: Vec<i64> = rows.collect::<Result<Vec<_>, _>>()?;
+        ids.sort_unstable();
+        ids.dedup();
+        Ok(ids)
+    }
+
+    /// Cached schedule rows ordered by air time.
+    pub fn airing_schedule_cached(&self) -> AppResult<Vec<AiringScheduleEntry>> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let mut statement = conn.prepare(
+            "SELECT anilist_id, episode, airing_at FROM airing_schedule ORDER BY airing_at ASC",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(AiringScheduleEntry {
+                anilist_id: row.get(0)?,
+                episode: row.get(1)?,
+                airing_at: row.get(2)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Snapshot time for the schedule, if a fetch ever succeeded.
+    pub fn airing_schedule_fetched_at(&self) -> AppResult<Option<i64>> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let raw: Option<String> = conn
+            .query_row(
+                "SELECT value FROM app_meta WHERE key = 'airing_schedule_fetched_at'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(raw.and_then(|value| value.parse::<i64>().ok()))
+    }
+
+    /// Library id set stored with the last snapshot. Empty when no snapshot
+    /// exists or the stored value does not parse.
+    pub fn airing_schedule_id_set(&self) -> AppResult<Vec<i64>> {
+        let conn = self.conn.lock().map_err(|_| db_locked())?;
+        let raw: Option<String> = conn
+            .query_row(
+                "SELECT value FROM app_meta WHERE key = 'airing_schedule_id_set'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(raw) = raw else {
+            return Ok(Vec::new());
+        };
+        let mut ids: Vec<i64> = serde_json::from_str(&raw).unwrap_or_default();
+        ids.sort_unstable();
+        ids.dedup();
+        Ok(ids)
+    }
+
+    /// Replaces the schedule snapshot in one transaction. Removes ids that
+    /// left the library, drops rows older than 48 hours, clears future rows
+    /// for the refreshed ids, upserts the new entries, then stores the id
+    /// set and the snapshot time. Returns the snapshot time.
+    pub fn airing_schedule_replace(
+        &self,
+        ids: &[i64],
+        entries: &[AiringScheduleEntry],
+    ) -> AppResult<i64> {
+        let mut sorted_ids: Vec<i64> = ids.to_vec();
+        sorted_ids.sort_unstable();
+        sorted_ids.dedup();
+        let mut conn = self.conn.lock().map_err(|_| db_locked())?;
+        let tx = conn.transaction()?;
+        let now = unix_now();
+        let cutoff = now.saturating_sub(AIRING_SCHEDULE_RETENTION_SECS);
+        if sorted_ids.is_empty() {
+            tx.execute("DELETE FROM airing_schedule", [])?;
+        } else {
+            let placeholders = sorted_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let delete_removed =
+                format!("DELETE FROM airing_schedule WHERE anilist_id NOT IN ({placeholders})");
+            tx.execute(
+                &delete_removed,
+                rusqlite::params_from_iter(sorted_ids.iter()),
+            )?;
+            tx.execute(
+                "DELETE FROM airing_schedule WHERE airing_at < ?1",
+                params![cutoff],
+            )?;
+            let delete_future = format!(
+                "DELETE FROM airing_schedule WHERE anilist_id IN ({placeholders}) AND airing_at >= ?"
+            );
+            let mut future_params: Vec<i64> = sorted_ids.clone();
+            future_params.push(now);
+            tx.execute(
+                &delete_future,
+                rusqlite::params_from_iter(future_params.iter()),
+            )?;
+            let mut allowed: HashSet<i64> = HashSet::new();
+            for id in &sorted_ids {
+                allowed.insert(*id);
+            }
+            for entry in entries {
+                if !allowed.contains(&entry.anilist_id) {
+                    continue;
+                }
+                tx.execute(
+                    "INSERT INTO airing_schedule(anilist_id, episode, airing_at)
+                     VALUES (?1, ?2, ?3)
+                     ON CONFLICT(anilist_id, airing_at) DO UPDATE SET episode = excluded.episode",
+                    params![entry.anilist_id, entry.episode, entry.airing_at],
+                )?;
+            }
+        }
+        let id_set =
+            serde_json::to_string(&sorted_ids).map_err(|err| AppError::Db(err.to_string()))?;
+        tx.execute(
+            "INSERT OR REPLACE INTO app_meta(key, value) VALUES ('airing_schedule_id_set', ?1)",
+            params![id_set],
+        )?;
+        tx.execute(
+            "INSERT OR REPLACE INTO app_meta(key, value) VALUES ('airing_schedule_fetched_at', ?1)",
+            params![now.to_string()],
+        )?;
+        tx.commit()?;
+        Ok(now)
     }
 
     pub fn watched_list(&self, anilist_id: i64) -> AppResult<Vec<i64>> {
@@ -2066,6 +2210,7 @@ fn apply_migrations(conn: &Connection) -> AppResult<()> {
         )?;
     }
     conn.execute_batch(include_str!("../migrations/0007_source_anilist.sql"))?;
+    conn.execute_batch(include_str!("../migrations/0008_airing_schedule.sql"))?;
     // Trust is earned from the install path, never from a package, a caller or
     // an older backup. Drop legacy labels such as `signed`.
     conn.execute(
@@ -2311,6 +2456,39 @@ fn unix_now() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|value| value.as_secs() as i64)
         .unwrap_or_default()
+}
+
+/// True when the schedule snapshot is missing or older than 15 minutes.
+pub fn airing_schedule_stale(fetched_at: Option<i64>, now: i64) -> bool {
+    match fetched_at {
+        None => true,
+        Some(stamped) => now.saturating_sub(stamped) >= AIRING_SCHEDULE_FRESH_SECS,
+    }
+}
+
+/// True when the schedule must fetch. A changed id set forces a fetch even
+/// inside the freshness window. Staleness alone does not fetch here; the
+/// view triggers a background force refresh when stale is true.
+pub fn airing_schedule_should_fetch(
+    force: bool,
+    fetched_at: Option<i64>,
+    stored_ids: &[i64],
+    current_ids: &[i64],
+) -> bool {
+    if force {
+        return true;
+    }
+    if fetched_at.is_none() {
+        return true;
+    }
+    if stored_ids.len() != current_ids.len() {
+        return true;
+    }
+    let mut stored = stored_ids.to_vec();
+    let mut current = current_ids.to_vec();
+    stored.sort_unstable();
+    current.sort_unstable();
+    stored != current
 }
 
 /// Unix timestamp before which activity is older than the selected retention.
@@ -2831,6 +3009,183 @@ mod tests {
         assert_eq!(items[0].watched_count, 0);
         db.remove_from_library(15125).unwrap();
         assert!(db.list_library().unwrap().is_empty());
+    }
+
+    fn airing_media(id: i64) -> Media {
+        let mut media = sample_media();
+        media.id = id;
+        media
+    }
+
+    #[test]
+    fn airing_ids_union_library_and_sources_without_dropped() {
+        let db = Db::new(":memory:").unwrap();
+        db.add_to_library(&airing_media(1), "watching").unwrap();
+        db.add_to_library(&airing_media(2), "planning").unwrap();
+        db.add_to_library(&airing_media(3), "dropped").unwrap();
+        db.source_library_add(
+            "ext.test",
+            "show-9",
+            "Linked Nine",
+            None,
+            None,
+            None,
+            Some(9),
+        )
+        .unwrap();
+        db.source_library_add(
+            "ext.test",
+            "show-2",
+            "Linked Two",
+            None,
+            None,
+            None,
+            Some(2),
+        )
+        .unwrap();
+        db.source_library_add("ext.test", "show-x", "Unlinked", None, None, None, None)
+            .unwrap();
+
+        let ids = db.airing_schedule_ids().unwrap();
+        assert_eq!(ids, vec![1, 2, 9]);
+    }
+
+    #[test]
+    fn airing_replace_caches_entries_in_order() {
+        let db = Db::new(":memory:").unwrap();
+        let now = unix_now();
+        let entries = vec![
+            AiringScheduleEntry {
+                anilist_id: 2,
+                episode: 5,
+                airing_at: now + 7200,
+            },
+            AiringScheduleEntry {
+                anilist_id: 1,
+                episode: 8,
+                airing_at: now + 3600,
+            },
+        ];
+        let stamped = db.airing_schedule_replace(&[1, 2], &entries).unwrap();
+        let cached = db.airing_schedule_cached().unwrap();
+        assert_eq!(cached.len(), 2);
+        assert_eq!(cached[0].anilist_id, 1);
+        assert_eq!(cached[1].anilist_id, 2);
+        assert_eq!(db.airing_schedule_fetched_at().unwrap(), Some(stamped));
+        assert_eq!(db.airing_schedule_id_set().unwrap(), vec![1, 2]);
+    }
+
+    #[test]
+    fn airing_replace_removes_ids_missing_from_library() {
+        let db = Db::new(":memory:").unwrap();
+        let now = unix_now();
+        db.airing_schedule_replace(
+            &[1, 2],
+            &[
+                AiringScheduleEntry {
+                    anilist_id: 1,
+                    episode: 8,
+                    airing_at: now + 3600,
+                },
+                AiringScheduleEntry {
+                    anilist_id: 2,
+                    episode: 3,
+                    airing_at: now + 7200,
+                },
+            ],
+        )
+        .unwrap();
+        db.airing_schedule_replace(
+            &[1],
+            &[AiringScheduleEntry {
+                anilist_id: 1,
+                episode: 9,
+                airing_at: now + 9000,
+            }],
+        )
+        .unwrap();
+        let cached = db.airing_schedule_cached().unwrap();
+        assert!(cached.iter().all(|entry| entry.anilist_id == 1));
+        assert_eq!(db.airing_schedule_id_set().unwrap(), vec![1]);
+    }
+
+    #[test]
+    fn airing_replace_keeps_recent_past_and_drops_old() {
+        let db = Db::new(":memory:").unwrap();
+        let now = unix_now();
+        db.airing_schedule_replace(
+            &[1],
+            &[AiringScheduleEntry {
+                anilist_id: 1,
+                episode: 7,
+                airing_at: now + 3600,
+            }],
+        )
+        .unwrap();
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO airing_schedule(anilist_id, episode, airing_at) VALUES (?1, ?2, ?3)",
+                params![1, 6, now - 47 * 3600],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO airing_schedule(anilist_id, episode, airing_at) VALUES (?1, ?2, ?3)",
+                params![1, 5, now - 49 * 3600],
+            )
+            .unwrap();
+        }
+        db.airing_schedule_replace(
+            &[1],
+            &[AiringScheduleEntry {
+                anilist_id: 1,
+                episode: 8,
+                airing_at: now + 7200,
+            }],
+        )
+        .unwrap();
+        let cached = db.airing_schedule_cached().unwrap();
+        let pairs: Vec<(i64, i64)> = cached
+            .iter()
+            .map(|entry| (entry.episode, entry.airing_at))
+            .collect();
+        assert!(pairs.iter().any(|(ep, _)| *ep == 6), "{pairs:?}");
+        assert!(!pairs.iter().any(|(ep, _)| *ep == 5), "{pairs:?}");
+        assert!(pairs.iter().any(|(ep, _)| *ep == 8), "{pairs:?}");
+        assert!(!pairs.iter().any(|(ep, _)| *ep == 7), "{pairs:?}");
+    }
+
+    #[test]
+    fn airing_id_set_change_forces_fetch() {
+        assert!(airing_schedule_should_fetch(true, Some(100), &[1], &[1]));
+        assert!(airing_schedule_should_fetch(false, None, &[], &[1]));
+        assert!(!airing_schedule_should_fetch(
+            false,
+            Some(100),
+            &[1, 2],
+            &[2, 1]
+        ));
+        assert!(airing_schedule_should_fetch(
+            false,
+            Some(100),
+            &[1, 2],
+            &[1, 3]
+        ));
+        assert!(airing_schedule_should_fetch(
+            false,
+            Some(100),
+            &[1],
+            &[1, 2]
+        ));
+    }
+
+    #[test]
+    fn airing_stale_boundary_uses_fifteen_minutes() {
+        let now = 1_790_000_000;
+        assert!(airing_schedule_stale(None, now));
+        assert!(!airing_schedule_stale(Some(now - 14 * 60 - 59), now));
+        assert!(airing_schedule_stale(Some(now - 15 * 60 - 1), now));
+        assert!(!airing_schedule_stale(Some(now + 60), now));
     }
 
     #[cfg(debug_assertions)]
