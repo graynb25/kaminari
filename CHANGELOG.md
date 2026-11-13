@@ -4,6 +4,13 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+## 0.29.0 - 2026-11-12
+
+- Schedule: add a Schedule rail view with a next-up card, seven day strip, timeline rows, episode badges, live countdowns, Aired and Later states, and a cached AniList snapshot
+- Detail: show the next airing episode and a live countdown on the detail page
+- Data: schema version 4 adds the airing_schedule cache. 0.28.5 and older reject a 0.29.0 backup
+- Version: bump to 0.29.0
+
 ## 0.28.5 - 2026-11-11
 
 - Continue Watching: revert the 0.28.4 duration filter as too strict. Manual watched marks return to the shelf, including zero-duration mark-all rows. Source link timing and the duplicate AniList link repair from 0.28.3 stay unchanged

@@ -7,22 +7,23 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::Semaphore;
 
 use crate::anilist::{
-    decide_write, AniListAuthStatus, AniListClient, Media, ShelfKind, Viewer, WriteDecision,
+    decide_write, AiringScheduleEntry, AniListAuthStatus, AniListClient, Media, ShelfKind, Viewer,
+    WriteDecision,
 };
 #[cfg(debug_assertions)]
 use crate::db::InstalledSource;
 use crate::db::{
-    validate_source_library_input, validate_source_progress_input, validate_source_progress_marks,
-    ContinueItem, Db, ExtensionInstallPreview, HistoryItem, HistoryRetentionResult, JsExtensionRow,
-    LibraryItem, SourceContinueItem, SourceHistoryItem, SourceLibraryItem, SourceProgress,
-    SourceProgressMark,
+    airing_schedule_should_fetch, airing_schedule_stale, validate_source_library_input,
+    validate_source_progress_input, validate_source_progress_marks, ContinueItem, Db,
+    ExtensionInstallPreview, HistoryItem, HistoryRetentionResult, JsExtensionRow, LibraryItem,
+    SourceContinueItem, SourceHistoryItem, SourceLibraryItem, SourceProgress, SourceProgressMark,
 };
 use crate::error::AppError;
 use crate::ext_host::{self, ExtPackage, ExtStorage, ExtensionTrust};
@@ -850,6 +851,84 @@ pub fn history_clear(state: State<'_, Db>) -> Result<(), String> {
 #[tauri::command]
 pub fn history_remove(state: State<'_, Db>, anilist_id: i64, episode: i64) -> Result<(), String> {
     state.history_remove(anilist_id, episode).map_err(ipc_error)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiringScheduleResponse {
+    pub items: Vec<AiringScheduleEntry>,
+    pub fetched_at: Option<i64>,
+    pub stale: bool,
+    pub warning: Option<String>,
+}
+
+fn airing_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_secs() as i64)
+        .unwrap_or_default()
+}
+
+/// Reads the cached schedule or refreshes it from AniList. A matching
+/// snapshot returns immediately even when stale. A failed refresh keeps the
+/// old cache with a warning. Never writes progress or library state.
+#[tauri::command]
+pub async fn airing_schedule(
+    state: State<'_, AniListClient>,
+    db: State<'_, Db>,
+    force: Option<bool>,
+) -> Result<AiringScheduleResponse, String> {
+    let force = force.unwrap_or(false);
+    let ids = db.airing_schedule_ids().map_err(ipc_error)?;
+    let stored = db.airing_schedule_id_set().map_err(ipc_error)?;
+    let fetched = db.airing_schedule_fetched_at().map_err(ipc_error)?;
+    let now = airing_now();
+    if !airing_schedule_should_fetch(force, fetched, &stored, &ids) {
+        let items = db.airing_schedule_cached().map_err(ipc_error)?;
+        return Ok(AiringScheduleResponse {
+            items,
+            fetched_at: fetched,
+            stale: airing_schedule_stale(fetched, now),
+            warning: None,
+        });
+    }
+    if ids.is_empty() {
+        let stamped = db.airing_schedule_replace(&ids, &[]).map_err(ipc_error)?;
+        let items = db.airing_schedule_cached().map_err(ipc_error)?;
+        return Ok(AiringScheduleResponse {
+            items,
+            fetched_at: Some(stamped),
+            stale: false,
+            warning: None,
+        });
+    }
+    match state.airing_schedule(&ids).await {
+        Ok(entries) => {
+            let stamped = db
+                .airing_schedule_replace(&ids, &entries)
+                .map_err(ipc_error)?;
+            let items = db.airing_schedule_cached().map_err(ipc_error)?;
+            Ok(AiringScheduleResponse {
+                items,
+                fetched_at: Some(stamped),
+                stale: false,
+                warning: None,
+            })
+        }
+        Err(err) => {
+            if fetched.is_some() {
+                let items = db.airing_schedule_cached().map_err(ipc_error)?;
+                Ok(AiringScheduleResponse {
+                    items,
+                    fetched_at: fetched,
+                    stale: true,
+                    warning: Some(err.to_string()),
+                })
+            } else {
+                Err(ipc_error(err))
+            }
+        }
+    }
 }
 
 #[cfg(debug_assertions)]

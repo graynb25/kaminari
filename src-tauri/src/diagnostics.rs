@@ -124,7 +124,7 @@ fn os_version() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::anilist::{CoverImage, Media, MediaTitle};
+    use crate::anilist::{AiringScheduleEntry, CoverImage, Media, MediaTitle};
     use crate::ext_host::ExtStorage;
 
     fn private_media() -> Media {
@@ -148,6 +148,7 @@ mod tests {
             format: Some("TV".to_string()),
             status: Some("FINISHED".to_string()),
             episodes: Some(12),
+            next_airing_episode: None,
             recommendations: None,
         }
     }
@@ -192,6 +193,19 @@ mod tests {
             "SECRET_TOKEN_VALUE",
         )
         .unwrap();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_secs() as i64)
+            .unwrap_or_default();
+        db.airing_schedule_replace(
+            &[media.id],
+            &[AiringScheduleEntry {
+                anilist_id: media.id,
+                episode: 1,
+                airing_at: now + 3600,
+            }],
+        )
+        .unwrap();
         db
     }
 
@@ -206,7 +220,7 @@ mod tests {
         assert!(!report.os.version.is_empty());
         assert_eq!(report.os.name, std::env::consts::OS);
         assert_eq!(report.os.architecture, std::env::consts::ARCH);
-        assert_eq!(report.database.schema_version, 3);
+        assert_eq!(report.database.schema_version, 4);
         for table in crate::db::DIAGNOSTICS_TABLES {
             assert_eq!(
                 report.database.row_counts.get(table),

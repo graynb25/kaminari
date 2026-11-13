@@ -161,6 +161,7 @@ fn main() {
             commands::history_clear,
             commands::history_remove,
             commands::history_retention_apply,
+            commands::airing_schedule,
             // Legacy Aniyomi registry/source commands stay available to
             // development builds and tests but are not reachable from the
             // release webview. The metadata code remains for future runtime

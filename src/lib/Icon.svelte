@@ -102,6 +102,8 @@
       '<rect x="3" y="5" width="18" height="14" rx="2" /><path d="M7 15h.01M11 15h6" />',
     wifiOff:
       '<path d="M3 3l18 18" /><path d="M8.5 8.6A11 11 0 0 1 21 9.5M5 12.5a11 11 0 0 1 2-1.3M8.5 16a5 5 0 0 1 7 0M12 19h.01" />',
+    calendar:
+      '<rect x="3.5" y="5" width="17" height="15.5" rx="2" /><path d="M3.5 9.5h17M8 3v4M16 3v4" />',
     arrowUpRight: '<path d="M7 17 17 7M8 7h9v9" />',
     list: '<path d="M9 6h11M9 12h11M9 18h11" /><path d="M4 6h.01M4 12h.01M4 18h.01" />',
     playCircle:

@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-12 Airing schedule
+
+Context. The library had 10 releasing shows, 9 inside the next 7 days and 1 later. AniList is the only source of episode air times; installed sources do not expose them. The view had to stay useful on the sparse days without opening on an empty day.
+
+What we shipped. A Schedule rail view after Browse, key 2. A next-up card, seven day strip, timeline rows with poster thumbnails, episode badges and live countdowns, an Aired state, and a Later group. Rust fetches `Page.media(id_in:)` in batches of 50 with `nextAiringEpisode` and an `airingSchedule` fallback. `airing_schedule` stores a snapshot, `app_meta` stores the id set and time, future rows are replaced, past rows stay for 48 hours, and a matching snapshot returns immediately with `stale`. The view refreshes after 30 minutes, five minutes after the next air time, and on demand. The detail page shows the next episode and a live countdown. Schema version 4. No new dependencies.
+
+What we measured. 234 Rust tests and 146 frontend tests pass, plus fmt, clippy with warnings denied, frontend check, build and the style check. `cargo audit --no-yanked` exits 0 with the existing six allowed warnings. A debug build against a copied database showed 10 shows, Saturday as the default day, Sasaki and Peeps Season 2 on Wednesday, an Aired row from a temporary past entry, the Later group, and both themes. The real database stayed on schema 3; the copy was migrated to 4 and removed. The schedule cache held 11 rows after the Aired seed and 10 before it.
+
+What remains. No push, tag, release or GitHub Actions run. A second visual pass opened an airing show from the schedule and showed the next-episode line and countdown in the detail layout. Notifications, source scraping, multiple future episodes per show, and release signing stay out of this candidate.
+
 ## 2026-11-11 Diagnostics, retention and safety copies
 
 Context. The production review residual risk 12 found no automatic cleanup for history, source progress, extension storage or backups, and support still had to ask users for details by hand. This local branch closes the history, safety-copy and diagnostics parts without changing the schema or release version.

@@ -26,6 +26,7 @@ export type Media = {
   format?: string | null;
   status?: string | null;
   episodes?: number | null;
+  nextAiringEpisode?: { airingAt: number; episode: number } | null;
   recommendations?: {
     nodes: { mediaRecommendation?: Media | null }[];
   } | null;
@@ -342,7 +343,7 @@ export type HistoryItem = {
   watchedAt: number;
 };
 
-export type View = "browse" | "library" | "history" | "sources" | "settings";
+export type View = "browse" | "schedule" | "library" | "history" | "sources" | "settings";
 
 export type RailState = {
   items: Media[];
@@ -363,3 +364,6 @@ export type Toast = {
   tone: ToastTone;
   action?: ToastAction;
 };
+
+export type AiringScheduleEntry = { anilistId: number; episode: number; airingAt: number };
+export type AiringSchedule = { items: AiringScheduleEntry[]; fetchedAt: number | null; stale: boolean; warning: string | null };

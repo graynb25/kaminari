@@ -3,6 +3,7 @@
   import Icon from "./Icon.svelte";
   import ProgressBar from "./ProgressBar.svelte";
   import { coverOf, cleanHtml, displayTitle, metaOf, scoreLabel, scoreOutOfTen } from "./format";
+  import { countdownLabel, formatScheduleDate, formatScheduleTime } from "./countdown";
   import type { Media } from "./types";
 
   let {
@@ -41,6 +42,9 @@
   const episodeCount = $derived(media.episodes && media.episodes > 0 ? Math.min(media.episodes, 200) : 0);
   const watchedCount = $derived(watched.length);
   const percent = $derived(episodeCount > 0 ? Math.round((watchedCount / episodeCount) * 100) : 0);
+  let now = $state(Math.floor(Date.now() / 1000));
+  const nextAiring = $derived(media.nextAiringEpisode ?? null);
+  const nextLabel = $derived(nextAiring ? countdownLabel(nextAiring.airingAt, now) : null);
   let menuOpen = $state(false);
   let menuEl: HTMLDetailsElement | null = $state(null);
 
@@ -72,6 +76,20 @@
       menuOpen = false;
     }
   }
+
+  $effect(() => {
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") now = Math.floor(Date.now() / 1000);
+    }, 1000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") now = Math.floor(Date.now() / 1000);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  });
 
   $effect(() => {
     if (!menuOpen || !menuEl) return;
@@ -154,6 +172,16 @@
           </p>
         {/if}
         <p class="text-sm mt-2" style="color: var(--paper-300);">{metaOf(media)}</p>
+        {#if nextAiring && nextLabel}
+          <p
+            class="text-sm mt-2 flex flex-wrap items-center gap-1.5"
+            style="color: var(--paper-300);"
+            title={nextLabel.aria}
+          >
+            <Icon name="calendar" size={13} />
+            <span>Next episode EP {nextAiring.episode} · {formatScheduleDate(nextAiring.airingAt)} at {formatScheduleTime(nextAiring.airingAt)} · {nextLabel.text}</span>
+          </p>
+        {/if}
 
         {#if media.genres?.length}
           <div class="flex flex-wrap gap-1.5 mt-3">

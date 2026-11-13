@@ -14,6 +14,7 @@
   import Icon from "./lib/Icon.svelte";
   import LibraryView from "./lib/LibraryView.svelte";
   import LicensesDialog from "./lib/LicensesDialog.svelte";
+  import ScheduleView from "./lib/ScheduleView.svelte";
   import NavRail from "./lib/NavRail.svelte";
   import PosterCard from "./lib/PosterCard.svelte";
   import Rail from "./lib/Rail.svelte";
@@ -30,6 +31,7 @@
   import Toasts from "./lib/Toasts.svelte";
   import {
     addToLibrary,
+    airingSchedule,
     applyHistoryRetention,
     bootSnapshot,
     continueWatching,
@@ -59,6 +61,7 @@
   } from "./lib/historyRetention";
   import { onAniListSyncConflict } from "./lib/anilistSync";
   import type {
+    AiringScheduleEntry,
     Boot,
     ContinueItem,
     HistoryItem,
@@ -113,6 +116,12 @@
   let sourceContinueItems = $state<SourceContinueItem[]>([]);
   let sourceHistoryItems = $state<SourceHistoryItem[]>([]);
   let sourceBrowser = $state<SourceBrowserState | null>(null);
+  let schedule = $state<AiringScheduleEntry[]>([]);
+  let scheduleLoading = $state(false);
+  let scheduleError = $state<string | null>(null);
+  let scheduleWarning = $state<string | null>(null);
+  let scheduleFetchedAt = $state<number | null>(null);
+  let scheduleStale = $state(false);
   let onboardingOpen = $state(false);
   let incognito = $state(false);
   let paletteOpen = $state(false);
@@ -125,6 +134,7 @@
   let detailRequest = 0;
   const viewNames: Record<View, string> = {
     browse: "Browse",
+    schedule: "Schedule",
     library: "Library",
     history: "History",
     sources: "Sources",
@@ -174,6 +184,39 @@
     if (next === "history") {
       void refreshHistory();
       void refreshSourceHistory();
+    }
+    if (next === "schedule") {
+      void refreshSchedule(false);
+    }
+  }
+
+  async function refreshSchedule(force = false) {
+    if (scheduleLoading) return;
+    scheduleLoading = true;
+    try {
+      let result = await airingSchedule(force);
+      schedule = result.items;
+      scheduleFetchedAt = result.fetchedAt;
+      scheduleStale = result.stale;
+      scheduleWarning = result.warning;
+      scheduleError = null;
+      if (!force && result.stale && !result.warning && online) {
+        result = await airingSchedule(true);
+        schedule = result.items;
+        scheduleFetchedAt = result.fetchedAt;
+        scheduleStale = result.stale;
+        scheduleWarning = result.warning;
+        scheduleError = null;
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (schedule.length > 0) {
+        scheduleWarning = message;
+      } else {
+        scheduleError = message;
+      }
+    } finally {
+      scheduleLoading = false;
     }
   }
 
@@ -639,8 +682,8 @@
         openPalette();
       } else if (event.key === "Escape") {
         if (detail) closeDetail();
-      } else if (event.key >= "1" && event.key <= "5") {
-        const next: View[] = ["browse", "library", "history", "sources", "settings"];
+      } else if (event.key >= "1" && event.key <= "6") {
+        const next: View[] = ["browse", "schedule", "library", "history", "sources", "settings"];
         const pick = next[Number(event.key) - 1];
         if (pick) goView(pick);
       }
@@ -935,6 +978,23 @@
                 onSetStatus={(item, status) => void setStatus(item, status)}
               />
             {/if}
+          {:else if view === "schedule"}
+            <ScheduleView
+              items={schedule}
+              library={library}
+              sourceItems={sourceLibraryItems}
+              loading={scheduleLoading}
+              error={scheduleError}
+              warning={scheduleWarning}
+              fetchedAt={scheduleFetchedAt}
+              stale={scheduleStale}
+              online={online}
+              onRefresh={() => void refreshSchedule(true)}
+              onOpen={(item) => void openDetail(item)}
+              onOpenSource={openSourceShow}
+              onBrowse={() => goView("browse")}
+              onSearch={openPalette}
+            />
           {:else if view === "history"}
             <HistoryView
               items={historyItems}

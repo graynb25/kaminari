@@ -72,13 +72,17 @@ AniList returns a score from 0 to 100. Show it on a 10 point scale with one deci
 
 Header row: H2, count, See all link, scroll buttons that appear on hover and stay on focus. Body scrolls horizontal with snap, 16px gaps. Scrollbars stay hidden, arrow buttons carry scroll, keyboard arrows work on the focused shelf. First run shows one callout, not stacked empty boxes. Library Preview renders only when the library has items. Backdrop variant is 16:9 at 320px wide with remaining time and progress. Poster variant is 2:3.
 
+### Schedule
+
+Sixth rail item after Browse, key 2. The page header reads `Estimated / Airing Schedule`, with the local update time and a Refresh button. A next-up card shows the nearest poster at 96 by 144, the episode badge, the local date and time, and the countdown in display type. Seven day chips follow; the selected day is larger and volt, and a count dot marks days with entries. The selected day is a timeline: local time in mono, a 48 by 64 poster, title, meta, episode badge and countdown pill, with a 2px rail and one dot per row. Aired rows dim and read Aired. A Later group holds entries beyond the seven days. Loading, empty, error and offline states use the shared components. Times are grouped by the local calendar day, marked as AniList estimates, and counted down once per second while the view is visible. Countdowns are not live regions. A local snapshot survives restart and offline use.
+
 ### SearchPalette (Ctrl K)
 
 Centered modal, 640px wide, glass void at 90 percent plus 20px blur, radius 20. Input on top, grouped results below: Library, AniList, Actions, Sources. Debounce 200ms. Two chars to query. Abort the last request. Up and down move, Enter opens, Shift plus Enter plays, Esc closes. Empty state shows 8 recent searches stored locally. AniList slow state shows a banner: cached results plus seconds left.
 
 ### DetailPage
 
-Banner 320px plus scrim. Poster 224px overlaps by 96px. Title block, meta, action row. Tabs: Episodes, Details, Related. Characters stay read only in v1. Play Next opens the first unwatched episode. Library button has a status menu: watching, planning, completed, paused, dropped. Sync chip shows AniList OAuth state. Episodes virtualize. Each row: 128 by 72 thumb, number, title, duration, watched check. Toggle is optimistic with rollback and a toast on DB error. AniList 429 shows stale data plus a countdown. 404 shows a removed panel.
+Banner 320px plus scrim. Poster 224px overlaps by 96px. Title block, meta, action row. Tabs: Episodes, Details, Related. Characters stay read only in v1. Play Next opens the first unwatched episode. Library button has a status menu: watching, planning, completed, paused, dropped. Sync chip shows AniList OAuth state. Episodes virtualize. Each row: 128 by 72 thumb, number, title, duration, watched check. Toggle is optimistic with rollback and a toast on DB error. AniList 429 shows stale data plus a countdown. 404 shows a removed panel. When AniList reports a next airing episode, a single line under the meta row shows a calendar icon, the episode number, the local date and time, and a live countdown that ticks once per second while the page stays visible.
 
 Current build: Play opens a note until sources land. Episodes are a numbered grid, capped at 200. Each button toggles watched state, with Mark all and Clear beside the progress bar. Marking watched adds the series to the library if it is not there yet.
 
@@ -112,11 +116,11 @@ Native source progress merges into the same day groups, sorted by the time it wa
 
 ### TitleBar, nav, SourceCard, toast, EmptyState, skeleton
 
-TitleBar is 40px, void 900 at 80 percent plus 16px blur. Drag on empty space. Center holds the palette trigger that looks like an input. Right holds min, max, close with 46 by 40px targets. Close hovers red. Nav rail is 72px, icons plus labels, keys 1 to 5, active pill in volt.
+TitleBar is 40px, void 900 at 80 percent plus 16px blur. Drag on empty space. Center holds the palette trigger that looks like an input. Right holds min, max, close with 46 by 40px targets. Close hovers red. Nav rail is 72px, icons plus labels, keys 1 to 6, active pill in volt.
 
 SourceCard: 40px icon, name, version chip, lang, status dot, toggle, Configure and Update buttons, Log link. Error cards keep the last error and a Retry button. Disabled cards dim to 60 percent.
 
-Nav keys are 1 to 5 for the five rail views (Browse, Library, History, Sources, Settings). The spec once said 1 to 7, written for future Downloads and Player views. Those views do not exist yet, so unbound digits stay silent instead of pretending.
+Nav keys are 1 to 6 for the six rail views (Browse, Schedule, Library, History, Sources, Settings). The spec once said 1 to 7, written for future Downloads and Player views. Those views do not exist yet, so unbound digits stay silent instead of pretending.
 
 Toast: bottom right, max 3, 4200ms, icon plus text plus one action (Undo, Retry). Never covers player controls, offsets when the player is open. Role status for info, alert for error.
 

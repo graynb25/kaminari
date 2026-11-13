@@ -39,6 +39,7 @@ libraryUpsert(entry: LibraryUpsert): Promise<LibraryEntry>
 libraryRemove(anilistId: number): Promise<void>
 progressSet(anilistId: number, episode: number, positionSec: number, durationSec: number): Promise<void>
 historyPush(anilistId: number, episode: number): Promise<void>
+airingSchedule(force: boolean): Promise<AiringSchedule> // cached snapshot, local day grouping in Svelte
 sourcesList(): Promise<SourceInfo[]>
 sourceToggle(id: string, enabled: boolean): Promise<void>
 extensionInstall(pathOrUrl: string): Promise<ExtensionMeta>
@@ -66,6 +67,14 @@ Rate limit: public ceiling near 90 per minute. Token bucket holds 90, refills 1 
 Queries cover search, detail with relations and next airing, trending and airing with cursor. Cache table holds query hash, body, fetched time, TTL. Trending TTL 1 hour. Detail 24 hours. Airing 5 minutes. Stale serves on 429 or offline with a `stale: true` flag.
 
 OAuth uses the AniList implicit grant through `kaminari://auth/callback`. The token is parsed and validated in Rust, stored in the OS keychain, and never reaches JS. AniList tokens last one year and there is no refresh token, so expiry means reconnecting.
+
+### Airing schedule
+
+Rust collects distinct AniList ids from `library` except dropped rows and from `source_library` rows with an `anilist_id`, then calls `Page.media(id_in:)` in batches of 50. Each media request asks for `nextAiringEpisode { airingAt episode }` and a one-node `airingSchedule(notYetAired: true)` fallback. The command returns `items`, `fetchedAt`, `stale` and `warning`.
+
+`airing_schedule(anilist_id, episode, airing_at)` is a snapshot with primary key `(anilist_id, airing_at)` and an index on `airing_at`. `app_meta` stores `airing_schedule_fetched_at` and `airing_schedule_id_set`. A successful refresh deletes ids that left the library, drops rows older than 48 hours, replaces future rows and upserts the new entries in one transaction. Past rows stay for 48 hours so the selected day still reads as a timeline after an episode airs. A matching snapshot returns immediately even when older than 15 minutes; the view forces one background refresh. A failed refresh returns the cached rows with a warning. The cache is local and included in database backups.
+
+The frontend groups Unix seconds by local calendar day with `Intl.DateTimeFormat` parts, formats times in the local zone, and ticks countdowns once per second while the view is visible. The schedule does not require an AniList token, does not request source pages and never writes progress or library state. Schema version 4 adds the table.
 
 ## Database
 
@@ -105,6 +114,8 @@ CREATE TABLE sources(
 CREATE TABLE http_cache(key TEXT PRIMARY KEY, body BLOB NOT NULL, fetched_at INTEGER NOT NULL, ttl_sec INTEGER NOT NULL);
 ```
 
+Schema version 4 adds `airing_schedule(anilist_id, episode, airing_at, PRIMARY KEY(anilist_id, airing_at))` and an index on `airing_at`. The snapshot rules are under Airing schedule.
+
 Complete past 90 percent marks complete and advances. Backup uses `VACUUM INTO`. If the database cannot be opened at startup, a native recovery dialog offers Retry, Open data folder and Quarantine; quarantine moves `kaminari.db` and its `-wal`/`-shm` sidecars into a `kaminari.db.quarantine-<ts>` folder and starts a fresh database. Nothing is deleted quietly. Source ids that can exceed 2 to the 53 stay TEXT on every boundary. See registry notes in `docs/EXTENSION-API.md` and the measured sample in `docs/ENGINEERING-NOTES.md`.
 
 ### Data at rest
@@ -123,7 +134,7 @@ A restore writes a safety copy with `VACUUM INTO` before replacing the live data
 
 ### Diagnostics export
 
-Settings > Updates and diagnostics exports `kaminari-diagnostics.json` through a native save dialog. The path is granted by the same one-use `PathAuthority` as settings and backups, and the file is written through `atomic_file::write_atomic`. Rust generates the report from fixed queries: app version from `CARGO_PKG_VERSION`, OS version and architecture, `PRAGMA user_version` and row counts for the nine tables named in `DIAGNOSTICS_TABLES`. Feature flags are coarse booleans. The report does not read row contents, titles, URLs, hosts, paths, cookies, extension IDs, storage keys or settings values. It is local only; nothing is uploaded.
+Settings > Updates and diagnostics exports `kaminari-diagnostics.json` through a native save dialog. The path is granted by the same one-use `PathAuthority` as settings and backups, and the file is written through `atomic_file::write_atomic`. Rust generates the report from fixed queries: app version from `CARGO_PKG_VERSION`, OS version and architecture, `PRAGMA user_version` and row counts for the tables named in `DIAGNOSTICS_TABLES`. Feature flags are coarse booleans. The report does not read row contents, titles, URLs, hosts, paths, cookies, extension IDs, storage keys or settings values. It is local only; nothing is uploaded.
 
 Windows Authenticode code signing remains deferred by the owner. The installer is unsigned and may trigger SmartScreen; the updater's Minisign signature is separate and does not sign the executable.
 

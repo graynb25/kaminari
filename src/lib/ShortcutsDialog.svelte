@@ -10,7 +10,7 @@
       icon: "grid",
       rows: [
         ["Ctrl K or /", "Search palette"],
-        ["1 to 5", "Browse, Library, History, Sources, Settings"],
+        ["1 to 6", "Browse, Schedule, Library, History, Sources, Settings"],
         ["Esc", "Close the top layer"],
         ["?", "This dialog"],
       ],

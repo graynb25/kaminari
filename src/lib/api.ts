@@ -28,6 +28,7 @@ import type {
   SourceProgressMark,
   SourceContinueItem,
   SourceHistoryItem,
+  AiringSchedule,
 } from "./types";
 
 export function bootSnapshot(): Promise<Boot> {
@@ -346,4 +347,8 @@ export function sourceHistoryRemove(
   episodeId: string,
 ): Promise<void> {
   return invoke<void>("source_history_remove", { extensionId, showId, episodeId });
+}
+
+export function airingSchedule(force = false): Promise<AiringSchedule> {
+  return invoke<AiringSchedule>("airing_schedule", { force });
 }
