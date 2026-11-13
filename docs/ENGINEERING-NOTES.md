@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-12 0.29.0 release
+
+Context. 0.29.0 publishes the airing schedule from PR #35, tag `v0.29.0` at `f146cca`.
+
+What we shipped. The signed Windows installer, `.sig`, `latest.json`, portable zip and `SHA256SUMS.txt`. The installer is 38,758,716 bytes. The public assets matched the hashes, public `latest.json` reported 0.29.0, and Minisign verified the installer against the pinned updater key.
+
+What we measured. CI `check` passed in 12m23s and `secrets` in 6s. A public 0.28.5 install found 0.29.0, downloaded and installed it, and reopened 0.29.0. The real database migrated from schema 3 to 4 with 45 library rows and 10 schedule rows. The schedule showed 10 shows, Sasaki and Peeps Season 2 on Wednesday, and no page errors. A schema 3 backup is kept locally before the update. A clean Windows Sandbox pass reported `clean_before=True`: 0.28.5 installed and launched, 0.29.0 installed over it, and 0.28.5 rollback kept the marker and database. The sandbox image used the host portable WebView2 runtime because it could not register one. The 0.29.0 database copy was schema 4 with 17 tables and `airing_schedule`; the rollback copy was schema 3. No sandbox processes remained.
+
+What remains. Legal review, Authenticode signing and the physical offline signing-key copy remain deferred.
+
 ## 2026-11-12 Airing schedule
 
 Context. The library had 10 releasing shows, 9 inside the next 7 days and 1 later. AniList is the only source of episode air times; installed sources do not expose them. The view had to stay useful on the sparse days without opening on an empty day.
@@ -136,7 +146,7 @@ What we shipped. A Schedule rail view after Browse, key 2. A next-up card, seven
 
 What we measured. 234 Rust tests and 146 frontend tests pass, plus fmt, clippy with warnings denied, frontend check, build and the style check. `cargo audit --no-yanked` exits 0 with the existing six allowed warnings. A debug build against a copied database showed 10 shows, Saturday as the default day, Sasaki and Peeps Season 2 on Wednesday, an Aired row from a temporary past entry, the Later group, and both themes. The real database stayed on schema 3; the copy was migrated to 4 and removed. The schedule cache held 11 rows after the Aired seed and 10 before it.
 
-What remains. No push, tag, release or GitHub Actions run. A second visual pass opened an airing show from the schedule and showed the next-episode line and countdown in the detail layout. Notifications, source scraping, multiple future episodes per show, and release signing stay out of this candidate.
+What remains. The branch was local until the 0.29.0 release. A second visual pass opened an airing show from the schedule and showed the next-episode line and countdown in the detail layout. Notifications, source scraping, multiple future episodes per show, and release signing stay out of this candidate.
 
 ## 2026-11-11 Diagnostics, retention and safety copies
 
