@@ -1,6 +1,6 @@
 # Airing schedule plan
 
-Status: implemented locally on branch `feat/airing-schedule` at commit `4288877`, plus documentation and the 0.29.0 local candidate. Not published. This plan adds a read-only schedule view over the existing library. It does not add content, sources or playback paths.
+Status: published on 2026-11-12 as `v0.29.0` from tag `v0.29.0` at `f146cca` (PR #35). This plan adds a read-only schedule view over the existing library. It does not add content, sources or playback paths.
 
 ## Why this is possible
 
@@ -328,4 +328,4 @@ Set on 2026-11-12 from the planning review. The recommended option was the defau
 
 ## Implementation
 
-Local branch `feat/airing-schedule`, 2026-11-12. Backend `b9ca160`, helpers `99ded4c`, view `1c51270`, refresh fix `47936ed`, day fix `4ee2b48`, detail line `4288877`. The branch passes 234 Rust tests and 146 frontend tests, plus fmt, clippy, frontend check, build, style, diff and the dependency audit. Visual QA against a copied database covered light and dark themes, the default day, the empty-day jump, the Aired state, the Later group, the Wednesday Sasaki slot and the detail-page next-episode line. The real database stayed on schema 3. No push, tag, release or GitHub Actions run.
+Local branch `feat/airing-schedule`, 2026-11-12. Backend `b9ca160`, helpers `99ded4c`, view `1c51270`, refresh fix `47936ed`, day fix `4ee2b48`, detail line `4288877`. The branch passes 234 Rust tests and 146 frontend tests, plus fmt, clippy, frontend check, build, style, diff and the dependency audit. Visual QA against a copied database covered light and dark themes, the default day, the empty-day jump, the Aired state, the Later group, the Wednesday Sasaki slot and the detail-page next-episode line. The real database stayed on schema 3 during QA. The public 0.28.5 to 0.29.0 update then migrated it to schema 4 with 45 library rows and 10 schedule rows. A clean Windows Sandbox pass installed 0.28.5, updated to 0.29.0 and rolled back with the marker and database intact; the sandbox image used the host portable WebView2 runtime. One PR CI run passed; no main CI run was recorded.
