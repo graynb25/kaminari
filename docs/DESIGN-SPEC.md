@@ -84,7 +84,7 @@ Centered modal, 640px wide, glass void at 90 percent plus 20px blur, radius 20. 
 
 Banner 320px plus scrim. Poster 224px overlaps by 96px. Title block, meta, action row. Tabs: Episodes, Details, Related. Characters stay read only in v1. Play Next opens the first unwatched episode. Library button has a status menu: watching, planning, completed, paused, dropped. Sync chip shows AniList OAuth state. Episodes virtualize. Each row: 128 by 72 thumb, number, title, duration, watched check. Toggle is optimistic with rollback and a toast on DB error. AniList 429 shows stale data plus a countdown. 404 shows a removed panel. When AniList reports a next airing episode, a single line under the meta row shows a calendar icon, the episode number, the local date and time, and a live countdown that ticks once per second while the page stays visible.
 
-The right column shows a Seasons panel above Details when AniList reports sequels, prequels, side stories, spin-offs or alternatives. Each row opens the related detail on select and carries a separate Save or Saved library button.
+The right column shows a Seasons panel above Details when AniList reports anime sequels, prequels, side stories, spin-offs or alternatives. Each row opens the related detail on select and carries a separate Save or Saved library button.
 
 Current build: Play opens a note until sources land. Episodes are a numbered grid, capped at 200. Each button toggles watched state, with Mark all and Clear beside the progress bar. Marking watched adds the series to the library if it is not there yet.
 

@@ -42,6 +42,8 @@
       .slice(0, 12),
   );
   const seasonOrder = ["SEQUEL", "PREQUEL", "SIDE_STORY", "SPIN_OFF", "ALTERNATIVE"];
+  // AniList relation nodes can be manga, so keep anime formats only.
+  const animeFormats = ["TV", "TV_SHORT", "MOVIE", "SPECIAL", "OVA", "ONA", "MUSIC"];
   const seasonLabels: Record<string, string> = {
     SEQUEL: "Sequel",
     PREQUEL: "Prequel",
@@ -56,6 +58,7 @@
       const node = edge.node;
       if (!node || node.id === media.id) continue;
       if (!seasonOrder.includes(edge.relationType)) continue;
+      if (!node.format || !animeFormats.includes(node.format)) continue;
       out.push({ item: node, relation: edge.relationType });
     }
     out.sort((a, b) => {
