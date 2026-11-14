@@ -4,6 +4,8 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
+- Schedule: rename the Later group to Beyond this week, with a note that it is not part of the selected day and a top border that separates it from the day timeline
+
 ## 0.29.0 - 2026-11-12
 
 - Schedule: add a Schedule rail view with a next-up card, seven day strip, timeline rows, episode badges, live countdowns, Aired and Later states, and a cached AniList snapshot
