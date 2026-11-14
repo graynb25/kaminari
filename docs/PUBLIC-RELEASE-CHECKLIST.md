@@ -83,6 +83,15 @@ The repository is public. Current state:
 - [x] Public update from 0.28.5 to 0.29.0 through the signed feed passed. The app reopened 0.29.0 and the schedule showed 10 shows, with Sasaki and Peeps Season 2 on Wednesday.
 - [ ] Legal review, Authenticode signing and the physical offline signing-key copy remain deferred.
 
+## 0.30.0 release
+
+- [x] Detail: linked anime seasons panel with open and add/remove library actions. Manga relation nodes are filtered out.
+- [x] Schedule: rename the global Later group to Beyond this week and state that it is not part of the selected day.
+- [x] 237 Rust tests and 146 frontend tests, plus fmt, clippy with warnings denied, frontend check, build, style and `git diff --check`. `cargo audit --no-yanked` exits 0 with the existing six allowed warnings.
+- [ ] Clean Windows Sandbox install, launch, update and rollback pass for 0.30.0.
+- [ ] Public update from 0.29.0 to 0.30.0 through the signed feed.
+- [ ] Legal review, Authenticode signing and the physical offline signing-key copy remain deferred.
+
 ## Release assets
 
 - `Kaminari_<version>_x64-setup.exe`

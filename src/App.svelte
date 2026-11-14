@@ -146,6 +146,7 @@
   const trendingRail = $derived(rails.trending);
 
   const continueRows = $derived(mergeContinueRows(continueItems, sourceContinueItems));
+  const libraryIds = $derived(new Set(library.map((entry) => entry.media.id)));
   const detailEntry = $derived.by(() => {
     if (!detail) return undefined;
     const id = detail.id;
@@ -748,6 +749,7 @@
             <DetailPage
               media={detail}
               inLibrary={isInLibrary(detail.id)}
+              libraryIds={libraryIds}
               status={detailEntry?.status ?? null}
               watched={watchedDetail}
               onBack={closeDetail}

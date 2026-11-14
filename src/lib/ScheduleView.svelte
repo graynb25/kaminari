@@ -402,14 +402,18 @@
     </div>
 
     {#if later.length > 0}
-      <section aria-label="Later" class="mt-8">
-        <div class="flex items-center gap-3 mb-3">
-          <h2 class="shelf-title">Later</h2>
+      {@const lastDay = grouped.length > 0 ? grouped[grouped.length - 1].monthDay : null}
+      <section aria-label="Beyond this week" class="mt-10 pt-6 sched-beyond">
+        <div class="flex items-center gap-3 mb-1">
+          <h2 class="shelf-title">Beyond this week</h2>
           <span class="shelf-count">{later.length}</span>
         </div>
+        <p class="text-xs mb-3" style="color: var(--paper-400);">
+          Not part of the selected day. Next episodes{lastDay ? ` after ${lastDay}` : ""}.
+        </p>
         {#if later.length > 5}
           <details class="sched-later">
-            <summary class="btn-ghost px-3.5 py-2 text-xs w-fit">Show all {later.length} later episodes</summary>
+            <summary class="btn-ghost px-3.5 py-2 text-xs w-fit">Show all {later.length} episodes beyond this week</summary>
             <div class="sched-list mt-3">
               {#each later as entry}
                 {@const row = rowByKey.get(`${entry.anilistId}:${entry.airingAt}`)}
@@ -702,5 +706,9 @@
   .sched-later summary {
     cursor: pointer;
     list-style: none;
+  }
+
+  .sched-beyond {
+    border-top: 1px solid var(--line);
   }
 </style>

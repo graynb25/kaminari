@@ -74,7 +74,7 @@ Header row: H2, count, See all link, scroll buttons that appear on hover and sta
 
 ### Schedule
 
-Sixth rail item after Browse, key 2. The page header reads `Estimated / Airing Schedule`, with the local update time and a Refresh button. A next-up card shows the nearest poster at 96 by 144, the episode badge, the local date and time, and the countdown in display type. Seven day chips follow; the selected day is larger and volt, and a count dot marks days with entries. The selected day is a timeline: local time in mono, a 48 by 64 poster, title, meta, episode badge and countdown pill, with a 2px rail and one dot per row. Aired rows dim and read Aired. A Later group holds entries beyond the seven days. Loading, empty, error and offline states use the shared components. Times are grouped by the local calendar day, marked as AniList estimates, and counted down once per second while the view is visible. Countdowns are not live regions. A local snapshot survives restart and offline use.
+Sixth rail item after Browse, key 2. The page header reads `Estimated / Airing Schedule`, with the local update time and a Refresh button. A next-up card shows the nearest poster at 96 by 144, the episode badge, the local date and time, and the countdown in display type. Seven day chips follow; the selected day is larger and volt, and a count dot marks days with entries. The selected day is a timeline: local time in mono, a 48 by 64 poster, title, meta, episode badge and countdown pill, with a 2px rail and one dot per row. Aired rows dim and read Aired. A Beyond this week group holds entries beyond the seven days, separated from the day timeline by a top border and extra margin. It carries the note `Not part of the selected day. Next episodes after <last day>.` Loading, empty, error and offline states use the shared components. Times are grouped by the local calendar day, marked as AniList estimates, and counted down once per second while the view is visible. Countdowns are not live regions. A local snapshot survives restart and offline use.
 
 ### SearchPalette (Ctrl K)
 
@@ -83,6 +83,8 @@ Centered modal, 640px wide, glass void at 90 percent plus 20px blur, radius 20. 
 ### DetailPage
 
 Banner 320px plus scrim. Poster 224px overlaps by 96px. Title block, meta, action row. Tabs: Episodes, Details, Related. Characters stay read only in v1. Play Next opens the first unwatched episode. Library button has a status menu: watching, planning, completed, paused, dropped. Sync chip shows AniList OAuth state. Episodes virtualize. Each row: 128 by 72 thumb, number, title, duration, watched check. Toggle is optimistic with rollback and a toast on DB error. AniList 429 shows stale data plus a countdown. 404 shows a removed panel. When AniList reports a next airing episode, a single line under the meta row shows a calendar icon, the episode number, the local date and time, and a live countdown that ticks once per second while the page stays visible.
+
+The right column shows a Seasons panel above Details when AniList reports anime sequels, prequels, side stories, spin-offs or alternatives. Each row opens the related detail on select and carries a separate Save or Saved library button.
 
 Current build: Play opens a note until sources land. Episodes are a numbered grid, capped at 200. Each button toggles watched state, with Mark all and Clear beside the progress bar. Marking watched adds the series to the library if it is not there yet.
 

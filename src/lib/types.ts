@@ -30,6 +30,7 @@ export type Media = {
   recommendations?: {
     nodes: { mediaRecommendation?: Media | null }[];
   } | null;
+  relations?: { edges: { relationType: string; node?: Media | null }[] } | null;
 };
 
 export type Boot = {

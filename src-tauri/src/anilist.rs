@@ -182,6 +182,21 @@ pub struct Media {
     pub next_airing_episode: Option<NextAiringEpisode>,
     #[serde(default)]
     pub recommendations: Option<Recommendations>,
+    #[serde(default)]
+    pub relations: Option<MediaRelations>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaRelations {
+    pub edges: Vec<RelationEdge>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelationEdge {
+    pub relation_type: String,
+    pub node: Option<Box<Media>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -911,6 +926,12 @@ query Detail($id: Int) {
         }
       }
     }
+    relations {
+      edges {
+        relationType
+        node { __MEDIA_FIELDS__ }
+      }
+    }
   }
 }
 "#,
@@ -1169,6 +1190,108 @@ mod tests {
         let recommended = nodes[0].media_recommendation.as_ref().unwrap();
         assert_eq!(recommended.id, 2);
         assert_eq!(recommended.title.english.as_deref(), Some("Other"));
+    }
+
+    #[test]
+    fn detail_query_includes_relations_only_on_detail() {
+        let detail = detail_query();
+        assert!(detail.contains("relations"));
+        assert!(detail.contains("relationType"));
+        assert!(!shelf_query(false).contains("relations"));
+        assert!(!search_query().contains("relations"));
+    }
+
+    #[test]
+    fn parses_detail_relations_sequel_and_prequel() {
+        let raw = r#"
+          {
+            "data": {
+              "Media": {
+                "id": 15125,
+                "title": { "romaji": "Frieren", "english": "Frieren", "native": null },
+                "coverImage": null,
+                "bannerImage": null,
+                "description": null,
+                "genres": ["Adventure"],
+                "averageScore": 91,
+                "seasonYear": 2023,
+                "format": "TV",
+                "status": "FINISHED",
+                "episodes": 28,
+                "relations": {
+                  "edges": [
+                    {
+                      "relationType": "SEQUEL",
+                      "node": {
+                        "id": 15126,
+                        "title": { "romaji": "Frieren S2", "english": "Frieren S2", "native": null },
+                        "coverImage": null,
+                        "bannerImage": null,
+                        "description": null,
+                        "genres": null,
+                        "averageScore": null,
+                        "seasonYear": 2025,
+                        "format": "TV",
+                        "status": "FINISHED",
+                        "episodes": 12
+                      }
+                    },
+                    {
+                      "relationType": "PREQUEL",
+                      "node": {
+                        "id": 15124,
+                        "title": { "romaji": "Frieren S0", "english": "Frieren S0", "native": null },
+                        "coverImage": null,
+                        "bannerImage": null,
+                        "description": null,
+                        "genres": null,
+                        "averageScore": null,
+                        "seasonYear": 2021,
+                        "format": "TV",
+                        "status": "FINISHED",
+                        "episodes": 12
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        "#;
+        let envelope: MediaEnvelope = serde_json::from_str(raw).unwrap();
+        let media = envelope.data.unwrap().media;
+        let relations = media.relations.unwrap();
+        assert_eq!(relations.edges.len(), 2);
+        assert_eq!(relations.edges[0].relation_type, "SEQUEL");
+        assert_eq!(relations.edges[0].node.as_ref().unwrap().id, 15126);
+        assert_eq!(relations.edges[1].relation_type, "PREQUEL");
+        assert_eq!(relations.edges[1].node.as_ref().unwrap().id, 15124);
+    }
+
+    #[test]
+    fn parses_missing_relations_as_none() {
+        let raw = r#"
+          {
+            "data": {
+              "Media": {
+                "id": 15125,
+                "title": { "romaji": "Frieren", "english": "Frieren", "native": null },
+                "coverImage": null,
+                "bannerImage": null,
+                "description": null,
+                "genres": null,
+                "averageScore": null,
+                "seasonYear": null,
+                "format": null,
+                "status": null,
+                "episodes": null
+              }
+            }
+          }
+        "#;
+        let envelope: MediaEnvelope = serde_json::from_str(raw).unwrap();
+        let media = envelope.data.unwrap().media;
+        assert!(media.relations.is_none());
     }
 
     #[test]
