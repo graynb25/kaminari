@@ -128,6 +128,16 @@ What we measured. Z-order passed in a 1280x800 window and at 2560x1440 fullscree
 
 What we did not do. No DLLs are tracked, bundled or added to `bundle.resources`. The pre-P1 native package is in `licenses/native` with the license texts, artifact hashes and source offer, but the exact FFmpeg commit and lawyer sign-off remain open. No installer delta, clean install or update test yet. The wrapper rejects JSON arrays, so `http-header-fields` is one comma separated string and header values containing commas are unsafe; protected MP4 and HLS stay on the proxy. mpv rejects the `start` property, so resume seeks on `file-loaded`. P1 is blocked on license sign-off, a dedicated watch window or proven route transparency, the proxy header path, and packaging tests.
 
+## 2026-11-13 0.30.0 release
+
+Context. 0.30.0 publishes linked anime seasons and the Beyond this week clarification from PR #37, tag `v0.30.0` at `9e86fe2`.
+
+What we shipped. The signed Windows installer, `.sig`, `latest.json`, portable zip and `SHA256SUMS.txt`. The installer is 38,760,002 bytes and the portable zip is 51,740,818 bytes. The public assets matched the hashes, public `latest.json` reported 0.30.0, and Minisign verified the installer against the pinned updater key.
+
+What we measured. CI `check` passed in 9m57s and `secrets` in 6s. A public 0.29.0 install found 0.30.0, downloaded and installed it, and the app opened manually as 0.30.0 after the installer. The real database stayed on schema 4 with 72 library rows and 10 schedule rows. A clean Windows Sandbox pass reported `clean_before=True`: 0.29.0 installed and launched, 0.30.0 installed over it, and 0.29.0 rollback kept the marker and database. The sandbox image used the host portable WebView2 runtime because it could not register one. Both database copies were schema 4 with 17 tables and `airing_schedule`. No sandbox processes remained.
+
+What remains. Legal review, Authenticode signing and the physical offline signing-key copy remain deferred. A full Hyper-V VM pass was not run.
+
 ## 2026-11-12 0.29.0 release
 
 Context. 0.29.0 publishes the airing schedule from PR #35, tag `v0.29.0` at `f146cca`.
