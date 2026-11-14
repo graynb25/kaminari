@@ -5,6 +5,7 @@ Every visible change gets a line here. Keep lines short and specific.
 ## Unreleased
 
 - Schedule: rename the Later group to Beyond this week, with a note that it is not part of the selected day and a top border that separates it from the day timeline
+- Detail: add a Seasons panel with linked sequels, prequels, side stories, spin-offs and alternatives, each with an open action and a separate Save or Saved library button
 
 ## 0.29.0 - 2026-11-12
 

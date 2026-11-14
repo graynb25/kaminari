@@ -9,6 +9,7 @@
   let {
     media,
     inLibrary,
+    libraryIds,
     status,
     watched,
     onBack,
@@ -21,6 +22,7 @@
   }: {
     media: Media;
     inLibrary: boolean;
+    libraryIds: Set<number>;
     status: string | null;
     watched: number[];
     onBack: () => void;
@@ -39,6 +41,30 @@
       .filter((item): item is Media => Boolean(item && item.id !== media.id))
       .slice(0, 12),
   );
+  const seasonOrder = ["SEQUEL", "PREQUEL", "SIDE_STORY", "SPIN_OFF", "ALTERNATIVE"];
+  const seasonLabels: Record<string, string> = {
+    SEQUEL: "Sequel",
+    PREQUEL: "Prequel",
+    SIDE_STORY: "Side story",
+    SPIN_OFF: "Spin-off",
+    ALTERNATIVE: "Alternative",
+  };
+  const relatedSeasons = $derived.by(() => {
+    const edges = media.relations?.edges ?? [];
+    const out: { item: Media; relation: string }[] = [];
+    for (const edge of edges) {
+      const node = edge.node;
+      if (!node || node.id === media.id) continue;
+      if (!seasonOrder.includes(edge.relationType)) continue;
+      out.push({ item: node, relation: edge.relationType });
+    }
+    out.sort((a, b) => {
+      const order = seasonOrder.indexOf(a.relation) - seasonOrder.indexOf(b.relation);
+      if (order !== 0) return order;
+      return (a.item.seasonYear ?? 0) - (b.item.seasonYear ?? 0);
+    });
+    return out;
+  });
   const episodeCount = $derived(media.episodes && media.episodes > 0 ? Math.min(media.episodes, 200) : 0);
   const watchedCount = $derived(watched.length);
   const percent = $derived(episodeCount > 0 ? Math.round((watchedCount / episodeCount) * 100) : 0);
@@ -356,6 +382,55 @@
       </div>
 
       <aside class="self-start space-y-4" aria-label="Details">
+        {#if relatedSeasons.length > 0}
+          <div class="surface p-4">
+            <h2 class="text-[10px] font-semibold uppercase tracking-[0.18em] mb-3" style="color: var(--paper-450);">
+              Seasons
+            </h2>
+            <ul class="space-y-2">
+              {#each relatedSeasons as season (season.item.id)}
+                {@const saved = libraryIds.has(season.item.id)}
+                {@const seasonArt = coverOf(season.item)}
+                <li class="flex items-center gap-2">
+                  <button
+                    class="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-1 text-left"
+                    onclick={() => onOpenRecommendation(season.item)}
+                    aria-label="Open {displayTitle(season.item)}"
+                  >
+                    <span class="w-[40px] h-[56px] shrink-0 overflow-hidden rounded-lg" style="background: var(--void-700);">
+                      <Artwork src={seasonArt} alt="" loading="lazy">
+                        {#snippet fallback()}
+                          <span class="w-full h-full grid place-items-center text-lg font-bold" style="color: var(--paper-500); font-family: var(--font-display);">
+                            {displayTitle(season.item).slice(0, 1)}
+                          </span>
+                        {/snippet}
+                      </Artwork>
+                    </span>
+                    <span class="min-w-0 flex-1">
+                      <span class="block text-sm font-semibold leading-snug truncate">{displayTitle(season.item)}</span>
+                      <span class="block text-[11px] mt-0.5" style="color: var(--volt-300);">
+                        {seasonLabels[season.relation] ?? season.relation}
+                      </span>
+                      <span class="block text-[11px] mt-0.5 truncate" style="color: var(--paper-450);">
+                        {metaOf(season.item) || "n/a"}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    class="btn-ghost px-2.5 py-1.5 text-[11px] shrink-0"
+                    onclick={() => onToggleLibrary(season.item)}
+                    aria-pressed={saved}
+                    aria-label={saved ? `Remove ${displayTitle(season.item)} from library` : `Save ${displayTitle(season.item)} to library`}
+                    title={saved ? "Remove from library" : "Save to library"}
+                  >
+                    <Icon name={saved ? "check" : "plus"} size={12} />
+                    {saved ? "Saved" : "Add"}
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
         <div class="surface p-4">
           <h2 class="text-[10px] font-semibold uppercase tracking-[0.18em] mb-3" style="color: var(--paper-450);">
             Details

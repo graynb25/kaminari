@@ -150,6 +150,7 @@ mod tests {
             episodes: Some(12),
             next_airing_episode: None,
             recommendations: None,
+            relations: None,
         }
     }
 

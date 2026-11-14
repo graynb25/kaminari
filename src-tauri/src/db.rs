@@ -410,6 +410,7 @@ impl Db {
                 episodes: row.get(9)?,
                 next_airing_episode: None,
                 recommendations: None,
+                relations: None,
             };
             Ok(LibraryItem {
                 media,
@@ -652,6 +653,7 @@ impl Db {
                 episodes: total_episodes.map(|value| value as i32),
                 next_airing_episode: None,
                 recommendations: None,
+                relations: None,
             };
             Ok(HistoryItem {
                 media,
@@ -988,6 +990,7 @@ impl Db {
                 episodes: total_episodes.map(|value| value as i32),
                 next_airing_episode: None,
                 recommendations: None,
+                relations: None,
             };
             Ok(ContinueItem {
                 media,
@@ -2998,6 +3001,7 @@ mod tests {
             episodes: Some(28),
             next_airing_episode: None,
             recommendations: None,
+            relations: None,
         }
     }
 
