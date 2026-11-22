@@ -505,8 +505,12 @@ const ADAPTER_TEMPLATE: &str = r##"
       return streams
         .map((stream) => {
           const url = String((stream && (stream.url || stream.originalUrl)) || "");
+          const rawOriginal = stream && stream.originalUrl ? String(stream.originalUrl) : "";
+          const originalUrl =
+            rawOriginal && rawOriginal !== url ? rawOriginal : null;
           return {
             url: url,
+            originalUrl: originalUrl,
             type: streamType(url),
             quality: (stream && stream.quality) || null,
             headers: headerList(stream && stream.headers),
@@ -800,6 +804,7 @@ class DefaultExtension extends MProvider {
   async getVideoList(url) {
     return [{
       url: "https://cdn.example.com/index.m3u8",
+      originalUrl: "https://cdn.example.com/master.m3u8",
       quality: "720p",
       headers: { Referer: "https://example.com/" },
       subtitles: [{ file: "https://cdn.example.com/sub.vtt", label: "English" }]
@@ -903,6 +908,10 @@ class DefaultExtension extends MProvider {
         )
         .unwrap();
         assert_eq!(streams[0]["url"], "https://cdn.example.com/index.m3u8");
+        assert_eq!(
+            streams[0]["originalUrl"],
+            "https://cdn.example.com/master.m3u8"
+        );
         assert_eq!(streams[0]["type"], "hls");
         assert_eq!(streams[0]["headers"]["Referer"], "https://example.com/");
         assert_eq!(

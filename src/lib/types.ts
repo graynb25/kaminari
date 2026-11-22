@@ -186,6 +186,8 @@ export type JsEpisode = {
 
 export type JsStream = {
   url: string;
+  originalUrl?: string | null;
+  audioLanguage?: string | null;
   type: string;
   quality?: string | null;
   headers?: Record<string, string> | null;
