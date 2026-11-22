@@ -742,6 +742,30 @@ pub fn wrap_code(code: &str, index: usize) -> String {
     format!("{BOOTSTRAP}\n;{code}\n;{adapter}\n")
 }
 
+const ADAPTER_MARKER: &str =
+    "const sources = typeof mangayomiSources === \"undefined\" ? null : mangayomiSources;";
+
+/// Installed Mangayomi sources are stored with the adapter that existed when
+/// they were installed. Rebuild that adapter at load time so a shipped shim
+/// fix reaches sources the viewer already has, without asking them to reinstall
+/// or changing the source code they trusted. Returns None when the stored code
+/// has no recognisable adapter, in which case the caller keeps it as-is.
+pub(crate) fn rewrap_installed_code(stored: &str) -> Option<String> {
+    let marker = stored.rfind(ADAPTER_MARKER)?;
+    let adapter_start = stored[..marker].rfind(";(function () {")?;
+    let old_adapter = &stored[adapter_start..];
+    let index_marker = "const sourceIndex = ";
+    let index_start = old_adapter.find(index_marker)? + index_marker.len();
+    let index_end = old_adapter[index_start..].find(';')? + index_start;
+    let index: usize = old_adapter[index_start..index_end].trim().parse().ok()?;
+    let mut source = stored[..adapter_start].trim_end();
+    if let Some(stripped) = source.strip_suffix(';') {
+        source = stripped.trim_end();
+    }
+    let adapter = ADAPTER_TEMPLATE.replace("__SOURCE_INDEX__", &index.to_string());
+    Some(format!("{source}\n;{adapter}\n"))
+}
+
 fn sanitize_identity(raw: &str, index: usize) -> String {
     let mut out = String::new();
     for ch in raw.trim().chars() {
@@ -855,6 +879,25 @@ class DefaultExtension extends MProvider {
         "#;
         let err = preview(code).unwrap_err();
         assert!(err.to_string().contains("no usable anime sources"));
+    }
+
+    #[test]
+    fn rewrap_replaces_a_stored_adapter_and_keeps_the_source() {
+        let old = wrap_code(STUB, 0).replace("            originalUrl: originalUrl,\n", "");
+        assert!(!old.contains("originalUrl: originalUrl,"));
+        let fresh = rewrap_installed_code(&old).expect("rewrap should find the adapter");
+        assert!(fresh.contains("originalUrl: originalUrl,"));
+        assert!(fresh.contains("Stub Source"));
+        assert!(fresh.contains("const sourceIndex = 0;"));
+        assert_eq!(
+            rewrap_installed_code(&fresh).as_deref(),
+            Some(fresh.as_str())
+        );
+    }
+
+    #[test]
+    fn rewrap_ignores_native_code() {
+        assert!(rewrap_installed_code("console.log('native');").is_none());
     }
 
     #[test]

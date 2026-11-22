@@ -4,7 +4,7 @@ Every visible change gets a line here. Keep lines short and specific.
 
 ## Unreleased
 
-- Sources: Mangayomi shim passes `originalUrl` through, so master playlists keep audio and HiAnime keeps its current path
+- Sources: Mangayomi shim passes `originalUrl` through, so master playlists keep audio; installed sources pick up the current shim at load without a reinstall
 - Player: master HLS episodes play with audio, start at the selected quality, and the quality menu switches 1080p, 720p or 360p levels without restarting; duplicate Sub and Dub rows no longer break the menu
 
 ## 0.30.0 - 2026-11-13
