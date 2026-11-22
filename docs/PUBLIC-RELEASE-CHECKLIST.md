@@ -97,7 +97,7 @@ The repository is public. Current state:
 
 - [x] Source master audio: the Mangayomi shim returns `originalUrl`; installed sources are rewrapped at load so existing AniKoto installs reach the signed master playlist without a reinstall.
 - [x] Player: the quality menu keys options safely, collapses duplicate Sub and Dub rows, lists hls.js levels for a synthetic master, starts at the selected source quality, and keeps the Dub audio hint.
-- [x] 239 Rust tests and 155 frontend tests, plus fmt, clippy with warnings denied, frontend check, build and style.
+- [x] 239 Rust tests and 155 frontend tests, plus fmt, clippy with warnings denied, frontend check, build and style. `cargo audit --no-yanked` exits 0 with the existing seven allowed warnings; `url` is 2.5.9 for RUSTSEC-2026-0592.
 - [x] Live local release check through the loopback proxy: AniKoto episode 9 played with one audio track, the menu showed Auto, 1080p, 720p and 360p, and 720p produced a 1280x720 video while audio kept decoding.
 - [ ] Publish from tag `v0.30.1` with the signed installer, `.sig`, `latest.json`, portable zip and `SHA256SUMS.txt`.
 - [ ] Clean Windows Sandbox install, launch, update and rollback pass from 0.30.0 to 0.30.1.

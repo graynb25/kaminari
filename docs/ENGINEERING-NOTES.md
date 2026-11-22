@@ -152,7 +152,7 @@ Context. 0.30.1 fixes the Overgeared episode 9 silence on AniKoto and the qualit
 
 What we shipped. The shim returns `originalUrl`, and `rewrap_installed_code` rebuilds the stored adapter at load while preserving the source body and index. `SourceBrowser` plays and opens the master, and `PlayerView` uses hls.js levels with the clicked quality as the starting height. The quality menu uses unique keys and deduplicated source rows.
 
-What we measured. A local release build was run against the real AniKoto source through the loopback proxy. The resolved entry carried the signed `master.m3u8`, playback decoded audio with one audio track, the menu showed Auto, 1080p, 720p and 360p, and choosing 720p produced a 1280x720 video while audio kept decoding. Frontend tests, Rust tests, fmt, Clippy and the style check passed. Installer sizes, CI timings, Sandbox results and the public update result are recorded after publishing.
+What we measured. A local release build was run against the real AniKoto source through the loopback proxy. The resolved entry carried the signed `master.m3u8`, playback decoded audio with one audio track, the menu showed Auto, 1080p, 720p and 360p, and choosing 720p produced a 1280x720 video while audio kept decoding. Frontend tests, Rust tests, fmt, Clippy and the style check passed. The first CI run failed on RUSTSEC-2026-0592 in `url` 2.5.8; `url` moved to 2.5.9 and `cargo audit --no-yanked` then passed with the existing seven allowed warnings. Installer sizes, CI timings, Sandbox results and the public update result are recorded after publishing.
 
 ## 2026-11-12 0.29.0 release
 
