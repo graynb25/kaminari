@@ -479,6 +479,15 @@
             if (hls) {
               hlsAuto = hls.autoLevelEnabled;
               if (hls.autoLevelEnabled) hlsActiveLevel = hls.currentLevel;
+              const preferred = stream.preferredHeight;
+              if (preferred && preferred > 0) {
+                const match = levels.find((level) => level.height === preferred);
+                if (match) {
+                  hls.currentLevel = match.index;
+                  hlsAuto = false;
+                  hlsActiveLevel = match.index;
+                }
+              }
             }
             applyAudioHint();
           });

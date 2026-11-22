@@ -98,6 +98,15 @@ describe("streams master handling", () => {
     expect(audioMasterFor(subPair[0], subPair)?.audioLanguage).toBe("ja");
   });
 
+  it("keeps the clicked quality height for the master", () => {
+    const pair = [
+      variant("1080p [Sub]", "https://cdn.example.com/index-f1.m3u8"),
+      variant("720p [Sub]", "https://cdn.example.com/index-f2.m3u8"),
+    ];
+    expect(audioMasterFor(pair[0], pair)?.preferredHeight).toBe(1080);
+    expect(audioMasterFor(pair[1], pair)?.preferredHeight).toBe(720);
+  });
+
   it("dedupes exact duplicate urls", () => {
     const list: JsStream[] = [
       { url: "https://cdn.example.com/a.mp4", type: "mp4" },

@@ -3,6 +3,7 @@
 // playlist in `originalUrl`. Playing the variant alone is silent, so the
 // player should use the master and switch levels inside hls.js.
 import type { JsStream } from "./types";
+import { streamHeight } from "./quality";
 
 function isHttpUrl(value: string | null | undefined): boolean {
   if (!value) return false;
@@ -57,6 +58,7 @@ export function audioMasterFor(
     originalUrl: null,
     audioLanguage: audioHint(stream.quality),
     masterPlaylist: true,
+    preferredHeight: streamHeight(stream),
     type: "hls",
     quality: "Auto",
     headers: stream.headers ?? null,

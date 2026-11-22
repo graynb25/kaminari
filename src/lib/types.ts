@@ -189,6 +189,7 @@ export type JsStream = {
   originalUrl?: string | null;
   audioLanguage?: string | null;
   masterPlaylist?: boolean;
+  preferredHeight?: number | null;
   type: string;
   quality?: string | null;
   headers?: Record<string, string> | null;
