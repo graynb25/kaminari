@@ -70,8 +70,19 @@ describe("streams master handling", () => {
     ];
     const master = audioMasterFor(grouped[0], grouped);
     expect(master?.url).toBe(MASTER);
+    expect(master?.masterPlaylist).toBe(true);
     const lone = [variant("1080p", "https://cdn.example.com/index-f1.m3u8")];
     expect(audioMasterFor(lone[0], lone)).toBeNull();
+  });
+
+  it("marks only the synthetic master as a master playlist", () => {
+    const grouped = [
+      variant("1080p [Sub]", "https://cdn.example.com/index-f1.m3u8"),
+      variant("720p [Sub]", "https://cdn.example.com/index-f2.m3u8"),
+    ];
+    expect(grouped[0].masterPlaylist).toBeUndefined();
+    const collapsed = collapseHlsVariants(grouped);
+    expect(collapsed[0].masterPlaylist).toBe(true);
   });
 
   it("maps dub to en and sub to ja", () => {

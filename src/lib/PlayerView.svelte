@@ -14,7 +14,6 @@
   } from "./a11y";
   import { playbackUrl } from "./streamProxy";
   import { vttBlobUrl } from "./subtitles";
-  import { streamLabel } from "./quality";
   import { uniqueStreams } from "./streams";
   import type { JsStream } from "./types";
 
@@ -79,6 +78,44 @@
   let hlsLevels = $state<{ index: number; height: number | null; bitrate: number }[]>([]);
   let hlsAuto = $state(true);
   let hlsActiveLevel = $state(-1);
+  let audioHintApplied = false;
+
+  function applyAudioHint() {
+    if (audioHintApplied || !hls) return;
+    const hint = stream.audioLanguage?.trim().toLowerCase() ?? "";
+    if (!hint) return;
+    try {
+      const tracks = hls.audioTracks ?? [];
+      if (tracks.length === 0) return;
+      const match = tracks.findIndex((track) => {
+        const lang = String(track.lang ?? "").toLowerCase();
+        const name = String(track.name ?? "").toLowerCase();
+        if (hint === "en") {
+          return (
+            lang.startsWith("en") ||
+            name.includes("english") ||
+            name.includes("dub")
+          );
+        }
+        if (hint === "ja") {
+          return (
+            lang.startsWith("ja") ||
+            lang.startsWith("jp") ||
+            lang.startsWith("jpn") ||
+            name.includes("japanese") ||
+            name.includes("sub")
+          );
+        }
+        return lang.startsWith(hint);
+      });
+      if (match >= 0) {
+        hls.audioTrack = match;
+        audioHintApplied = true;
+      }
+    } catch {
+      // Audio selection stays on the source default.
+    }
+  }
   let playing = $state(false);
   let buffering = $state(true);
   let currentTime = $state(0);
@@ -159,8 +196,12 @@
     }
   });
 
+  const useHlsLevels = $derived(
+    Boolean(stream.masterPlaylist) && hlsLevels.length > 1,
+  );
+
   const qualityMenuOptions = $derived.by((): QualityOption[] => {
-    if (hlsLevels.length > 1) {
+    if (useHlsLevels) {
       const sorted = [...hlsLevels].sort((a, b) => {
         const ha = a.height ?? 0;
         const hb = b.height ?? 0;
@@ -181,13 +222,13 @@
     return uniqueStreams(qualityOptions).map((option, index) => ({
       key: `source:${index}:${option.url}`,
       label: option.quality?.trim() || `Stream ${index + 1}`,
-      detail: option.type.trim().toUpperCase() || streamLabel(option),
+      detail: option.type.trim().toUpperCase(),
       active: option.url === stream.url,
       stream: option,
     }));
   });
   const showQualityMenu = $derived(
-    qualityMenuOptions.length > 1 && (hlsLevels.length > 1 || onQualityChange),
+    qualityMenuOptions.length > 1 && (useHlsLevels || onQualityChange),
   );
 
   onMount(() => {
@@ -416,6 +457,7 @@
     hlsLevels = [];
     hlsAuto = true;
     hlsActiveLevel = -1;
+    audioHintApplied = false;
     const isHls = stream.type === "hls" || /\.m3u8(\?|$)/i.test(playbackSource);
     if (!isHls) {
       video.src = playbackSource;
@@ -424,9 +466,6 @@
         const { default: Hls } = await import("hls.js");
         if (!video) return;
         if (Hls.isSupported()) {
-          hlsLevels = [];
-          hlsAuto = true;
-          hlsActiveLevel = -1;
           hls = new Hls({ enableWorker: true });
           hls.loadSource(playbackSource);
           hls.attachMedia(video);
@@ -441,41 +480,20 @@
               hlsAuto = hls.autoLevelEnabled;
               if (hls.autoLevelEnabled) hlsActiveLevel = hls.currentLevel;
             }
-            const hint = stream.audioLanguage?.trim().toLowerCase() ?? "";
-            if (hint && hls) {
-              try {
-                const tracks = hls.audioTracks ?? [];
-                const match = tracks.findIndex((track) => {
-                  const lang = String(track.lang ?? "").toLowerCase();
-                  const name = String(track.name ?? "").toLowerCase();
-                  if (hint === "en") {
-                    return (
-                      lang.startsWith("en") ||
-                      name.includes("english") ||
-                      name.includes("dub")
-                    );
-                  }
-                  if (hint === "ja") {
-                    return (
-                      lang.startsWith("ja") ||
-                      lang.startsWith("jp") ||
-                      lang.startsWith("jpn") ||
-                      name.includes("japanese") ||
-                      name.includes("sub")
-                    );
-                  }
-                  return lang.startsWith(hint);
-                });
-                if (match >= 0) hls.audioTrack = match;
-              } catch {
-                // Audio selection stays on the source default.
-              }
-            }
+            applyAudioHint();
           });
           hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
             hlsActiveLevel = data.level;
             if (hls) hlsAuto = hls.autoLevelEnabled;
           });
+          try {
+            const audioTracksUpdated = Hls.Events.AUDIO_TRACKS_UPDATED;
+            if (typeof audioTracksUpdated === "string") {
+              hls.on(audioTracksUpdated, () => applyAudioHint());
+            }
+          } catch {
+            // Audio track updates stay on the source default.
+          }
           hls.on(Hls.Events.ERROR, (_event, data) => {
             if (data.fatal) {
               buffering = false;

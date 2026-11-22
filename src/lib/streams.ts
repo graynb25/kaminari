@@ -56,6 +56,7 @@ export function audioMasterFor(
     url: master,
     originalUrl: null,
     audioLanguage: audioHint(stream.quality),
+    masterPlaylist: true,
     type: "hls",
     quality: "Auto",
     headers: stream.headers ?? null,

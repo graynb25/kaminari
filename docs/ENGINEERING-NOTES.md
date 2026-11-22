@@ -144,7 +144,7 @@ Context. AniKoto 0.4.30 returns six HLS entries for one episode: 1080p, 720p and
 
 What we shipped. The shim passes `originalUrl` through when it is a distinct non-empty string, and the stub asserts it. New `src/lib/streams.ts` holds `isMasterCandidate`, `audioMasterFor`, `collapseHlsVariants` and `uniqueStreams`, with seven Vitest cases. `SourceBrowser` plays and opens the master in mpv, collapses the menu rows to one Auto entry, and leaves downloads and Copy on the variant URL. The quality menu takes keyed `{ key, label, detail, active, stream }` options, and `PlayerView` lists hls.js levels (Auto, 1080p, 720p, 360p) and switches them without recreating the player. Sources without `originalUrl`, such as HiAnime, keep the old path.
 
-What we measured. `npm test` passes 153 frontend tests, `npm run build` passes, and the Mangayomi module passes 3 Rust tests. Full `cargo test` and `cargo fmt --check` still to run at commit time.
+What we measured. `npm test` passes 154 frontend tests, `npm run build` passes, and the Mangayomi module passes 3 Rust tests. Full `cargo test` passes 237 Rust tests, `cargo fmt --check` is clean, and `cargo clippy --all-targets -- -D warnings` is clean.
 
 ## 2026-11-12 0.29.0 release
 
