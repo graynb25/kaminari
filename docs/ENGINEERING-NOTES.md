@@ -146,6 +146,14 @@ What we shipped. The shim passes `originalUrl` through when it is a distinct non
 
 What we measured. `npm test` passes 155 frontend tests, `npm run build` passes, and the Mangayomi module passes 5 Rust tests. Full `cargo test` passes 239 Rust tests, `cargo fmt --check` is clean, and `cargo clippy --all-targets -- -D warnings` is clean. A live Edge run of the player with the real AniKoto master decoded audio, switched to a 1280x720 level, kept the active level after reopening the menu, and requested the `/audio/en/` playlist for a Dub hint. That run reached the CDN directly with the required Referer; the loopback proxy path is covered by the proxy tests, not by that run.
 
+## 2026-11-22 0.30.1 release
+
+Context. 0.30.1 fixes the Overgeared episode 9 silence on AniKoto and the quality menu that never opened. The source returns video-only variant playlists and keeps the audio-bearing master in `originalUrl`. The Sub and Dub rows also share variant URLs. Installed Mangayomi sources had the older shim stored inside their code, so only newly installed sources would have seen the new field.
+
+What we shipped. The shim returns `originalUrl`, and `rewrap_installed_code` rebuilds the stored adapter at load while preserving the source body and index. `SourceBrowser` plays and opens the master, and `PlayerView` uses hls.js levels with the clicked quality as the starting height. The quality menu uses unique keys and deduplicated source rows.
+
+What we measured. A local release build was run against the real AniKoto source through the loopback proxy. The resolved entry carried the signed `master.m3u8`, playback decoded audio with one audio track, the menu showed Auto, 1080p, 720p and 360p, and choosing 720p produced a 1280x720 video while audio kept decoding. Frontend tests, Rust tests, fmt, Clippy and the style check passed. Installer sizes, CI timings, Sandbox results and the public update result are recorded after publishing.
+
 ## 2026-11-12 0.29.0 release
 
 Context. 0.29.0 publishes the airing schedule from PR #35, tag `v0.29.0` at `f146cca`.

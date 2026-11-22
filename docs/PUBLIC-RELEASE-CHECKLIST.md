@@ -93,6 +93,17 @@ The repository is public. Current state:
 - [x] Public update from 0.29.0 to 0.30.0 through the signed feed passed. The update installed 0.30.0; the app was opened manually after the installer. The real database stayed on schema 4 with 72 library rows and 10 schedule rows.
 - [ ] Legal review, Authenticode signing and the physical offline signing-key copy remain deferred.
 
+## 0.30.1 release
+
+- [x] Source master audio: the Mangayomi shim returns `originalUrl`; installed sources are rewrapped at load so existing AniKoto installs reach the signed master playlist without a reinstall.
+- [x] Player: the quality menu keys options safely, collapses duplicate Sub and Dub rows, lists hls.js levels for a synthetic master, starts at the selected source quality, and keeps the Dub audio hint.
+- [x] 239 Rust tests and 155 frontend tests, plus fmt, clippy with warnings denied, frontend check, build and style.
+- [x] Live local release check through the loopback proxy: AniKoto episode 9 played with one audio track, the menu showed Auto, 1080p, 720p and 360p, and 720p produced a 1280x720 video while audio kept decoding.
+- [ ] Publish from tag `v0.30.1` with the signed installer, `.sig`, `latest.json`, portable zip and `SHA256SUMS.txt`.
+- [ ] Clean Windows Sandbox install, launch, update and rollback pass from 0.30.0 to 0.30.1.
+- [ ] Public update from 0.30.0 to 0.30.1 through the signed feed.
+- [ ] Legal review, Authenticode signing and the physical offline signing-key copy remain deferred.
+
 ## Release assets
 
 - `Kaminari_<version>_x64-setup.exe`
