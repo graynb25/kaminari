@@ -2,18 +2,22 @@
   import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
   import { nextFocusIndex } from "./a11y";
-  import { streamLabel } from "./quality";
-  import type { JsStream } from "./types";
+
+  export type QualityOption = {
+    key: string;
+    label: string;
+    detail?: string;
+    active: boolean;
+    stream?: import("./types").JsStream;
+  };
 
   let {
     options,
-    activeUrl,
     onSelect,
     onClose,
   }: {
-    options: JsStream[];
-    activeUrl: string;
-    onSelect: (stream: JsStream) => void;
+    options: QualityOption[];
+    onSelect: (option: QualityOption) => void;
     onClose: () => void;
   } = $props();
 
@@ -101,18 +105,19 @@
   </div>
 
   <div class="mt-3 space-y-1">
-    {#each options as option, index (option.url)}
-      {@const active = option.url === activeUrl}
+    {#each options as option (option.key)}
       <button
         class="quality-option"
-        class:is-active={active}
+        class:is-active={option.active}
         onclick={() => onSelect(option)}
-        aria-pressed={active}
-        title={streamLabel(option)}
+        aria-pressed={option.active}
+        title={option.detail ? `${option.label} · ${option.detail}` : option.label}
       >
-        <span class="quality-name">{option.quality?.trim() || `Stream ${index + 1}`}</span>
-        <span class="quality-kind">{option.type.toUpperCase()}</span>
-        {#if active}
+        <span class="quality-name">{option.label}</span>
+        {#if option.detail}
+          <span class="quality-kind">{option.detail}</span>
+        {/if}
+        {#if option.active}
           <span class="quality-check" aria-hidden="true">
             <Icon name="check" size={13} />
           </span>

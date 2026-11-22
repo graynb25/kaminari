@@ -2,6 +2,11 @@
 
 Every visible change gets a line here. Keep lines short and specific.
 
+## Unreleased
+
+- Sources: Mangayomi shim passes `originalUrl` through, so master playlists keep audio and HiAnime keeps its current path
+- Player: master HLS episodes play with audio and the quality menu switches 1080p, 720p or 360p levels without restarting; duplicate Sub and Dub rows no longer break the menu
+
 ## 0.30.0 - 2026-11-13
 
 - Schedule: rename the Later group to Beyond this week, with a note that it is not part of the selected day and a top border that separates it from the day timeline

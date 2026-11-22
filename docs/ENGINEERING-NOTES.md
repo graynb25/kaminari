@@ -138,6 +138,14 @@ What we measured. CI `check` passed in 9m57s and `secrets` in 6s. A public 0.29.
 
 What remains. Legal review, Authenticode signing and the physical offline signing-key copy remain deferred. A full Hyper-V VM pass was not run.
 
+## 2026-11-22 AniKoto master playlist and HLS level menu
+
+Context. AniKoto 0.4.30 returns six HLS entries for one episode: 1080p, 720p and 360p in Sub and Dub. Every `url` is a video-only media playlist. The audio lives in the signed master playlist in `originalUrl`, which the Mangayomi shim dropped. The Sub and Dub rows also share variant URLs, so the keyed quality menu hit duplicate keys and never opened.
+
+What we shipped. The shim passes `originalUrl` through when it is a distinct non-empty string, and the stub asserts it. New `src/lib/streams.ts` holds `isMasterCandidate`, `audioMasterFor`, `collapseHlsVariants` and `uniqueStreams`, with seven Vitest cases. `SourceBrowser` plays and opens the master in mpv, collapses the menu rows to one Auto entry, and leaves downloads and Copy on the variant URL. The quality menu takes keyed `{ key, label, detail, active, stream }` options, and `PlayerView` lists hls.js levels (Auto, 1080p, 720p, 360p) and switches them without recreating the player. Sources without `originalUrl`, such as HiAnime, keep the old path.
+
+What we measured. `npm test` passes 153 frontend tests, `npm run build` passes, and the Mangayomi module passes 3 Rust tests. Full `cargo test` and `cargo fmt --check` still to run at commit time.
+
 ## 2026-11-12 0.29.0 release
 
 Context. 0.29.0 publishes the airing schedule from PR #35, tag `v0.29.0` at `f146cca`.
