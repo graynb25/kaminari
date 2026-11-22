@@ -197,7 +197,9 @@
   });
 
   const useHlsLevels = $derived(
-    Boolean(stream.masterPlaylist) && hlsLevels.length > 1,
+    Boolean(stream.masterPlaylist) &&
+      hlsLevels.length > 1 &&
+      uniqueStreams(qualityOptions).length <= 1,
   );
 
   const qualityMenuOptions = $derived.by((): QualityOption[] => {
