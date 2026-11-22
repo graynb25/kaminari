@@ -2,6 +2,13 @@
 
 Every visible change gets a line here. Keep lines short and specific.
 
+## 0.30.1 - 2026-11-22
+
+- Sources: Mangayomi shim passes `originalUrl` through, so master playlists keep audio; installed sources pick up the current shim at load without a reinstall
+- Player: master HLS episodes play with audio, start at the selected quality, and the quality menu switches 1080p, 720p or 360p levels without restarting; duplicate Sub and Dub rows no longer break the menu
+- Security: update `url` to 2.5.9 for RUSTSEC-2026-0592
+- Version: bump to 0.30.1
+
 ## 0.30.0 - 2026-11-13
 
 - Schedule: rename the Later group to Beyond this week, with a note that it is not part of the selected day and a top border that separates it from the day timeline

@@ -14,7 +14,10 @@
     mpvEmbedStatus,
   } from "./api";
   import { playbackUrl } from "./streamProxy";
-  import PlayerQualityMenu from "./PlayerQualityMenu.svelte";
+  import { uniqueStreams } from "./streams";
+  import PlayerQualityMenu, {
+    type QualityOption,
+  } from "./PlayerQualityMenu.svelte";
   import {
     isolateBackground,
     isTopLayer,
@@ -52,11 +55,22 @@
     incognito?: boolean;
   } = $props();
 
-  function chooseQuality(option: JsStream) {
+  function chooseQuality(option: QualityOption) {
     qualityMenuOpen = false;
-    if (option.url === stream.url) return;
-    onQualityChange?.(option, currentTime);
+    const next = option.stream;
+    if (!next || next.url === stream.url) return;
+    onQualityChange?.(next, currentTime);
   }
+
+  const qualityMenuOptions = $derived.by((): QualityOption[] =>
+    uniqueStreams(qualityOptions).map((option, index) => ({
+      key: `source:${index}:${option.url}`,
+      label: option.quality?.trim() || `Stream ${index + 1}`,
+      detail: option.type.trim().toUpperCase(),
+      active: option.url === stream.url,
+      stream: option,
+    })),
+  );
 
   type MpvEvent = {
     event?: string;
@@ -779,7 +793,7 @@
           />
         </div>
         <div class="ml-auto flex items-center gap-1">
-          {#if qualityOptions.length > 1 && onQualityChange}
+          {#if qualityMenuOptions.length > 1 && onQualityChange}
             <div class="relative">
               <button
                 class="player-control {qualityMenuOpen ? 'is-on' : ''}"
@@ -794,8 +808,7 @@
               </button>
               {#if qualityMenuOpen}
                 <PlayerQualityMenu
-                  options={qualityOptions}
-                  activeUrl={stream.url}
+                  options={qualityMenuOptions}
                   onSelect={chooseQuality}
                   onClose={() => (qualityMenuOpen = false)}
                 />

@@ -1291,9 +1291,14 @@ fn run_js_extension_blocking(db: &Db, id: &str, op: &str, args: Value) -> Result
         .map_err(ipc_error)?
         .ok_or_else(|| "extension is not installed".to_string())?;
     let storage: Arc<dyn ExtStorage> = Arc::new(db.clone());
+    let code = if stored.manifest.id.starts_with("mangayomi.") {
+        mangayomi::rewrap_installed_code(&stored.code).unwrap_or(stored.code)
+    } else {
+        stored.code
+    };
     let package = ExtPackage {
         manifest: stored.manifest,
-        code: stored.code,
+        code,
     };
     ext_host::run(
         &package,

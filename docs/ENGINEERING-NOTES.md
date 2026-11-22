@@ -138,6 +138,22 @@ What we measured. CI `check` passed in 9m57s and `secrets` in 6s. A public 0.29.
 
 What remains. Legal review, Authenticode signing and the physical offline signing-key copy remain deferred. A full Hyper-V VM pass was not run.
 
+## 2026-11-22 AniKoto master playlist and HLS level menu
+
+Context. AniKoto 0.4.30 returns six HLS entries for one episode: 1080p, 720p and 360p in Sub and Dub. Every `url` is a video-only media playlist. The audio lives in the signed master playlist in `originalUrl`, which the Mangayomi shim dropped. The Sub and Dub rows also share variant URLs, so the keyed quality menu hit duplicate keys and never opened.
+
+What we shipped. The shim passes `originalUrl` through when it is a distinct non-empty string, and the stub asserts it. Installed Mangayomi sources store the shim that existed when they were installed, so `rewrap_installed_code` rebuilds that stored adapter at load time and keeps the source code and the recorded source index. New `src/lib/streams.ts` holds `isMasterCandidate`, `audioMasterFor`, `collapseHlsVariants` and `uniqueStreams`, with nine Vitest cases. `SourceBrowser` plays and opens the master in mpv, collapses the menu rows to one Auto entry, and leaves downloads and Copy on the variant URL. The quality menu takes keyed `{ key, label, detail, active, stream }` options, and `PlayerView` lists hls.js levels (Auto, 1080p, 720p, 360p), starts at the clicked source quality, and switches levels without recreating the player. Sources that do not expose a shared `originalUrl` keep the old path. When a master has other source choices, such as another server, the menu keeps those choices instead of replacing them with levels.
+
+What we measured. `npm test` passes 155 frontend tests, `npm run build` passes, and the Mangayomi module passes 5 Rust tests. Full `cargo test` passes 239 Rust tests, `cargo fmt --check` is clean, and `cargo clippy --all-targets -- -D warnings` is clean. A live Edge run of the player with the real AniKoto master decoded audio, switched to a 1280x720 level, kept the active level after reopening the menu, and requested the `/audio/en/` playlist for a Dub hint. That run reached the CDN directly with the required Referer; the loopback proxy path is covered by the proxy tests, not by that run.
+
+## 2026-11-22 0.30.1 release
+
+Context. 0.30.1 fixes the Overgeared episode 9 silence on AniKoto and the quality menu that never opened. The source returns video-only variant playlists and keeps the audio-bearing master in `originalUrl`. The Sub and Dub rows also share variant URLs. Installed Mangayomi sources had the older shim stored inside their code, so only newly installed sources would have seen the new field.
+
+What we shipped. The shim returns `originalUrl`, and `rewrap_installed_code` rebuilds the stored adapter at load while preserving the source body and index. `SourceBrowser` plays and opens the master, and `PlayerView` uses hls.js levels with the clicked quality as the starting height. The quality menu uses unique keys and deduplicated source rows.
+
+What we measured. A local release build was run against the real AniKoto source through the loopback proxy. The resolved entry carried the signed `master.m3u8`, playback decoded audio with one audio track, the menu showed Auto, 1080p, 720p and 360p, and choosing 720p produced a 1280x720 video while audio kept decoding. Frontend tests, Rust tests, fmt, Clippy and the style check passed. The first CI run failed on RUSTSEC-2026-0592 in `url` 2.5.8; `url` moved to 2.5.9 and `cargo audit --no-yanked` then passed with the existing seven allowed warnings. Installer sizes, CI timings, Sandbox results and the public update result are recorded after publishing.
+
 ## 2026-11-12 0.29.0 release
 
 Context. 0.29.0 publishes the airing schedule from PR #35, tag `v0.29.0` at `f146cca`.

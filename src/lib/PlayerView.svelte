@@ -2,7 +2,9 @@
   import { onMount } from "svelte";
   import type HlsType from "hls.js";
   import Icon from "./Icon.svelte";
-  import PlayerQualityMenu from "./PlayerQualityMenu.svelte";
+  import PlayerQualityMenu, {
+    type QualityOption,
+  } from "./PlayerQualityMenu.svelte";
   import {
     isolateBackground,
     isTopLayer,
@@ -12,6 +14,7 @@
   } from "./a11y";
   import { playbackUrl } from "./streamProxy";
   import { vttBlobUrl } from "./subtitles";
+  import { uniqueStreams } from "./streams";
   import type { JsStream } from "./types";
 
   let {
@@ -46,15 +49,73 @@
     incognito?: boolean;
   } = $props();
 
-  function chooseQuality(option: JsStream) {
+  function chooseQuality(option: QualityOption) {
     qualityMenuOpen = false;
-    if (option.url === stream.url) return;
-    onQualityChange?.(option, currentTime);
+    if (option.key === "level:auto") {
+      if (hls) {
+        hls.currentLevel = -1;
+        hlsAuto = true;
+      }
+      return;
+    }
+    if (option.key.startsWith("level:")) {
+      const index = Number(option.key.slice("level:".length));
+      if (Number.isInteger(index) && hls) {
+        hls.currentLevel = index;
+        hlsAuto = false;
+        hlsActiveLevel = index;
+      }
+      return;
+    }
+    const next = option.stream;
+    if (!next || next.url === stream.url) return;
+    onQualityChange?.(next, currentTime);
   }
 
   let shell: HTMLDivElement | null = $state(null);
   let video: HTMLVideoElement | null = $state(null);
   let hls: HlsType | null = null;
+  let hlsLevels = $state<{ index: number; height: number | null; bitrate: number }[]>([]);
+  let hlsAuto = $state(true);
+  let hlsActiveLevel = $state(-1);
+  let audioHintApplied = false;
+
+  function applyAudioHint() {
+    if (audioHintApplied || !hls) return;
+    const hint = stream.audioLanguage?.trim().toLowerCase() ?? "";
+    if (!hint) return;
+    try {
+      const tracks = hls.audioTracks ?? [];
+      if (tracks.length === 0) return;
+      const match = tracks.findIndex((track) => {
+        const lang = String(track.lang ?? "").toLowerCase();
+        const name = String(track.name ?? "").toLowerCase();
+        if (hint === "en") {
+          return (
+            lang.startsWith("en") ||
+            name.includes("english") ||
+            name.includes("dub")
+          );
+        }
+        if (hint === "ja") {
+          return (
+            lang.startsWith("ja") ||
+            lang.startsWith("jp") ||
+            lang.startsWith("jpn") ||
+            name.includes("japanese") ||
+            name.includes("sub")
+          );
+        }
+        return lang.startsWith(hint);
+      });
+      if (match >= 0) {
+        hls.audioTrack = match;
+        audioHintApplied = true;
+      }
+    } catch {
+      // Audio selection stays on the source default.
+    }
+  }
   let playing = $state(false);
   let buffering = $state(true);
   let currentTime = $state(0);
@@ -134,6 +195,43 @@
       return "unknown host";
     }
   });
+
+  const useHlsLevels = $derived(
+    Boolean(stream.masterPlaylist) &&
+      hlsLevels.length > 1 &&
+      uniqueStreams(qualityOptions).length <= 1,
+  );
+
+  const qualityMenuOptions = $derived.by((): QualityOption[] => {
+    if (useHlsLevels) {
+      const sorted = [...hlsLevels].sort((a, b) => {
+        const ha = a.height ?? 0;
+        const hb = b.height ?? 0;
+        if (hb !== ha) return hb - ha;
+        return b.bitrate - a.bitrate;
+      });
+      const levels: QualityOption[] = sorted.map((level) => ({
+        key: `level:${level.index}`,
+        label: level.height ? `${level.height}p` : `Level ${level.index + 1}`,
+        detail: "HLS",
+        active: !hlsAuto && hlsActiveLevel === level.index,
+      }));
+      return [
+        { key: "level:auto", label: "Auto", detail: "HLS", active: hlsAuto },
+        ...levels,
+      ];
+    }
+    return uniqueStreams(qualityOptions).map((option, index) => ({
+      key: `source:${index}:${option.url}`,
+      label: option.quality?.trim() || `Stream ${index + 1}`,
+      detail: option.type.trim().toUpperCase(),
+      active: option.url === stream.url,
+      stream: option,
+    }));
+  });
+  const showQualityMenu = $derived(
+    qualityMenuOptions.length > 1 && (useHlsLevels || onQualityChange),
+  );
 
   onMount(() => {
     if (!video) return;
@@ -358,6 +456,10 @@
     error = null;
     ended = false;
     buffering = true;
+    hlsLevels = [];
+    hlsAuto = true;
+    hlsActiveLevel = -1;
+    audioHintApplied = false;
     const isHls = stream.type === "hls" || /\.m3u8(\?|$)/i.test(playbackSource);
     if (!isHls) {
       video.src = playbackSource;
@@ -369,6 +471,40 @@
           hls = new Hls({ enableWorker: true });
           hls.loadSource(playbackSource);
           hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+            const levels = (data.levels ?? []).map((level, index) => ({
+              index,
+              height: level.height ?? null,
+              bitrate: level.bitrate ?? 0,
+            }));
+            hlsLevels = levels;
+            if (hls) {
+              hlsAuto = hls.autoLevelEnabled;
+              if (hls.autoLevelEnabled) hlsActiveLevel = hls.currentLevel;
+              const preferred = stream.preferredHeight;
+              if (preferred && preferred > 0) {
+                const match = levels.find((level) => level.height === preferred);
+                if (match) {
+                  hls.currentLevel = match.index;
+                  hlsAuto = false;
+                  hlsActiveLevel = match.index;
+                }
+              }
+            }
+            applyAudioHint();
+          });
+          hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+            hlsActiveLevel = data.level;
+            if (hls) hlsAuto = hls.autoLevelEnabled;
+          });
+          try {
+            const audioTracksUpdated = Hls.Events.AUDIO_TRACKS_UPDATED;
+            if (typeof audioTracksUpdated === "string") {
+              hls.on(audioTracksUpdated, () => applyAudioHint());
+            }
+          } catch {
+            // Audio track updates stay on the source default.
+          }
           hls.on(Hls.Events.ERROR, (_event, data) => {
             if (data.fatal) {
               buffering = false;
@@ -803,7 +939,7 @@
           />
         </div>
         <div class="ml-auto flex items-center gap-1">
-          {#if qualityOptions.length > 1 && onQualityChange}
+          {#if showQualityMenu}
             <div class="relative">
               <button
                 class="player-control {qualityMenuOpen ? 'is-on' : ''}"
@@ -818,8 +954,7 @@
               </button>
               {#if qualityMenuOpen}
                 <PlayerQualityMenu
-                  options={qualityOptions}
-                  activeUrl={stream.url}
+                  options={qualityMenuOptions}
                   onSelect={chooseQuality}
                   onClose={() => (qualityMenuOpen = false)}
                 />

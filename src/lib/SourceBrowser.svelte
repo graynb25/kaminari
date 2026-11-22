@@ -59,6 +59,7 @@
   import { autoplayEnabled } from "./autoplay";
   import { anilistProgressThrough, sourceProgressMarks } from "./sourceProgress";
   import { isHlsStream, proxyFlagEnabled, shouldProxy } from "./streamProxy";
+  import { audioMasterFor, collapseHlsVariants } from "./streams";
   import type {
     DownloadProgress,
     JsEpisode,
@@ -144,7 +145,11 @@
   const activeAniListId = $derived(currentAniListId);
   const watchedSourceCount = $derived(progress.filter((row) => row.watched).length);
   const activeQualityOptions = $derived(
-    activePlayback ? (streams[activePlayback.episode.id] ?? [activePlayback.stream]) : [],
+    activePlayback
+      ? collapseHlsVariants(
+          streams[activePlayback.episode.id] ?? [activePlayback.stream],
+        )
+      : [],
   );
 
   onMount(() => {
@@ -733,19 +738,21 @@
   }
 
   async function playStream(stream: JsStream, episode: JsEpisode, startSecOverride?: number) {
-    let prepared = stream;
-    if (shouldProxy(stream) && proxyFlagEnabled()) {
+    const master =
+      audioMasterFor(stream, streams[episode.id] ?? []) ?? stream;
+    let prepared = master;
+    if (shouldProxy(master) && proxyFlagEnabled()) {
       try {
         const status = await proxyStatus();
         if (status.enabled) {
           const registered = await proxyRegister(extension.id, {
-            url: stream.url,
-            kind: isHlsStream(stream) ? "hls" : "mp4",
-            headers: stream.headers ?? null,
+            url: master.url,
+            kind: isHlsStream(master) ? "hls" : "mp4",
+            headers: master.headers ?? null,
           });
           const subtitles: NonNullable<JsStream["subtitles"]> = [];
           const subtitleProxyIds: string[] = [];
-          for (const subtitle of stream.subtitles ?? []) {
+          for (const subtitle of master.subtitles ?? []) {
             if (!/^https?:\/\//i.test(subtitle.url)) {
               subtitles.push(subtitle);
               continue;
@@ -754,7 +761,7 @@
               const proxied = await proxyRegister(extension.id, {
                 url: subtitle.url,
                 kind: "file",
-                headers: stream.headers ?? null,
+                headers: master.headers ?? null,
               });
               subtitles.push({ ...subtitle, url: proxied.proxyUrl });
               subtitleProxyIds.push(proxied.opaqueId);
@@ -763,10 +770,10 @@
             }
           }
           prepared = {
-            ...stream,
+            ...master,
             proxiedUrl: registered.proxyUrl,
             proxyId: registered.opaqueId,
-            subtitles: subtitles.length > 0 ? subtitles : stream.subtitles,
+            subtitles: subtitles.length > 0 ? subtitles : master.subtitles,
             subtitleProxyIds,
           };
         }
@@ -869,12 +876,14 @@
   }
 
   async function openExternal(stream: JsStream, episode: JsEpisode) {
+    const effective =
+      audioMasterFor(stream, streams[episode.id] ?? [stream]) ?? stream;
     try {
       const info = await playerPlay({
-        url: stream.url,
+        url: effective.url,
         title: `${selected?.title ?? "Kaminari"} · Episode ${episode.number}`,
-        headers: stream.headers ?? undefined,
-        subtitles: stream.subtitles ?? undefined,
+        headers: effective.headers ?? undefined,
+        subtitles: effective.subtitles ?? undefined,
       });
       notify(`Opening mpv from ${info.mpvPath}.`, "success");
     } catch (e) {
